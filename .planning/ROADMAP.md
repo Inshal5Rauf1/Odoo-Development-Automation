@@ -23,8 +23,8 @@ Nine phases cover all 68 Odoo-specific requirements (plus 13 inherited from GSD)
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: GSD Extension + Odoo Foundation** — Extension structure, command registration, Odoo config, agent definitions, Python utility package with Jinja2 scaffold engine
-- [ ] **Phase 2: Knowledge Base** — Odoo 17 coding patterns, OCA standards, pylint-odoo rules, version-specific references, extensible skill system
-- [ ] **Phase 3: Validation Infrastructure** — pylint-odoo integration, Docker-based Odoo 17.0 environment, module install testing, quality reporting
+- [x] **Phase 2: Knowledge Base** — Odoo 17 coding patterns, OCA standards, pylint-odoo rules, version-specific references, extensible skill system
+- [x] **Phase 3: Validation Infrastructure** — pylint-odoo integration, Docker-based Odoo 17.0 environment, module install testing, quality reporting
 - [ ] **Phase 4: Input & Specification** — Natural language module description, structured Odoo follow-up questions, spec parsing, user approval flow
 - [ ] **Phase 5: Core Code Generation** — Models, views, actions, manifests, init files, data, wizards, and README generation with OCA standards compliance
 - [ ] **Phase 6: Security & Test Generation** — ACLs, group hierarchy, record rules, comprehensive test suite generation
@@ -68,7 +68,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md -- MASTER.md + core category files (models, views, security, manifest)
 - [x] 02-02-PLAN.md -- Remaining category files (testing, actions, data, i18n, controllers, wizards, inheritance)
-- [ ] 02-03-PLAN.md -- Custom rules extensibility, agent KB wiring, install.sh update
+- [x] 02-03-PLAN.md -- Custom rules extensibility, agent KB wiring, install.sh update
 
 ### Phase 3: Validation Infrastructure
 **Goal**: Any Odoo module can be validated against real Odoo 17.0 and OCA quality standards, getting actionable pass/fail results
@@ -83,8 +83,9 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [x] 03-01-PLAN.md -- pylint-odoo integration and Docker-based validation environment
+- [x] 03-02-PLAN.md -- Module install testing and test execution
+- [x] 03-03-PLAN.md -- Error diagnosis and CLI integration
 
 ### Phase 4: Input & Specification
 **Goal**: User can describe a module need in plain English and get back a structured, approved module specification ready for generation
@@ -98,7 +99,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 04-01: TBD
+- [x] 04-01-PLAN.md -- Specification workflow, plan command, dual-mode agent
+- [ ] 04-02-PLAN.md -- Approval flow, spec rendering, user review options
 
 ### Phase 5: Core Code Generation
 **Goal**: System generates complete, real Odoo module code (not stubs) from an approved specification, following OCA standards
@@ -190,9 +192,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. GSD Extension + Odoo Foundation | 4/4 | Complete | 2026-03-01 |
-| 2. Knowledge Base | 2/3 | In Progress | - |
-| 3. Validation Infrastructure | 2/2 | In Progress | - |
-| 4. Input & Specification | 0/1 | Not started | - |
+| 2. Knowledge Base | 3/3 | Complete | 2026-03-01 |
+| 3. Validation Infrastructure | 3/3 | Complete | 2026-03-01 |
+| 4. Input & Specification | 1/2 | In Progress | - |
 | 5. Core Code Generation | 0/3 | Not started | - |
 | 6. Security & Test Generation | 0/2 | Not started | - |
 | 7. Human Review & Quality Loops | 0/2 | Not started | - |

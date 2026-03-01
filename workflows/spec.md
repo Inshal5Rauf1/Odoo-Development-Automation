@@ -84,7 +84,7 @@ Receive the module description from `$ARGUMENTS` and parse it into a draft speci
    | state, status | Selection | default="draft" |
    | type, kind | Selection | |
    | color | Integer | (Odoo color widget index) |
-   | priority | Selection | [("0","Normal"),("1","Low"),("2","High"),("3","Urgent")] |
+   | priority | Selection | [("0","Normal"),("1","Urgent")] (standard mail.thread default; customize as needed for domain-specific priorities) |
    | sequence | Integer | default=10 |
    | partner, customer, vendor, supplier | Many2one("res.partner") | |
    | user, responsible, assigned, salesperson | Many2one("res.users") | |
@@ -226,7 +226,6 @@ Build the complete `spec.json` from the parsed description (Phase 1) and user an
           "groups": null
         }
       ],
-      "constraints": [],
       "workflow_states": [],
       "sql_constraints": []
     }
@@ -305,7 +304,9 @@ Build the complete `spec.json` from the parsed description (Phase 1) and user an
 
 9. **Demo data hints**: Include `"3 sample records per model"` by default. If workflow states exist, add `"Include one record in each workflow state"`.
 
-10. **Constraints**: If the user mentioned uniqueness or validation rules, add to `constraints` or `sql_constraints`:
+10. **Application flag**: Set `application: false` if ALL models use `_inherit` (extension module with no new top-level models). Set `application: true` if any model defines a new `_name`.
+
+11. **Constraints**: If the user mentioned uniqueness or validation rules, add to `sql_constraints`:
     ```json
     "sql_constraints": [
       {"name": "unique_reference", "definition": "UNIQUE(reference)", "message": "Reference must be unique"}
@@ -324,6 +325,8 @@ Before proceeding to Phase 4, verify the spec:
 - All `Selection` fields have `selection` array set (or `compute` for dynamic)
 - `depends` includes `"base"` at minimum
 - `depends` includes `"mail"` if any model uses `inherit_mixins` with `mail.thread`
+- All `sql_constraints` entries have `name`, `definition`, and `message` fields set
+- All field names are valid Python identifiers (snake_case, no spaces, no hyphens, no Python reserved keywords)
 
 ---
 
@@ -365,12 +368,9 @@ Transform the spec.json into a human-readable markdown summary. The markdown MUS
 | {name} | {type} | {Yes/No} | {default or -} | {help} |
 | ... | ... | ... | ... | ... |
 
-{If workflow_states is non-empty:}
-**Workflow States:** {state1} -> {state2} -> {state3}
-
-{If constraints or sql_constraints are non-empty:}
-**Constraints:**
-- {constraint description}
+{If sql_constraints are non-empty:}
+**SQL Constraints:**
+- {sql_constraint.name}: {sql_constraint.message}
 
 {Repeat for each model}
 
@@ -419,6 +419,7 @@ The following were inferred from your description and standard Odoo patterns:
 3. For Views, use `spec.views[]` and join the `types` array with ", " (capitalize each: form -> Form)
 4. For Security Groups, map `permissions` object to a compact string: R (read), W (write), C (create), U (unlink) -- e.g., "R/W/C" for user, "R/W/C/U" for manager
 5. The Inferred Defaults section MUST list every field, dependency, or configuration that was not explicitly requested by the user but was added by the system
+6. For Menu Structure, render `spec.menu_structure.root_menu` as the top-level bullet, then each entry in `spec.menu_structure.sub_menus` as an indented sub-bullet with sequence and action reference
 
 ### Step 4.2: Present for User Review
 
@@ -441,30 +442,30 @@ Options:
 
 **If user approves** (says "approve", "yes", "looks good", "1", "proceed", "confirm", "approved"):
 
-1. Write spec.json to `./module_name/spec.json` (create the directory if it does not exist)
+1. Write spec.json to `./{module_name}/spec.json` (create the directory if it does not exist)
 2. Commit to git:
    ```bash
-   mkdir -p ./module_name
-   # Write spec.json to ./module_name/spec.json
-   git add ./module_name/spec.json
-   git commit -m "spec(module_name): approved module specification
+   mkdir -p ./{module_name}
+   # Write spec.json to ./{module_name}/spec.json
+   git add ./{module_name}/spec.json
+   git commit -m "spec({module_name}): approved module specification
 
-   Module: module_title
-   Models: model1, model2, ...
+   Module: {module_title}
+   Models: {model1}, {model2}, ...
    "
    ```
 3. Report the result:
    ```
    Specification approved and committed.
 
-   Spec file: ./module_name/spec.json
-   Commit: {git hash}
+   Spec file: ./{module_name}/spec.json
+   Commit: {git_hash}
 
    Next steps:
-   - To generate the module from this spec: /odoo-gen:new module_name
+   - To generate the module from this spec: /odoo-gen:new {module_name}
      (Once Phase 5 is active, generation will use this spec automatically)
-   - To modify the spec later: /odoo-gen:plan module_name
-   - To validate a generated module: /odoo-gen:validate ./module_name/
+   - To modify the spec later: /odoo-gen:plan {module_name}
+   - To validate a generated module: /odoo-gen:validate ./{module_name}/
    ```
 
 **If user requests changes** (says "changes", "modify", "2", "request changes", or describes what to change):
@@ -505,9 +506,9 @@ Continue allowing edits after the suggestion -- this is advisory, not a hard sto
 
 ### Step 4.5: Error Handling
 
-- **spec.json write failure** (permission error, disk full): Report the error clearly. Suggest an alternative path: "Could not write to `./module_name/spec.json`. Try creating the directory manually: `mkdir -p ./module_name`". The spec data is still in memory and can be retried.
+- **spec.json write failure** (permission error, disk full): Report the error clearly. Suggest an alternative path: "Could not write to `./{module_name}/spec.json`. Try creating the directory manually: `mkdir -p ./{module_name}`". The spec data is still in memory and can be retried.
 
-- **git commit failure** (not a repo, git not installed, staging error): Report the error. Confirm that spec.json was still saved locally: "Git commit failed, but spec.json has been saved to `./module_name/spec.json`. You can commit it manually: `git add ./module_name/spec.json && git commit -m 'spec: module_name'`"
+- **git commit failure** (not a repo, git not installed, staging error): Report the error. Confirm that spec.json was still saved locally: "Git commit failed, but spec.json has been saved to `./{module_name}/spec.json`. You can commit it manually: `git add ./{module_name}/spec.json && git commit -m 'spec: {module_name}'`"
 
 - **Ambiguous user response** (unclear if approving, changing, or editing): Ask for clarification. Default to the "Request Changes" interpretation to avoid premature approval: "I wasn't sure if you want to approve or make changes. Could you clarify? Say **approve** to proceed, or describe what you'd like to change."
 
@@ -519,7 +520,7 @@ Continue allowing edits after the suggestion -- this is advisory, not a hard sto
 
 3. **Approval blocks generation**: No downstream process (scaffold workflow, code generation, module creation) can use the spec until it is approved and committed. The approval step is a hard gate.
 
-4. **spec.json is the contract**: The markdown summary is for human review only. The JSON file at `./module_name/spec.json` is what code generation reads. If there is ever a conflict between what the markdown showed and what the JSON contains, the JSON is authoritative.
+4. **spec.json is the contract**: The markdown summary is for human review only. The JSON file at `./{module_name}/spec.json` is what code generation reads. If there is ever a conflict between what the markdown showed and what the JSON contains, the JSON is authoritative.
 
 5. **Backward compatibility**: The spec.json MUST be loadable by `odoo-gen-utils render-module --spec-file`. All fields beyond the Phase 1 render-module format are optional with `null` or empty defaults. An old-format spec will still work.
 
