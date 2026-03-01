@@ -4,15 +4,16 @@
 
 See: .planning/PROJECT.md (updated 2026-03-01)
 
-**Core value:** Compress months of repetitive Odoo module development into days by leveraging existing open-source modules and coordinating AI agents, so developers focus on business logic and design decisions.
-**Current focus:** Phase 1 - CLI Foundation
+**Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
+**Architecture:** GSD extension (not standalone CLI)
+**Current focus:** Phase 1 - GSD Extension + Odoo Foundation
 
 ## Current Position
 
-Phase: 1 of 9 (CLI Foundation)
+Phase: 1 of 9 (GSD Extension + Odoo Foundation)
 Plan: 0 of 2 in current phase
 Status: Ready to plan
-Last activity: 2026-03-01 -- Roadmap created with 9 phases covering 67 requirements
+Last activity: 2026-03-01 -- Roadmap rebuilt for GSD extension architecture
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -42,9 +43,14 @@ Progress: [░░░░░░░░░░] 0%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [Roadmap]: Build order follows Foundation -> Validation -> Generation -> Search -> Version (research-validated)
-- [Roadmap]: Validation infrastructure built before generation pipeline so every phase can verify its output
-- [Roadmap]: Search/fork is enhancement phase (Phase 8), not prerequisite -- from-scratch pipeline is the core
+- [Architecture]: odoo-gen is a GSD extension, not a standalone CLI tool
+- [Architecture]: Depend on GSD (not fork) — benefit from upstream updates
+- [Architecture]: Clone-based install into ~/.claude/odoo-gen/
+- [Architecture]: UI UX Pro Max Skill pattern for reasoning engine + rule library
+- [Roadmap]: Phase 1 is GSD extension setup + Odoo foundation (not CLI build)
+- [Roadmap]: Knowledge Base moved to Phase 2 (before validation, so agents have expertise)
+- [Roadmap]: Phases 2 and 3 can run in parallel after Phase 1
+- [Roadmap]: Old standalone CLI plans deleted — wrong architecture
 
 ### Pending Todos
 
@@ -54,10 +60,10 @@ None yet.
 
 - gh CLI not authenticated -- needed for Phase 8 (GitHub API search). Not blocking until then.
 - sentence-transformers pulls PyTorch (~2GB) -- plan CPU-only install strategy for Phase 8.
-- Agent subprocess I/O behavior (Claude Code, Codex CLI, Gemini CLI) needs spike before Phase 5 prompt engineering.
+- GSD must be installed as prerequisite -- document in setup instructions.
 
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Roadmap created, ready to plan Phase 1
-Resume file: None
+Stopped at: Phase 1 context gathered, ready for /gsd:plan-phase 1
+Resume file: .planning/phases/01-gsd-extension/01-CONTEXT.md
