@@ -63,10 +63,12 @@ Plans:
   3. Knowledge base includes Odoo 17.0-specific API references (e.g., `<list>` not `<tree>`, inline `invisible`/`readonly` not `attrs`)
   4. Team can add custom skills and patterns to the knowledge base that agents use during subsequent generation runs (follows GSD skills system pattern)
   5. Knowledge base organized as GSD-compatible skill files (rules/*.md) following UI UX Pro Max Skill architecture pattern
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md -- MASTER.md + core category files (models, views, security, manifest)
+- [ ] 02-02-PLAN.md -- Remaining category files (testing, actions, data, i18n, controllers, wizards, inheritance)
+- [ ] 02-03-PLAN.md -- Custom rules extensibility, agent KB wiring, install.sh update
 
 ### Phase 3: Validation Infrastructure
 **Goal**: Any Odoo module can be validated against real Odoo 17.0 and OCA quality standards, getting actionable pass/fail results
@@ -188,7 +190,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. GSD Extension + Odoo Foundation | 4/4 | Complete | 2026-03-01 |
-| 2. Knowledge Base | 0/1 | Not started | - |
+| 2. Knowledge Base | 0/3 | Planned | - |
 | 3. Validation Infrastructure | 0/2 | Not started | - |
 | 4. Input & Specification | 0/1 | Not started | - |
 | 5. Core Code Generation | 0/3 | Not started | - |
