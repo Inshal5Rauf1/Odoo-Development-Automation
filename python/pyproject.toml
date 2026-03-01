@@ -10,6 +10,12 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "jinja2>=3.1",
     "click>=8.0",
+    "pylint-odoo>=10.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
 ]
 
 [project.scripts]
