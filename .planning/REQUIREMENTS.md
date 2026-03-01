@@ -166,79 +166,79 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INPT-01 | TBD | Pending |
-| INPT-02 | TBD | Pending |
-| INPT-03 | TBD | Pending |
-| INPT-04 | TBD | Pending |
-| CLI-01 | TBD | Pending |
-| CLI-02 | TBD | Pending |
-| CLI-03 | TBD | Pending |
-| CLI-04 | TBD | Pending |
-| SRCH-01 | TBD | Pending |
-| SRCH-02 | TBD | Pending |
-| SRCH-03 | TBD | Pending |
-| SRCH-04 | TBD | Pending |
-| SRCH-05 | TBD | Pending |
-| REFN-01 | TBD | Pending |
-| REFN-02 | TBD | Pending |
-| REFN-03 | TBD | Pending |
-| FORK-01 | TBD | Pending |
-| FORK-02 | TBD | Pending |
-| FORK-03 | TBD | Pending |
-| FORK-04 | TBD | Pending |
-| KNOW-01 | TBD | Pending |
-| KNOW-02 | TBD | Pending |
-| KNOW-03 | TBD | Pending |
-| KNOW-04 | TBD | Pending |
-| CODG-01 | TBD | Pending |
-| CODG-02 | TBD | Pending |
-| CODG-03 | TBD | Pending |
-| CODG-04 | TBD | Pending |
-| CODG-05 | TBD | Pending |
-| CODG-06 | TBD | Pending |
-| CODG-07 | TBD | Pending |
-| CODG-08 | TBD | Pending |
-| CODG-09 | TBD | Pending |
-| CODG-10 | TBD | Pending |
-| SECG-01 | TBD | Pending |
-| SECG-02 | TBD | Pending |
-| SECG-03 | TBD | Pending |
-| SECG-04 | TBD | Pending |
-| SECG-05 | TBD | Pending |
-| TEST-01 | TBD | Pending |
-| TEST-02 | TBD | Pending |
-| TEST-03 | TBD | Pending |
-| TEST-04 | TBD | Pending |
-| TEST-05 | TBD | Pending |
-| TEST-06 | TBD | Pending |
-| REVW-01 | TBD | Pending |
-| REVW-02 | TBD | Pending |
-| REVW-03 | TBD | Pending |
-| REVW-04 | TBD | Pending |
-| REVW-05 | TBD | Pending |
-| REVW-06 | TBD | Pending |
-| QUAL-01 | TBD | Pending |
-| QUAL-02 | TBD | Pending |
-| QUAL-03 | TBD | Pending |
-| QUAL-04 | TBD | Pending |
-| QUAL-05 | TBD | Pending |
-| QUAL-06 | TBD | Pending |
-| QUAL-07 | TBD | Pending |
-| QUAL-08 | TBD | Pending |
-| QUAL-09 | TBD | Pending |
-| QUAL-10 | TBD | Pending |
-| VERS-01 | TBD | Pending |
-| VERS-02 | TBD | Pending |
-| VERS-03 | TBD | Pending |
-| VERS-04 | TBD | Pending |
-| VERS-05 | TBD | Pending |
-| VERS-06 | TBD | Pending |
+| CLI-01 | Phase 1: CLI Foundation | Pending |
+| CLI-02 | Phase 1: CLI Foundation | Pending |
+| CLI-03 | Phase 1: CLI Foundation | Pending |
+| CLI-04 | Phase 1: CLI Foundation | Pending |
+| QUAL-01 | Phase 2: Validation Infrastructure | Pending |
+| QUAL-02 | Phase 2: Validation Infrastructure | Pending |
+| QUAL-03 | Phase 2: Validation Infrastructure | Pending |
+| QUAL-04 | Phase 2: Validation Infrastructure | Pending |
+| QUAL-05 | Phase 2: Validation Infrastructure | Pending |
+| QUAL-07 | Phase 2: Validation Infrastructure | Pending |
+| QUAL-08 | Phase 2: Validation Infrastructure | Pending |
+| INPT-01 | Phase 3: Input and Specification | Pending |
+| INPT-02 | Phase 3: Input and Specification | Pending |
+| INPT-03 | Phase 3: Input and Specification | Pending |
+| INPT-04 | Phase 3: Input and Specification | Pending |
+| KNOW-01 | Phase 4: Knowledge Base | Pending |
+| KNOW-02 | Phase 4: Knowledge Base | Pending |
+| KNOW-03 | Phase 4: Knowledge Base | Pending |
+| KNOW-04 | Phase 4: Knowledge Base | Pending |
+| CODG-01 | Phase 5: Core Code Generation | Pending |
+| CODG-02 | Phase 5: Core Code Generation | Pending |
+| CODG-03 | Phase 5: Core Code Generation | Pending |
+| CODG-04 | Phase 5: Core Code Generation | Pending |
+| CODG-05 | Phase 5: Core Code Generation | Pending |
+| CODG-06 | Phase 5: Core Code Generation | Pending |
+| CODG-07 | Phase 5: Core Code Generation | Pending |
+| CODG-08 | Phase 5: Core Code Generation | Pending |
+| CODG-09 | Phase 5: Core Code Generation | Pending |
+| CODG-10 | Phase 5: Core Code Generation | Pending |
+| SECG-01 | Phase 6: Security and Test Generation | Pending |
+| SECG-02 | Phase 6: Security and Test Generation | Pending |
+| SECG-03 | Phase 6: Security and Test Generation | Pending |
+| SECG-04 | Phase 6: Security and Test Generation | Pending |
+| SECG-05 | Phase 6: Security and Test Generation | Pending |
+| TEST-01 | Phase 6: Security and Test Generation | Pending |
+| TEST-02 | Phase 6: Security and Test Generation | Pending |
+| TEST-03 | Phase 6: Security and Test Generation | Pending |
+| TEST-04 | Phase 6: Security and Test Generation | Pending |
+| TEST-05 | Phase 6: Security and Test Generation | Pending |
+| TEST-06 | Phase 6: Security and Test Generation | Pending |
+| REVW-01 | Phase 7: Human Review and Quality Loops | Pending |
+| REVW-02 | Phase 7: Human Review and Quality Loops | Pending |
+| REVW-03 | Phase 7: Human Review and Quality Loops | Pending |
+| REVW-04 | Phase 7: Human Review and Quality Loops | Pending |
+| REVW-05 | Phase 7: Human Review and Quality Loops | Pending |
+| REVW-06 | Phase 7: Human Review and Quality Loops | Pending |
+| QUAL-06 | Phase 7: Human Review and Quality Loops | Pending |
+| QUAL-09 | Phase 7: Human Review and Quality Loops | Pending |
+| QUAL-10 | Phase 7: Human Review and Quality Loops | Pending |
+| SRCH-01 | Phase 8: Search and Fork-Extend | Pending |
+| SRCH-02 | Phase 8: Search and Fork-Extend | Pending |
+| SRCH-03 | Phase 8: Search and Fork-Extend | Pending |
+| SRCH-04 | Phase 8: Search and Fork-Extend | Pending |
+| SRCH-05 | Phase 8: Search and Fork-Extend | Pending |
+| REFN-01 | Phase 8: Search and Fork-Extend | Pending |
+| REFN-02 | Phase 8: Search and Fork-Extend | Pending |
+| REFN-03 | Phase 8: Search and Fork-Extend | Pending |
+| FORK-01 | Phase 8: Search and Fork-Extend | Pending |
+| FORK-02 | Phase 8: Search and Fork-Extend | Pending |
+| FORK-03 | Phase 8: Search and Fork-Extend | Pending |
+| FORK-04 | Phase 8: Search and Fork-Extend | Pending |
+| VERS-01 | Phase 9: Edition and Version Support | Pending |
+| VERS-02 | Phase 9: Edition and Version Support | Pending |
+| VERS-03 | Phase 9: Edition and Version Support | Pending |
+| VERS-04 | Phase 9: Edition and Version Support | Pending |
+| VERS-05 | Phase 9: Edition and Version Support | Pending |
+| VERS-06 | Phase 9: Edition and Version Support | Pending |
 
 **Coverage:**
-- v1 requirements: 56 total
-- Mapped to phases: 0
-- Unmapped: 56
+- v1 requirements: 67 total
+- Mapped to phases: 67
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 after workflow sequence finalization*
+*Last updated: 2026-03-01 after roadmap phase mapping*
