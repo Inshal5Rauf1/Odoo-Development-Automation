@@ -137,9 +137,9 @@ These capabilities come from GSD. Our work is wiring them to Odoo-specific workf
 
 - [x] **QUAL-01**: System runs pylint-odoo on all generated Python and XML files
 - [x] **QUAL-02**: System reports pylint-odoo violations with file, line number, and fix suggestions
-- [ ] **QUAL-03**: System spins up a Docker-based Odoo 17.0 + PostgreSQL environment for validation
-- [ ] **QUAL-04**: System installs the generated module on the Docker Odoo instance and reports install success/failure
-- [ ] **QUAL-05**: System runs the generated tests on the Docker Odoo instance and reports pass/fail results
+- [x] **QUAL-03**: System spins up a Docker-based Odoo 17.0 + PostgreSQL environment for validation
+- [x] **QUAL-04**: System installs the generated module on the Docker Odoo instance and reports install success/failure
+- [x] **QUAL-05**: System runs the generated tests on the Docker Odoo instance and reports pass/fail results
 - [ ] **QUAL-06**: System generates i18n `.pot` file for translatable strings
 - [ ] **QUAL-07**: System parses Odoo error logs on validation failure and provides actionable diagnosis (which file, what broke, suggested fix)
 - [x] **QUAL-08**: All generated code targets Odoo 17.0 API exclusively (no mixing of deprecated API patterns)
@@ -208,9 +208,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | KNOW-04 | Phase 2: Knowledge Base | Pending |
 | QUAL-01 | Phase 3: Validation Infrastructure | Complete |
 | QUAL-02 | Phase 3: Validation Infrastructure | Complete |
-| QUAL-03 | Phase 3: Validation Infrastructure | Pending |
-| QUAL-04 | Phase 3: Validation Infrastructure | Pending |
-| QUAL-05 | Phase 3: Validation Infrastructure | Pending |
+| QUAL-03 | Phase 3: Validation Infrastructure | Complete |
+| QUAL-04 | Phase 3: Validation Infrastructure | Complete |
+| QUAL-05 | Phase 3: Validation Infrastructure | Complete |
 | QUAL-07 | Phase 3: Validation Infrastructure | Pending |
 | QUAL-08 | Phase 3: Validation Infrastructure | Complete |
 | INPT-01 | Phase 4: Input & Specification | Pending |
