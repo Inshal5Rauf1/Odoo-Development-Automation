@@ -135,14 +135,14 @@ These capabilities come from GSD. Our work is wiring them to Odoo-specific workf
 
 ### Step 11-12: Quality & Validation
 
-- [ ] **QUAL-01**: System runs pylint-odoo on all generated Python and XML files
-- [ ] **QUAL-02**: System reports pylint-odoo violations with file, line number, and fix suggestions
+- [x] **QUAL-01**: System runs pylint-odoo on all generated Python and XML files
+- [x] **QUAL-02**: System reports pylint-odoo violations with file, line number, and fix suggestions
 - [ ] **QUAL-03**: System spins up a Docker-based Odoo 17.0 + PostgreSQL environment for validation
 - [ ] **QUAL-04**: System installs the generated module on the Docker Odoo instance and reports install success/failure
 - [ ] **QUAL-05**: System runs the generated tests on the Docker Odoo instance and reports pass/fail results
 - [ ] **QUAL-06**: System generates i18n `.pot` file for translatable strings
 - [ ] **QUAL-07**: System parses Odoo error logs on validation failure and provides actionable diagnosis (which file, what broke, suggested fix)
-- [ ] **QUAL-08**: All generated code targets Odoo 17.0 API exclusively (no mixing of deprecated API patterns)
+- [x] **QUAL-08**: All generated code targets Odoo 17.0 API exclusively (no mixing of deprecated API patterns)
 - [ ] **QUAL-09**: System attempts to auto-fix pylint-odoo violations and re-validate before escalating to human
 - [ ] **QUAL-10**: System attempts to auto-fix Docker install failures (missing dependencies, XML errors) and re-validate before escalating to human
 
@@ -206,13 +206,13 @@ Deferred to future release. Tracked but not in current roadmap.
 | KNOW-02 | Phase 2: Knowledge Base | Pending |
 | KNOW-03 | Phase 2: Knowledge Base | Pending |
 | KNOW-04 | Phase 2: Knowledge Base | Pending |
-| QUAL-01 | Phase 3: Validation Infrastructure | Pending |
-| QUAL-02 | Phase 3: Validation Infrastructure | Pending |
+| QUAL-01 | Phase 3: Validation Infrastructure | Complete |
+| QUAL-02 | Phase 3: Validation Infrastructure | Complete |
 | QUAL-03 | Phase 3: Validation Infrastructure | Pending |
 | QUAL-04 | Phase 3: Validation Infrastructure | Pending |
 | QUAL-05 | Phase 3: Validation Infrastructure | Pending |
 | QUAL-07 | Phase 3: Validation Infrastructure | Pending |
-| QUAL-08 | Phase 3: Validation Infrastructure | Pending |
+| QUAL-08 | Phase 3: Validation Infrastructure | Complete |
 | INPT-01 | Phase 4: Input & Specification | Pending |
 | INPT-02 | Phase 4: Input & Specification | Pending |
 | INPT-03 | Phase 4: Input & Specification | Pending |

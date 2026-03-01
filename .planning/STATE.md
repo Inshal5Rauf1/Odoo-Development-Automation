@@ -6,32 +6,33 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** Phase 1 - GSD Extension + Odoo Foundation
+**Current focus:** Phase 3 - Validation Infrastructure
 
 ## Current Position
 
-Phase: 1 of 9 (GSD Extension + Odoo Foundation) -- COMPLETE
-Plan: 4 of 4 complete
-Status: Phase 1 Complete -- ready for Phase 2
-Last activity: 2026-03-01 -- Completed 01-04 (Scaffold Workflows + E2E Integration)
+Phase: 3 of 9 (Validation Infrastructure)
+Plan: 1 of 3 complete
+Status: Executing Phase 3 -- Plan 01 complete, Plan 02 next
+Last activity: 2026-03-02 -- Completed 03-01 (pylint-odoo integration + validation types)
 
-Progress: [██░░░░░░░░] 20%
+Progress: [██░░░░░░░░] 22%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 3 min
-- Total execution time: 0.2 hours
+- Total plans completed: 5
+- Average duration: 3.4 min
+- Total execution time: 0.3 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 4 | 13 min | 3.25 min |
+| 03 | 1 | 5 min | 5.0 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01, 01-02 (3 min), 01-03 (3 min), 01-04 (4 min)
+- Last 5 plans: 01-02 (3 min), 01-03 (3 min), 01-04 (4 min), 03-01 (5 min)
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -63,6 +64,9 @@ Recent decisions affecting current work:
 - [Workflows]: Scaffold workflow defines 4 phases: input parsing, spec confirmation, generation (odoo-gen-utils), post-generation
 - [Workflows]: Help workflow uses inline table with Active/Planned status labels
 - [Templates]: Chatter section in form views conditional on 'mail' in depends
+- [Validation]: Tuples (not lists) for frozen dataclass fields -- immutability compliance
+- [Validation]: noqa F401 on __init__.py re-exports to prevent ruff from stripping public API
+- [Validation]: Recursive tuple-to-list conversion needed for JSON serialization of dataclasses
 
 ### Pending Todos
 
@@ -76,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-01
-Stopped at: Completed 01-04-PLAN.md -- Phase 1 complete
-Resume file: Phase 2 planning (02-01-PLAN.md)
+Last session: 2026-03-02
+Stopped at: Completed 03-01-PLAN.md -- pylint-odoo integration + validation types
+Resume file: 03-02-PLAN.md (Docker runner)
