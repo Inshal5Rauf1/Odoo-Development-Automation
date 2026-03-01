@@ -34,11 +34,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. CLI displays colored text, tables, and progress indicators during operation
   4. User can set default Odoo version, output directory, and edition in a configuration file that persists across sessions
   5. Running `odoo-gen new` scaffolds a valid Odoo 17.0 module directory structure (manifest, init, models dir, views dir, security dir, tests dir)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md -- Project skeleton, configuration system, UI layer, and pipeline state
+- [ ] 01-02-PLAN.md -- Scaffold engine, Jinja2 templates, CLI commands, and integration tests
 
 ### Phase 2: Validation Infrastructure
 **Goal**: Developer can validate any Odoo module against real Odoo 17.0 and OCA quality standards, getting actionable pass/fail results
@@ -173,7 +173,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. CLI Foundation | 0/2 | Not started | - |
+| 1. CLI Foundation | 0/2 | Planning complete | - |
 | 2. Validation Infrastructure | 0/2 | Not started | - |
 | 3. Input and Specification | 0/1 | Not started | - |
 | 4. Knowledge Base | 0/1 | Not started | - |
