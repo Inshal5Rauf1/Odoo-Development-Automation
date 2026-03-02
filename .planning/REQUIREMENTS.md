@@ -110,11 +110,11 @@ These capabilities come from GSD. Our work is wiring them to Odoo-specific workf
 
 ### Step 9: Security Generation
 
-- [ ] **SECG-01**: System generates `ir.model.access.csv` with correct model references and CRUD permissions for all generated models
+- [x] **SECG-01**: System generates `ir.model.access.csv` with correct model references and CRUD permissions for all generated models
 - [ ] **SECG-02**: System generates security group hierarchy (User and Manager roles) with proper `implied_ids` chains
-- [ ] **SECG-03**: System generates record rules for multi-company scenarios when applicable
-- [ ] **SECG-04**: System generates module category for the security group hierarchy
-- [ ] **SECG-05**: Every generated model has at least one access control rule (no invisible-to-non-admin models)
+- [x] **SECG-03**: System generates record rules for multi-company scenarios when applicable
+- [x] **SECG-04**: System generates module category for the security group hierarchy
+- [x] **SECG-05**: Every generated model has at least one access control rule (no invisible-to-non-admin models)
 
 ### Step 9: Test Generation
 
@@ -230,11 +230,11 @@ Deferred to future release. Tracked but not in current roadmap.
 | CODG-08 | Phase 5: Core Code Generation | Complete |
 | CODG-09 | Phase 5: Core Code Generation | Complete |
 | CODG-10 | Phase 5: Core Code Generation | Complete |
-| SECG-01 | Phase 6: Security & Test Generation | Pending |
+| SECG-01 | Phase 6: Security & Test Generation | Complete |
 | SECG-02 | Phase 6: Security & Test Generation | Pending |
-| SECG-03 | Phase 6: Security & Test Generation | Pending |
-| SECG-04 | Phase 6: Security & Test Generation | Pending |
-| SECG-05 | Phase 6: Security & Test Generation | Pending |
+| SECG-03 | Phase 6: Security & Test Generation | Complete |
+| SECG-04 | Phase 6: Security & Test Generation | Complete |
+| SECG-05 | Phase 6: Security & Test Generation | Complete |
 | TEST-01 | Phase 6: Security & Test Generation | Pending |
 | TEST-02 | Phase 6: Security & Test Generation | Pending |
 | TEST-03 | Phase 6: Security & Test Generation | Pending |

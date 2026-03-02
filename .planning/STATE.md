@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in_progress
-last_updated: "2026-03-02T17:00:00Z"
+status: unknown
+last_updated: "2026-03-02T18:04:09.427Z"
 progress:
-  total_phases: 9
+  total_phases: 6
   completed_phases: 5
-  total_plans: 15
-  completed_plans: 15
+  total_plans: 17
+  completed_plans: 16
 ---
 
 # Project State
@@ -23,12 +23,12 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 5 of 9 (Core Code Generation) -- COMPLETE
-Plan: 3 of 3 complete in Phase 5 (05-03)
-Status: Phase 5 COMPLETE -- All 10 CODG requirements satisfied; 122/122 tests pass; generate.md workflow active
-Last activity: 2026-03-02 -- Completed 05-03 (workflows/generate.md, spec.md trigger, REQUIREMENTS.md fixes)
+Phase: 6 of 9 (Security & Test Generation) -- In Progress
+Plan: 1 of 2 complete in Phase 6 (06-01)
+Status: Phase 6 IN PROGRESS -- 06-01 complete; has_company_field + record_rules.xml generation; 130/130 tests pass
+Last activity: 2026-03-02 -- Completed 06-01 (has_company_field detection, record_rules.xml.j2 template, render_module() Phase 6 extensions)
 
-Progress: [█████████░] 78%
+Progress: [█████████░] 83%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [█████████░] 78%
 | Phase 05 P03 | 3 min | 2 tasks | 3 files |
 | Phase 05 P01 | 7 | 2 tasks | 10 files |
 | Phase 05 P02 | 2 min | 2 tasks | 3 files |
+| Phase 06 P01 | 5min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -123,6 +124,10 @@ Recent decisions affecting current work:
 - [Phase 05-02]: odoo-model-gen uses Write tool to rewrite ENTIRE model file (not patch stubs inline)
 - [Phase 05-02]: odoo-view-gen Wave 2 only enriches <header> action buttons; kanban deferred to Phase 7
 - [Phase 05-02]: odoo-test-gen Phase 5 scope is computed/constraint/onchange only; CRUD + access rights deferred to Phase 6
+- [Phase 06-01]: Use company_ids OCA shorthand (not user.company_ids.ids) in domain_force for Odoo 17.0 multi-company record rules
+- [Phase 06-01]: Enrich model dicts with has_company_field before passing enriched_models to record_rules template context
+- [Phase 06-01]: workflow_states key added in 06-01 (not 06-02) to consolidate all renderer.py changes into one plan
+- [Phase 06-01]: _compute_manifest_data() extended with has_company_modules param (default False for backward compatibility)
 
 ### Pending Todos
 
@@ -137,5 +142,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Phase 5 fully complete — all 3 plans executed, 122/122 tests pass, REQUIREMENTS.md traceability fixed
-Resume file: No active checkpoint -- Phase 5 complete, ready for Phase 6 (Security & Test Generation)
+Stopped at: Completed 06-01-PLAN.md — has_company_field + record_rules.xml generation, 130/130 tests pass
+Resume file: No active checkpoint -- Phase 6 Plan 1 complete, ready for 06-02
