@@ -195,7 +195,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Knowledge Base | 3/3 | Complete | 2026-03-01 |
 | 3. Validation Infrastructure | 3/3 | Complete | 2026-03-01 |
 | 4. Input & Specification | 2/2 | Complete | 2026-03-02 |
-| 5. Core Code Generation | 0/3 | Not started | - |
+| 5. Core Code Generation | 1/3 | In Progress|  |
 | 6. Security & Test Generation | 0/2 | Not started | - |
 | 7. Human Review & Quality Loops | 0/2 | Not started | - |
 | 8. Search & Fork-Extend | 0/3 | Not started | - |

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-01T21:11:05.185Z"
+last_updated: "2026-03-02T15:52:49.657Z"
 progress:
-  total_phases: 9
+  total_phases: 5
   completed_phases: 4
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 15
+  completed_plans: 13
 ---
 
 # Project State
@@ -23,12 +23,12 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 4 of 9 (Input & Specification) -- COMPLETE
-Plan: 2 of 2 complete in Phase 4
-Status: Phase 4 COMPLETE -- All input/specification plans done, checkpoint approved
-Last activity: 2026-03-02 -- Completed 04-02 (Approval flow, spec rendering, user review)
+Phase: 5 of 9 (Core Code Generation) -- IN PROGRESS
+Plan: 3 of 5 complete in Phase 5
+Status: Phase 5 Plan 03 COMPLETE -- generate.md orchestration workflow created and wired
+Last activity: 2026-03-02 -- Completed 05-03 (generate.md two-wave workflow, spec.md hook, REQUIREMENTS.md fixes)
 
-Progress: [██████░░░░] 55%
+Progress: [███████░░░] 60%
 
 ## Performance Metrics
 
@@ -51,6 +51,8 @@ Progress: [██████░░░░] 55%
 - Trend: Consistent
 
 *Updated after each plan completion*
+
+| Phase 05 P03 | 3 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -111,6 +113,9 @@ Recent decisions affecting current work:
 - [Spec]: Approval gate blocks generation -- no downstream process uses spec until user explicitly approves
 - [Spec]: Targeted follow-up on changes -- 1-3 focused questions about flagged sections only
 - [Spec]: 3-round iteration limit advisory (not hard stop) to prevent interrogation fatigue
+- [Phase 05-03]: generate.md trigger placed in spec.md Step 4.3 AFTER spec commit and BEFORE report step
+- [Phase 05-03]: Wave 1 sequential guard: all odoo-model-gen tasks complete before Wave 2 spawns (view-gen reads completed model files)
+- [Phase 05-03]: CODG-09 corrected: Odoo 17.0 uses tree not list (list is Odoo 18+ only); CODG-10 corrected to README.rst (OCA standard)
 
 ### Pending Todos
 
@@ -125,5 +130,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 04-02-PLAN.md -- Phase 4 complete (approval flow, checkpoint approved)
-Resume file: Phase 5 Plan 1 (05-01-PLAN.md) -- needs planning
+Stopped at: Completed 05-03-PLAN.md (generate.md two-wave workflow + spec.md hook + REQUIREMENTS.md fixes)
+Resume file: No active checkpoint -- 05-03 fully complete, continue with 05-04
