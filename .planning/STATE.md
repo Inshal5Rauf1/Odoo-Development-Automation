@@ -23,10 +23,10 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 6 of 9 (Security & Test Generation) -- In Progress
-Plan: 1 of 2 complete in Phase 6 (06-01)
-Status: Phase 6 IN PROGRESS -- 06-01 complete; has_company_field + record_rules.xml generation; 130/130 tests pass
-Last activity: 2026-03-02 -- Completed 06-01 (has_company_field detection, record_rules.xml.j2 template, render_module() Phase 6 extensions)
+Phase: 6 of 9 (Security & Test Generation) -- COMPLETE
+Plan: 2 of 2 complete in Phase 6 (06-02)
+Status: Phase 6 COMPLETE -- SECG-01..05 and TEST-01..06 satisfied; 130/130 tests pass; test template expanded, agents activated
+Last activity: 2026-03-02 -- Completed 06-02 (test_model.py.j2 expansion, odoo-test-gen/security-gen activation, generate.md Phase 6 update)
 
 Progress: [█████████░] 83%
 
@@ -56,6 +56,7 @@ Progress: [█████████░] 83%
 | Phase 05 P01 | 7 | 2 tasks | 10 files |
 | Phase 05 P02 | 2 min | 2 tasks | 3 files |
 | Phase 06 P01 | 5min | 2 tasks | 3 files |
+| Phase 06 P02 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -128,6 +129,10 @@ Recent decisions affecting current work:
 - [Phase 06-01]: Enrich model dicts with has_company_field before passing enriched_models to record_rules template context
 - [Phase 06-01]: workflow_states key added in 06-01 (not 06-02) to consolidate all renderer.py changes into one plan
 - [Phase 06-01]: _compute_manifest_data() extended with has_company_modules param (default False for backward compatibility)
+- [Phase 06-02]: odoo-security-gen is standalone only — security is deterministic via Jinja2, not added to generate.md pipeline
+- [Phase 06-02]: Workflow transition tests guarded by state_field not None AND workflow_states|length >= 2
+- [Phase 06-02]: Access rights tests use groups_id [(6, 0, [...])] to SET group list (not additive (4, id) form)
+- [Phase 06-02]: odoo-test-gen now rewrites ENTIRE test file (not appends) with all 7 Phase 6 test categories
 
 ### Pending Todos
 
@@ -142,5 +147,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 06-01-PLAN.md — has_company_field + record_rules.xml generation, 130/130 tests pass
-Resume file: No active checkpoint -- Phase 6 Plan 1 complete, ready for 06-02
+Stopped at: Completed 06-02-PLAN.md — Phase 6 complete; test template expanded, agents activated, 130/130 tests pass
+Resume file: No active checkpoint -- Phase 6 complete, ready for Phase 7 (Human Review & Quality Loops)

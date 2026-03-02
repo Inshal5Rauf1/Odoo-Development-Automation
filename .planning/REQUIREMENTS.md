@@ -111,19 +111,19 @@ These capabilities come from GSD. Our work is wiring them to Odoo-specific workf
 ### Step 9: Security Generation
 
 - [x] **SECG-01**: System generates `ir.model.access.csv` with correct model references and CRUD permissions for all generated models
-- [ ] **SECG-02**: System generates security group hierarchy (User and Manager roles) with proper `implied_ids` chains
+- [x] **SECG-02**: System generates security group hierarchy (User and Manager roles) with proper `implied_ids` chains
 - [x] **SECG-03**: System generates record rules for multi-company scenarios when applicable
 - [x] **SECG-04**: System generates module category for the security group hierarchy
 - [x] **SECG-05**: Every generated model has at least one access control rule (no invisible-to-non-admin models)
 
 ### Step 9: Test Generation
 
-- [ ] **TEST-01**: System generates `tests/__init__.py` and test files using `TransactionCase` base class
-- [ ] **TEST-02**: Generated tests include model CRUD tests (create, read, update, delete)
-- [ ] **TEST-03**: Generated tests include access rights tests (user role vs manager role permissions)
-- [ ] **TEST-04**: Generated tests include computed field tests (verify calculations produce correct results)
-- [ ] **TEST-05**: Generated tests include constraint tests (verify validation rules reject invalid data)
-- [ ] **TEST-06**: Generated tests include workflow/state transition tests when the module has state machines
+- [x] **TEST-01**: System generates `tests/__init__.py` and test files using `TransactionCase` base class
+- [x] **TEST-02**: Generated tests include model CRUD tests (create, read, update, delete)
+- [x] **TEST-03**: Generated tests include access rights tests (user role vs manager role permissions)
+- [x] **TEST-04**: Generated tests include computed field tests (verify calculations produce correct results)
+- [x] **TEST-05**: Generated tests include constraint tests (verify validation rules reject invalid data)
+- [x] **TEST-06**: Generated tests include workflow/state transition tests when the module has state machines
 
 ### Step 10: Human Review
 
@@ -231,16 +231,16 @@ Deferred to future release. Tracked but not in current roadmap.
 | CODG-09 | Phase 5: Core Code Generation | Complete |
 | CODG-10 | Phase 5: Core Code Generation | Complete |
 | SECG-01 | Phase 6: Security & Test Generation | Complete |
-| SECG-02 | Phase 6: Security & Test Generation | Pending |
+| SECG-02 | Phase 6: Security & Test Generation | Complete |
 | SECG-03 | Phase 6: Security & Test Generation | Complete |
 | SECG-04 | Phase 6: Security & Test Generation | Complete |
 | SECG-05 | Phase 6: Security & Test Generation | Complete |
-| TEST-01 | Phase 6: Security & Test Generation | Pending |
-| TEST-02 | Phase 6: Security & Test Generation | Pending |
-| TEST-03 | Phase 6: Security & Test Generation | Pending |
-| TEST-04 | Phase 6: Security & Test Generation | Pending |
-| TEST-05 | Phase 6: Security & Test Generation | Pending |
-| TEST-06 | Phase 6: Security & Test Generation | Pending |
+| TEST-01 | Phase 6: Security & Test Generation | Complete |
+| TEST-02 | Phase 6: Security & Test Generation | Complete |
+| TEST-03 | Phase 6: Security & Test Generation | Complete |
+| TEST-04 | Phase 6: Security & Test Generation | Complete |
+| TEST-05 | Phase 6: Security & Test Generation | Complete |
+| TEST-06 | Phase 6: Security & Test Generation | Complete |
 | REVW-01 | Phase 7: Human Review & Quality Loops | Pending |
 | REVW-02 | Phase 7: Human Review & Quality Loops | Pending |
 | REVW-03 | Phase 7: Human Review & Quality Loops | Pending |
