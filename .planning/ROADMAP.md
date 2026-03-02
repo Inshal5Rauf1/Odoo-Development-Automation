@@ -162,12 +162,12 @@ Plans:
   3. User can select a match to fork or choose to build from scratch, and can adjust their spec based on what exists
   4. When forking, system clones the module, analyzes its structure, and generates delta code to match the refined specification
   5. System maintains a local vector index of OCA/GitHub module descriptions for fast semantic matching
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
-- [ ] 08-03: TBD
+- [ ] 08-01-PLAN.md — Vector index infrastructure: ChromaDB + PyGithub OCA crawl, manifest parsing, build-index/index-status CLI commands, pyproject.toml [search] extras (FORK-04, SRCH-01, SRCH-02)
+- [ ] 08-02-PLAN.md — Search query flow: ChromaDB semantic search, 5-result ranking, search-modules CLI, odoo-search agent with gap analysis + spec refinement (SRCH-03..05, REFN-01..03)
+- [ ] 08-03-PLAN.md — Fork-extend workflow: git sparse checkout clone, module structure analysis, companion _ext module setup, odoo-extend agent with _inherit/xpath delta generation (FORK-01..03)
 
 ### Phase 9: Edition & Version Support
 **Goal**: System is aware of Odoo edition differences and can generate modules targeting both 17.0 and 18.0 with correct version-specific patterns
@@ -208,3 +208,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 *Revised: 2026-03-02 — Phase 5 plans defined*
 *Revised: 2026-03-02 — Phase 6 plans defined (06-01, 06-02)*
 *Revised: 2026-03-03 — Phase 7 plans defined (07-01, 07-02, 07-03)*
+*Revised: 2026-03-03 — Phase 8 plans defined (08-01, 08-02, 08-03)*
