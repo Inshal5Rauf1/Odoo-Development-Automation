@@ -508,3 +508,137 @@ class TestRenderModuleDataXml:
             names = [Path(f).name for f in files]
             assert "data.xml" in names, f"Missing data.xml. Got: {names}"
             assert "sequences.xml" in names, f"Missing sequences.xml. Got: {names}"
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: _build_model_context -- has_company_field detection
+# ---------------------------------------------------------------------------
+
+
+_COMPANY_SPEC = {
+    "module_name": "test_company",
+    "depends": ["base"],
+    "models": [
+        {
+            "name": "test.order",
+            "description": "Test Order",
+            "fields": [
+                {"name": "name", "type": "Char", "required": True},
+                {"name": "company_id", "type": "Many2one", "comodel_name": "res.company"},
+            ],
+        }
+    ],
+}
+
+
+class TestBuildModelContextCompanyField:
+    def test_company_field_many2one_sets_has_company_field_true(self):
+        """Model with company_id Many2one → has_company_field is True."""
+        model = {
+            "name": "test.order",
+            "fields": [
+                {"name": "name", "type": "Char", "required": True},
+                {"name": "company_id", "type": "Many2one", "comodel_name": "res.company"},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["has_company_field"] is True
+
+    def test_no_company_field_sets_has_company_field_false(self):
+        """Model without company_id field → has_company_field is False."""
+        model = {
+            "name": "test.order",
+            "fields": [
+                {"name": "name", "type": "Char"},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["has_company_field"] is False
+
+    def test_company_field_wrong_type_sets_false(self):
+        """company_id field with type Char (not Many2one) → has_company_field is False."""
+        model = {
+            "name": "test.order",
+            "fields": [
+                {"name": "company_id", "type": "Char"},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["has_company_field"] is False
+
+    def test_company_field_different_name_sets_false(self):
+        """Many2one field named 'company' (not 'company_id') → has_company_field is False."""
+        model = {
+            "name": "test.order",
+            "fields": [
+                {"name": "company", "type": "Many2one", "comodel_name": "res.company"},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["has_company_field"] is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: render_module -- record_rules.xml generation
+# ---------------------------------------------------------------------------
+
+
+class TestRenderModuleRecordRules:
+    def test_company_field_model_generates_record_rules_xml(self):
+        """spec with Many2one company_id → 'record_rules.xml' appears in generated file names."""
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(_COMPANY_SPEC, get_template_dir(), Path(d))
+            names = [Path(f).name for f in files]
+            assert "record_rules.xml" in names, (
+                f"Expected record_rules.xml in generated files. Got: {names}"
+            )
+
+    def test_no_company_field_no_record_rules_xml(self):
+        """spec without company_id → 'record_rules.xml' NOT in generated file names."""
+        spec = {
+            "module_name": "test_nocompany",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.order",
+                    "description": "Test Order",
+                    "fields": [{"name": "name", "type": "Char"}],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            names = [Path(f).name for f in files]
+            assert "record_rules.xml" not in names, (
+                f"Unexpected record_rules.xml in files without company_id: {names}"
+            )
+
+    def test_record_rules_xml_contains_company_ids_domain(self):
+        """Content of generated record_rules.xml contains 'company_ids' OCA shorthand."""
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(_COMPANY_SPEC, get_template_dir(), Path(d))
+            record_rules_file = next(
+                (f for f in files if Path(f).name == "record_rules.xml"), None
+            )
+            assert record_rules_file is not None, "record_rules.xml was not generated"
+            content = Path(record_rules_file).read_text(encoding="utf-8")
+            assert "company_ids" in content, (
+                f"'company_ids' domain not found in record_rules.xml. Content:\n{content}"
+            )
+
+    def test_manifest_includes_record_rules_when_company_field(self):
+        """Generated __manifest__.py contains 'security/record_rules.xml' when company_id model present."""
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(_COMPANY_SPEC, get_template_dir(), Path(d))
+            manifest_file = next(
+                (f for f in files if Path(f).name == "__manifest__.py"), None
+            )
+            assert manifest_file is not None, "__manifest__.py was not generated"
+            content = Path(manifest_file).read_text(encoding="utf-8")
+            assert "security/record_rules.xml" in content, (
+                f"'security/record_rules.xml' not found in __manifest__.py. Content:\n{content}"
+            )
