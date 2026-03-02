@@ -1,8 +1,8 @@
 # Phase 7: Human Review & Quality Loops - Research
 
 **Researched:** 2026-03-02
-**Domain:** Human-in-the-loop review wiring, i18n .pot generation, pylint-odoo auto-fix, Docker failure auto-fix
-**Confidence:** MEDIUM-HIGH (GSD internals HIGH from source read; i18n approach MEDIUM from community sources; pylint auto-fix list MEDIUM from OCA repo analysis; Docker auto-fix patterns MEDIUM)
+**Domain:** Human-in-the-loop checkpoint wiring, i18n .pot generation, pylint-odoo auto-fix, Docker failure auto-fix
+**Confidence:** HIGH (GSD internals verified from source; existing infrastructure read directly; pylint-odoo codes verified from official README)
 
 ---
 
@@ -11,32 +11,30 @@
 
 | ID | Description | Research Support |
 |----|-------------|-----------------|
-| REVW-01 | System pauses for human review after model generation | GSD checkpoint mechanism — `type="checkpoint:human-verify"` in PLAN.md tasks |
-| REVW-02 | System pauses for human review after view generation | Same GSD checkpoint mechanism, second stage checkpoint |
-| REVW-03 | System pauses for human review after security generation | Third checkpoint stage |
-| REVW-04 | System pauses for human review after business logic generation | Fourth checkpoint stage |
-| REVW-05 | User can approve, request changes, or reject at each checkpoint | GSD checkpoint protocol — user types "approved" or describes issues |
-| REVW-06 | System incorporates feedback and regenerates the rejected section | Agent re-invocation pattern: re-spawn with spec + original file + user feedback |
-| QUAL-06 | System generates i18n .pot file for all translatable strings | click-odoo-makepot requires running Odoo; agent-driven extraction is the viable alternative |
-| QUAL-09 | Auto-fix pylint-odoo violations and re-validate before escalating | Mechanical fixes for W8113, W8111, C8116, W8150; LLM fix for others via odoo-validator agent |
-| QUAL-10 | Auto-fix Docker install/test failures before escalating | Parse error_patterns.json diagnosis; attempt fix; re-validate; max 2 attempts |
+| REVW-01 | System pauses for human review after model generation (fields, relationships, constraints) | GSD checkpoint mechanism: agent-driven pause after Jinja2 render + Wave 1 model-gen |
+| REVW-02 | System pauses for human review after view generation (form, list, search XML) | Checkpoint after Wave 2 view-gen + test-gen completion |
+| REVW-03 | System pauses for human review after security generation (groups, ACLs, record rules) | Security is generated in Jinja2 Pass 1; reviewed at REVW-01 checkpoint (same render pass) |
+| REVW-04 | System pauses for human review after business logic generation (computed fields, workflows, CRUD overrides) | Checkpoint after Wave 1 model-gen (business logic = computed fields, onchange, constraints) |
+| REVW-05 | User can approve, request changes, or reject at each checkpoint (wired to GSD-06) | GSD checkpoint:human-verify protocol -- user types "approved" or describes issues |
+| REVW-06 | System incorporates user feedback and regenerates the rejected section (wired to GSD-07) | Agent re-invocation with spec + original file + user feedback; full file rewrite pattern |
+| QUAL-06 | System generates i18n .pot file for all translatable strings | Static extraction via AST (_() calls) + XML parsing (string= attributes) |
+| QUAL-09 | Auto-fix pylint-odoo violations before escalating to human | Mechanical fixes (W8113, W8111, C8116, W8150) then LLM agent for remaining |
+| QUAL-10 | Auto-fix Docker install/test failures before escalating to human | Parse diagnose_errors() output, agent-driven fix, re-validate up to 2 times |
 </phase_requirements>
 
 ---
 
 ## Summary
 
-Phase 7 wires GSD's existing checkpoint mechanism into the Odoo generation pipeline and adds quality loops for i18n, pylint-odoo violations, and Docker failures. GSD already provides the complete infrastructure: `checkpoint:human-verify` tasks in PLAN.md files pause execution and present structured review UI to the user. Phase 7's work is purely wiring checkpoints at the right points in `generate.md` and implementing the auto-fix loops in the Python utility package and/or the odoo-validator agent.
+Phase 7 wires GSD's existing checkpoint mechanism into the Odoo generation pipeline and adds three quality loops: i18n extraction, pylint-odoo auto-fix, and Docker auto-fix. The core discovery from reading GSD source is that **checkpoints are agent instructions embedded in workflow documents, not PLAN.md XML tasks**. The generate.md workflow is read by the orchestrating agent (the main Claude Code session), and checkpoints are expressed as prose instructions telling the agent to pause and present a structured review box to the user. This is distinct from the PLAN.md checkpoint:human-verify XML syntax used in GSD execution plans.
 
-The critical architectural discovery is that checkpoints in GSD are NOT runtime mechanisms — they are declared in PLAN.md files as `type="checkpoint:human-verify"` tasks. The generate.md workflow itself is NOT a PLAN.md file; it is a workflow document read by the orchestrating agent. This means Phase 7 must convert generate.md into a checkpoint-aware agent workflow OR create a new PLAN.md-based approach that wraps generate.md calls with checkpoint tasks between generation stages.
+The checkpoint placement maps to the existing generate.md two-pass architecture. Pass 1 (Jinja2 render) produces all structural files including models, views, security, and tests. Wave 1 (odoo-model-gen) fills in business logic. Wave 2 (odoo-view-gen + odoo-test-gen) enriches views and tests. The natural checkpoint boundaries are: (1) after Pass 1 for structural review (REVW-01 + REVW-03 combined -- models and security are in the same render pass), (2) after Wave 1 for business logic review (REVW-04), and (3) after Wave 2 for views and tests (REVW-02). This gives three checkpoints, not four, because security generation happens in Pass 1 alongside models. After all checkpoints pass, the quality loops (QUAL-06, QUAL-09, QUAL-10) run sequentially.
 
-For i18n .pot generation: the canonical Odoo approach (`odoo-bin --i18n-export`) requires a running Odoo server with a database. The community tool `click-odoo-makepot` (from `click-odoo-contrib`) also requires a database connection. The practical approach for this extension — which runs generation offline — is agent-driven static extraction: the odoo-validator agent reads Python files for `_()` calls, reads XML view files for `string=` attributes and text nodes, and writes a .pot file following the standard gettext PO Template format. This is lower fidelity than `odoo-bin --i18n-export` (misses field string auto-translations) but works without a running Odoo instance and produces a valid starting .pot file.
+For i18n, the practical approach is static extraction: Python AST parsing for `_()` calls and XML element tree parsing for `string=` attributes. The canonical Odoo approach (`odoo-bin --i18n-export`) requires a running database, and `click-odoo-makepot` likewise requires a connected Odoo instance. Since this extension generates code offline (Docker is only used for validation), static extraction is the correct primary path. It produces a valid .pot file covering explicit `_()` strings and XML view strings. Field `string=` parameters are auto-translatable by Odoo's framework and only appear in .pot files generated by the full Odoo export -- this is an acceptable limitation documented in the output.
 
-For pylint-odoo auto-fix: a small set of violations are mechanically fixable (W8113 removes redundant `string=` params; W8111 renames deprecated field params; C8116 removes superfluous manifest keys; W8150 converts absolute to relative imports). The remaining violations require LLM judgment via the odoo-validator agent. The auto-fix loop runs pylint → fix mechanical violations → run pylint again → send remaining violations to agent for LLM fix → run pylint again → escalate if still failing. Max 2 auto-fix attempts before escalating.
+For pylint-odoo auto-fix, I verified the violation code list against the official OCA/pylint-odoo README. Five violations are mechanically fixable without LLM: W8113 (attribute-string-redundant), W8111 (renamed-field-parameter), C8116 (manifest-superfluous-key), W8150 (odoo-addons-relative-import), and C8107 (translation-required for simple `_()` wrapping). The remaining violations require LLM judgment via the odoo-validator agent. The auto-fix loop runs: pylint -> mechanical fix -> pylint -> agent LLM fix -> pylint -> escalate remaining.
 
-For Docker auto-fix: the existing `error_patterns.json` + `diagnose_errors()` infrastructure already classifies errors. Auto-fixable patterns include XML parse errors (file and line number available, agent can rewrite), missing ACL entries (can be regenerated), and missing imports in `__init__.py`. Non-auto-fixable: circular dependencies (require architectural decisions), missing Odoo dependencies (require manifest changes), constraint violations in test data (require test rewrite). Max 2 Docker auto-fix attempts before escalating.
-
-**Primary recommendation:** Wire checkpoints into generate.md as a new `generate-with-review.md` workflow variant, with a `skip_review` config flag. Implement pylint auto-fix as a Python utility function + agent fallback. Implement i18n extraction as static agent-driven file writing. Keep Docker auto-fix at max 2 attempts.
+**Primary recommendation:** Modify generate.md in-place to add three checkpoint pause-points as agent instructions. Add new Python modules for i18n extraction (`i18n_extractor.py`) and pylint auto-fix (`auto_fix.py`). Expand odoo-validator agent to handle LLM-based fixes. Max 3 retries for checkpoint regeneration, max 2 for auto-fix loops.
 
 ---
 
@@ -45,118 +43,170 @@ For Docker auto-fix: the existing `error_patterns.json` + `diagnose_errors()` in
 ### Core
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| Python `difflib` | stdlib | Unified diff generation for REVW-06 before/after view | No dependency; standard; `difflib.unified_diff()` produces git-compatible output |
-| `pylint-odoo` | already installed (Phase 3) | Re-validation after auto-fix | Already in stack |
-| `click-odoo-contrib` | 1.23.x | click-odoo-makepot for .pot generation when Docker available | OCA standard for .pot generation |
-| Python `re` | stdlib | Mechanical pylint fix — regex-based source edits | No dependency needed |
+| Python `difflib` | stdlib | Unified diff for checkpoint regeneration review | No dependency; `unified_diff()` produces git-compatible output |
+| Python `ast` | stdlib | Parse Python source for `_()` calls in i18n extraction | Handles multiline strings, nested calls, comments -- regex cannot |
+| Python `xml.etree.ElementTree` | stdlib | Parse XML views for translatable `string=` attributes | Already in stdlib; no lxml dependency needed for extraction |
+| Python `re` | stdlib | Mechanical pylint fixes for simple single-line patterns | No dependency needed |
+| `pylint-odoo` | (already installed, Phase 3) | Re-validation after auto-fix attempts | Already in stack |
+| Docker runner | (already built, Phase 3) | Re-validation for Docker auto-fix loop | `docker_runner.py` with teardown guarantees |
 
 ### Supporting
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| `difflib.HtmlDiff` | stdlib | Rich HTML diff for terminal display | Only if terminal supports HTML rendering — skip, use unified_diff instead |
-| `gettext` stdlib | stdlib | Parse/write .pot file format | Writing the .pot header and entry format correctly |
+| `click-odoo-contrib` | 1.23.x | `click-odoo-makepot` for higher-fidelity .pot when Docker available | Post-validation enhancement only; not primary path |
+| Python `gettext` tools | stdlib | POT file format reference for header generation | Writing standards-compliant .pot headers |
 
 ### Alternatives Considered
 | Instead of | Could Use | Tradeoff |
 |------------|-----------|----------|
-| Agent-driven static i18n extraction | click-odoo-makepot | click-odoo-makepot is more accurate (captures field string auto-translations) but requires a running Odoo database; static extraction works offline and produces a usable starting .pot |
-| Agent-driven static i18n extraction | odoo-bin --i18n-export | Same issue — requires full Odoo server + database; Docker environment is ephemeral and teardown after each validation run |
-| Python regex-based pylint auto-fix | autopep8 / black | autopep8 is not pylint-odoo aware; black reformats code but doesn't fix Odoo-specific violations |
+| Static i18n extraction | `click-odoo-makepot` | Requires running Odoo+DB; generates higher fidelity .pot (captures field string auto-translations) but cannot run offline |
+| Static i18n extraction | `odoo-bin --i18n-export` | Same DB requirement; canonical but impractical for offline generation |
+| AST-based pylint fix | `oca-odoo-pre-commit-hooks --fix` | Has `--fix` for field-string-redundant and manifest-superfluous-key; but is a pre-commit hook not a library API -- harder to invoke programmatically from Python |
+| Agent-driven view fix | regex XML editing | XML is tree-structured; regex corruption risk is high; agent-based rewrite is safer |
 
 **Installation (new dependencies):**
 ```bash
-# click-odoo-contrib for .pot generation (optional path, only if Docker available)
-uv pip install click-odoo-contrib
-# No new dependencies needed for diff generation or pylint auto-fix
+# No new pip dependencies required for Phase 7 core
+# click-odoo-contrib is optional (only for post-Docker .pot enhancement)
+# uv pip install click-odoo-contrib  # optional
 ```
 
 ---
 
 ## Architecture Patterns
 
-### How GSD Checkpoints Actually Work
+### How GSD Checkpoints Actually Work (Verified from Source)
 
-**CRITICAL FINDING from reading GSD source:**
+**Key files read:** `checkpoints.md`, `execute-plan.md`, `execute-phase.md`
 
-GSD checkpoints are declared in PLAN.md files using XML task syntax. They are NOT a runtime API. The execute-plan.md workflow reads `type="checkpoint:*"` tasks and stops execution to present them to the user.
+GSD has **two** checkpoint mechanisms:
 
-```xml
-<!-- From get-shit-done/get-shit-done/references/checkpoints.md -->
-<task type="checkpoint:human-verify" gate="blocking">
-  <what-built>[What was generated]</what-built>
-  <how-to-verify>
-    [Exact steps to review the generated output]
-  </how-to-verify>
-  <resume-signal>Type "approved" or describe what to change</resume-signal>
-</task>
-```
+1. **PLAN.md checkpoints** (XML task syntax): Used when GSD executes structured plans via `execute-plan.md`. The executor encounters `<task type="checkpoint:human-verify" gate="blocking">` and stops.
 
-The checkpoint types are:
-- `checkpoint:human-verify` (90% of use) — user confirms generated output is correct
-- `checkpoint:decision` (9%) — user chooses between options
-- `checkpoint:human-action` (1%) — user does something Claude cannot automate
+2. **Workflow-level checkpoints** (agent prose): Used when an agent reads a workflow document (like generate.md) and follows its instructions in the main context. The workflow document tells the agent to pause and present a review box.
 
-For Odoo generation review (REVW-01..04), `checkpoint:human-verify` is correct: show the generated files, ask user to approve or describe changes.
+**generate.md is a workflow document, not a PLAN.md.** Therefore, checkpoints in generate.md are expressed as prose instructions. The orchestrating agent (main Claude Code session) reads these instructions and presents the checkpoint directly to the user. This is execute-plan.md "Pattern C" -- execute entirely in main context.
 
-**Auto-mode bypass:** When `workflow.auto_advance` is `true` in config.json (currently `false` in this project), human-verify checkpoints are auto-approved. This satisfies REVW-05 (skippable checkpoints) — the mechanism already exists.
+**Auto-advance behavior:** When `workflow.auto_advance` is `true` in config.json:
+- `checkpoint:human-verify` auto-approves (execute-phase.md line: `AUTO_CFG=$(node ... config-get workflow.auto_advance)`)
+- The generate.md workflow must check this config and skip pauses when auto_advance is true
+- This satisfies REVW-05 (skippable checkpoints) -- no per-command `--no-review` flag needed for v1
 
-### Pattern 1: Review Checkpoint Placement in generate.md
+### Pattern 1: Checkpoint Placement in generate.md
 
-The generate.md workflow is an agent-readable workflow document (not a PLAN.md). Checkpoints cannot be declared in it directly — generate.md is read by the orchestrating agent (the main Claude Code session), which calls Task() for sub-agents.
-
-**Pattern: The orchestrating agent inserts checkpoints between generation stages.**
-
-The orchestrating agent that reads generate.md must pause after each wave and present a checkpoint to the user before spawning the next wave's agents. This is done in the main agent context (Pattern C in execute-plan.md: "Execute entirely in main context").
+Modified generate.md inserts three checkpoint stages. The mapping to requirements:
 
 ```
-generate.md Step 1 (render-module CLI)
-    ↓
-CHECKPOINT: Review models and structure (human-verify)
-    ↓ [user: "approved" or "fix the X field"]
-generate.md Step 2 (Wave 1: odoo-model-gen)
-    ↓
-CHECKPOINT: Review generated model methods (human-verify)
-    ↓ [user: "approved" or "redo the _compute_total with different logic"]
-generate.md Step 3 (Wave 2: view-gen + test-gen in parallel)
-    ↓
-CHECKPOINT: Review views and tests (human-verify)
-    ↓ [user: "approved"]
-generate.md Step 4 (commit)
+spec.md Step 4.3 triggers generate.md
+    |
+    v
+generate.md Step 1: Render Structural Files (Jinja2 pass)
+  produces: models/*.py (stubs), views/*.xml, security/*, tests/* (stubs)
+    |
+    v
+CHECKPOINT 1: Review Module Structure (REVW-01 + REVW-03)
+  "Review generated models, fields, security groups, ACLs"
+  Covers: model field definitions, security.xml, ir.model.access.csv
+    |
+    v [user: "approved" or feedback]
+    |
+generate.md Step 2: Wave 1 -- Model Method Bodies (odoo-model-gen)
+  fills: computed fields, onchange, constraints, action methods
+    |
+    v
+CHECKPOINT 2: Review Business Logic (REVW-04)
+  "Review computed fields, constraints, workflow state methods"
+  Covers: method implementations in models/*.py
+    |
+    v [user: "approved" or feedback]
+    |
+generate.md Step 3: Wave 2 -- View Enrichment + Test Generation
+  enriches: view action buttons (odoo-view-gen)
+  expands: test assertions (odoo-test-gen)
+    |
+    v
+CHECKPOINT 3: Review Views & Tests (REVW-02)
+  "Review view enrichments and test coverage"
+  Covers: XML views with action buttons, test assertions
+    |
+    v [user: "approved" or feedback]
+    |
+generate.md Step 4: Commit
+    |
+    v
+QUALITY GATE: i18n + pylint + Docker auto-fix (QUAL-06, QUAL-09, QUAL-10)
+    |
+    v
+generate.md Step 5: Summary Report
 ```
 
-**Feedback incorporation (REVW-06):** When user describes changes at a checkpoint:
-1. User types: "The _compute_total should divide by quantity, not multiply"
-2. Orchestrating agent re-spawns odoo-model-gen with: `[original task prompt] + "USER FEEDBACK: " + [user description] + "Rewrite the file incorporating this feedback."`
-3. Checkpoint repeats (up to MAX_REGENERATION_RETRIES attempts)
-4. On max retries reached: escalate — "Max regeneration attempts reached. Here are the current files. Please edit manually and type 'approved' when ready."
+**Why 3 checkpoints, not 4:** REVW-03 (security review) combines with REVW-01 (model review) because security files are generated in the same Jinja2 pass. Reviewing them together is more natural -- the user sees models and their access rules side by side.
 
-**MAX_REGENERATION_RETRIES = 3** — this matches the ReCode framework's `max_retry: 4` pattern from research, trimmed to 3 for ERP modules where the spec is already well-defined. Beyond 3 attempts, the feedback is likely too ambiguous for the agent to resolve without human intervention.
+### Pattern 2: Checkpoint Display Format
 
-### Pattern 2: Diff View for REVW-06
+The checkpoint format in generate.md follows GSD's box protocol:
 
-Before re-showing a regenerated section, display a unified diff:
+```markdown
+## Checkpoint: Review Module Structure
 
-```python
-# Source: Python stdlib difflib
-import difflib
+Before proceeding to Wave 1, check the auto_advance config:
 
-def show_diff(original: str, regenerated: str, filename: str) -> str:
-    """Generate a unified diff for display at a checkpoint."""
-    original_lines = original.splitlines(keepends=True)
-    regen_lines = regenerated.splitlines(keepends=True)
-    diff = difflib.unified_diff(
-        original_lines,
-        regen_lines,
-        fromfile=f"original/{filename}",
-        tofile=f"regenerated/{filename}",
-        n=3,  # 3 lines of context
-    )
-    return "".join(diff)
+```bash
+AUTO_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
 ```
 
-Display pattern at checkpoint:
+If AUTO_CFG is "true": skip checkpoint, log "Auto-approved: module structure", continue.
+
+Otherwise, present the checkpoint:
+
 ```
-Changes in models/library_book.py (regenerated based on your feedback):
++-------------------------------------------------------+
+|  CHECKPOINT: Review Module Structure                    |
++-------------------------------------------------------+
+
+What was built:
+  - models/*.py -- field definitions for {model_count} models
+  - security/security.xml -- group hierarchy (User/Manager)
+  - security/ir.model.access.csv -- ACL rules
+  - views/*.xml -- form + tree + search views per model
+  - __manifest__.py -- dependencies and data file references
+  - tests/__init__.py + test stubs
+
+How to verify:
+  1. Check models/*.py -- are all fields from the spec present?
+  2. Check security/ir.model.access.csv -- does every model have ACL entries?
+  3. Check views/ -- do form views include all fields?
+
+---------------------------------------------------------
+> YOUR ACTION: Type "approved" or describe what needs to change
+---------------------------------------------------------
+```
+
+Wait for user response. Do NOT proceed until user responds.
+```
+
+### Pattern 3: Feedback Incorporation (REVW-06)
+
+When the user describes changes at a checkpoint:
+
+1. **Capture original file content** before re-invoking the agent (for diff generation)
+2. **Re-spawn the appropriate agent** with augmented prompt:
+   ```
+   [original task prompt]
+
+   USER FEEDBACK:
+   {user's description of changes}
+
+   Rewrite the ENTIRE file incorporating this feedback.
+   Preserve all field declarations unless the feedback explicitly asks to change them.
+   ```
+3. **Show unified diff** between original and regenerated version
+4. **Re-present checkpoint** with diff view
+5. **Increment retry counter** -- max 3 attempts per checkpoint
+
+**Diff display pattern:**
+```
+Changes in models/library_book.py:
 
 --- original/library_book.py
 +++ regenerated/library_book.py
@@ -165,193 +215,169 @@ Changes in models/library_book.py (regenerated based on your feedback):
      def _compute_total_amount(self):
          for rec in self:
 -            rec.total_amount = rec.quantity * rec.unit_price
-+            rec.total_amount = rec.quantity / rec.unit_price if rec.quantity else 0.0
++            rec.total_amount = rec.quantity / rec.unit_price if rec.unit_price else 0.0
 
 Does this look correct? Type "approved" or describe further changes.
 ```
 
-**Do NOT** add diff view for the FIRST generation pass (nothing to diff against). Only show diff when regenerating after user feedback.
+Do NOT show diff on first generation pass (nothing to diff against). Only show diff on regeneration.
 
-### Pattern 3: i18n .pot File Generation (QUAL-06)
+### Pattern 4: Max Retry Logic
 
-**Two-path approach:**
+```
+MAX_CHECKPOINT_RETRIES = 3
 
-**Path A: Docker available** — use `click-odoo-makepot` inside the Docker environment:
-```bash
-# Inside Docker container (Odoo already installed for validation)
-click-odoo-makepot -c /etc/odoo/odoo.conf -d test_db -m MODULE_NAME --addons-dir /mnt/extra-addons
+For each checkpoint:
+  retry_count = 0
+  while retry_count < MAX_CHECKPOINT_RETRIES:
+    present_checkpoint(files)
+    response = wait_for_user()
+    if response == "approved":
+      break
+    retry_count += 1
+    re_invoke_agent(original_prompt + feedback)
+    show_diff(original, regenerated)
+
+  if retry_count == MAX_CHECKPOINT_RETRIES:
+    present_escalation:
+      "Max regeneration attempts (3) reached for this stage.
+       The generated files are at: {paths}
+       Please edit them manually and type 'approved' when ready."
+    wait_for_user("approved")
 ```
 
-**Path B: Docker not available (primary path)** — static agent-driven extraction:
+**Why 3:** Odoo module specs are already well-defined by the time generation runs (the user approved the spec in spec.md Phase 4). Beyond 3 attempts, the feedback is likely too ambiguous for the agent. The user is better served by editing directly.
 
-The agent reads all Python and XML files and writes a .pot file following the standard format.
+### Pattern 5: i18n .pot Generation (QUAL-06)
 
-**Extraction sources:**
-- Python files: `_()` calls (but NOT selection field labels — these are auto-handled by Odoo's field mechanism)
-- XML view files: `string=` attributes on `<button>`, `<form>`, `<group>`, `<page>` elements; text content inside translatable elements
-- XML data files: record `name` fields where applicable
+**Static extraction approach** (primary path, no Odoo server needed):
 
-**Standard .pot header format:**
-```python
-# Source: standard gettext PO Template format
-pot_header = """\
-# Translation Template for {module_name}
-# Copyright (C) {year} {author}
-# This file is distributed under the same license as the {module_name} package.
-#
-msgid ""
-msgstr ""
-"Project-Id-Version: {module_name} {version}\\n"
-"Report-Msgid-Bugs-To: \\n"
-"POT-Creation-Date: {datetime}\\n"
-"PO-Revision-Date: {datetime}\\n"
-"Last-Translator: Automatically generated\\n"
-"Language-Team: none\\n"
-"Language: \\n"
-"MIME-Version: 1.0\\n"
-"Content-Type: text/plain; charset=UTF-8\\n"
-"Content-Transfer-Encoding: 8bit\\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\\n"
-"""
-```
+1. Walk all `.py` files in the module directory
+2. Use `ast.parse()` to find `_()` calls with string literal arguments
+3. Walk all `.xml` files in `views/` and `data/` directories
+4. Use `xml.etree.ElementTree` to find translatable `string=` attributes on form, group, page, button, filter, separator elements
+5. Also extract `placeholder=`, `confirm=`, `help=`, `sum=` attributes
+6. Write a standard gettext .pot file to `{module}/i18n/{module_name}.pot`
 
-**Entry format:**
-```
-#: models/library_book.py:45
-msgid "A borrower must be selected."
-msgstr ""
-```
+**What is NOT extracted (documented limitation):**
+- Field `string=` parameters (auto-translatable by Odoo's framework; only captured by `odoo-bin --i18n-export`)
+- Selection field labels (auto-translatable by Odoo's field mechanism)
+- QWeb template strings (require Odoo's own extraction tooling)
 
 **Output location:** `{module_name}/i18n/{module_name}.pot`
 
-**Do NOT hand-roll** the .pot file string extraction for Python — use `ast` module to parse `_()` calls properly rather than regex on raw source:
+**Important:** Do NOT add `.pot` to `__manifest__.py` `data` list. The `i18n/` directory is auto-discovered by Odoo. Adding it to `data` causes a double-load error.
 
+### Pattern 6: pylint-odoo Auto-Fix Loop (QUAL-09)
+
+**Phase 1: Mechanical fixes (no LLM, Python code only):**
+
+| Rule Code | Symbol | Mechanical Fix Strategy |
+|-----------|--------|------------------------|
+| W8113 | `attribute-string-redundant` | Remove redundant `string=` parameter from field declaration |
+| W8111 | `renamed-field-parameter` | Replace deprecated param name (e.g., `track_visibility` -> `tracking`) |
+| C8116 | `manifest-superfluous-key` | Remove manifest key that matches default (`'installable': True`, `'data': []`) |
+| W8150 | `odoo-addons-relative-import` | Convert `from odoo.addons.module.x import y` to `from .x import y` |
+| C8107 | `translation-required` | Wrap user-facing string in `_("...")` -- only for simple cases like `raise ValidationError("text")` |
+
+**Phase 2: LLM fixes (spawn odoo-validator agent):**
+
+All other violations get sent to the odoo-validator agent as a structured list:
+```
+Fix these pylint-odoo violations in {module_path}:
+1. {file}:{line} [{rule_code}] {symbol}: {message}
+2. ...
+
+Read each affected file, apply the fix, write the corrected file.
+```
+
+**Loop structure:**
+```
+1. Run pylint-odoo -> get violations
+2. If no violations: done
+3. Apply mechanical fixes for W8113/W8111/C8116/W8150/C8107
+4. Run pylint-odoo -> get remaining violations
+5. If no violations: done
+6. Spawn odoo-validator agent with remaining violations list
+7. Run pylint-odoo -> get final violations
+8. If violations remain: escalate to user with violation table
+```
+
+**Max 2 loop iterations** (mechanical + LLM). Rationale: each pylint run takes ~5-10 seconds; agent rewrite takes ~30 seconds. Total cycle is under 2 minutes. Beyond 2 attempts, violations are likely structural issues requiring human judgment.
+
+**Critical safety:** After each mechanical fix, verify the file still parses:
 ```python
-# Source: Python stdlib ast
 import ast
-
-def extract_gettext_strings(py_source: str) -> list[str]:
-    """Extract _() call arguments from Python source using AST."""
-    tree = ast.parse(py_source)
-    strings = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Name) and node.func.id == "_":
-                if node.args and isinstance(node.args[0], ast.Constant):
-                    strings.append(node.args[0].value)
-    return strings
+try:
+    ast.parse(fixed_source)
+except SyntaxError:
+    # Rollback to pre-fix source
+    source = original_source
 ```
 
-### Pattern 4: pylint-odoo Auto-Fix Loop (QUAL-09)
+### Pattern 7: Docker Auto-Fix Loop (QUAL-10)
 
-**Mechanically auto-fixable violations (attempt first, no LLM needed):**
+**Auto-fixable error patterns (from error_patterns.json):**
 
-| Rule Code | Symbol | What It Is | Mechanical Fix |
-|-----------|--------|------------|----------------|
-| W8113 | attribute-string-redundant | `string="Field Name"` equals field variable name title-cased | Remove the `string=` parameter |
-| W8111 | renamed-field-parameter | Deprecated field param (e.g., `track_visibility`) | Replace with current equivalent (e.g., `tracking`) |
-| C8116 | manifest-superfluous-key | Manifest key with default value (e.g., `'installable': True`) | Remove the key |
-| W8150 | odoo-addons-relative-import | `from odoo.addons.module.x import y` | Convert to `from .x import y` |
-| W8160 | missing-translation | String not wrapped in `_()` — found in raise/UserError/ValidationError | Wrap with `_("...")` |
-
-**LLM-required violations (send to odoo-validator agent):**
-
-| Rule Code | Symbol | Why LLM Required |
-|-----------|--------|-----------------|
-| E8103 | sql-injection-risk | Requires understanding query context |
-| E8135 | write-in-compute | Requires understanding compute method logic |
-| W8106 | method-compute | Missing super() call — requires understanding method chain |
-| W8138 | except-pass | Empty except block — requires context on what to do instead |
-| E8102 | cr-commit | `cr.commit()` call — requires understanding transaction context |
-| C8101 | manifest-required-key | Missing required key — requires knowing what value to add |
-| C8112 | missing-readme | Missing README file — agent can generate it |
-
-**Auto-fix loop implementation:**
-
-```python
-def auto_fix_loop(module_path: Path, max_attempts: int = 2) -> tuple[Violation, ...]:
-    """
-    Run pylint → mechanical fix → pylint → LLM fix → pylint.
-    Returns remaining violations after all fix attempts.
-    """
-    violations = run_pylint_odoo(module_path)
-
-    for attempt in range(max_attempts):
-        if not violations:
-            break
-
-        # Attempt 1: mechanical fixes first
-        mechanical_fixable = [v for v in violations
-                               if v.rule_code in MECHANICAL_FIX_CODES]
-        if mechanical_fixable:
-            apply_mechanical_fixes(module_path, mechanical_fixable)
-            violations = run_pylint_odoo(module_path)
-
-        # Attempt 2: LLM fixes for remaining
-        if violations:
-            # spawn odoo-validator agent with violations list
-            # agent rewrites affected files
-            violations = run_pylint_odoo(module_path)
-
-    return violations  # escalate any remaining
-```
-
-`MECHANICAL_FIX_CODES = {"W8113", "W8111", "C8116", "W8150", "W8160"}`
-
-### Pattern 5: Docker Auto-Fix Loop (QUAL-10)
-
-**Auto-fixable Docker failure patterns (from existing error_patterns.json + new patterns):**
-
-| Pattern ID | Error Pattern | Auto-Fix Strategy |
-|------------|---------------|-------------------|
-| `xml-parse-error` | XML syntax error | Parse error message for file+line, agent rewrites that XML file |
-| `missing-acl` | No ACL rule for model | Regenerate ir.model.access.csv via Jinja2 renderer |
-| `import-error` | Missing import in __init__.py | Add the missing import to __init__.py |
-| `view-field-not-found` | Field in view but not in model | Remove field from view OR add field to model |
-| `missing-required-field` | Required field has no default | Add `default=False/0/""` to the field definition |
+| Pattern ID | Error Type | Auto-Fix Strategy |
+|------------|-----------|-------------------|
+| `xml-parse-error` | XML syntax error in view/data file | Agent reads error with file+line, rewrites affected XML |
+| `missing-acl` | Model has no ACL entry | Re-run `odoo-gen-utils render-module` for security files, or agent adds CSV entry |
+| `view-field-not-found` | Field referenced in view doesn't exist on model | Agent removes field from view XML |
+| `import-error` | Missing import in `__init__.py` | Agent adds missing import statement |
+| `missing-required-field` | Required field has no default in test data | Agent adds `default=False/0/""` to field definition |
 
 **Non-auto-fixable (escalate immediately):**
-- `circular-dependency` — architectural issue requiring human decision
-- `module-not-found` — missing dependency in manifest, human must add
-- `database-error` (psycopg2 errors) — likely schema corruption, needs clean Docker run
-- `constraint-violation` — test data or logic issue requiring human review
+| Pattern ID | Why Not Fixable |
+|------------|----------------|
+| `circular-dependency` | Requires architectural decision (break into separate modules) |
+| `module-not-found` | Missing Odoo dependency -- user must add to manifest + Docker image |
+| `database-error` | Schema corruption or stale state -- needs clean Docker run |
+| `constraint-violation` | Business logic or test data issue requiring human judgment |
+| `duplicate-xml-id` | Naming decision -- which record keeps the ID |
 
-**Docker auto-fix loop:**
-
+**Loop structure:**
 ```
-1. Run docker_install_module() → get InstallResult
-2. If failed: diagnose_errors(log_output) → classify each error
-3. For auto-fixable: spawn odoo-validator agent with error + file context → agent applies fix
-4. Re-run docker_install_module() → check again
-5. Repeat max 2 times total
-6. If still failing: escalate to checkpoint:human-verify with diagnosis summary
+1. Run docker_install_module() -> get InstallResult
+2. If success: run docker_run_tests() -> get TestResults
+3. If all pass: done
+4. Run diagnose_errors(log_output) -> classify errors
+5. Filter for auto-fixable patterns
+6. If none auto-fixable: escalate immediately
+7. Spawn odoo-validator agent with: error type + file + context
+8. Agent applies fix
+9. Re-run docker_install_module() (full cycle -- fresh containers)
+10. Repeat max 2 times total
+11. If still failing: escalate with diagnosis summary
 ```
 
-**Max attempts = 2** for Docker auto-fix. Docker runs take 2-5 minutes each; 2 attempts = up to 10 minutes. Beyond that, user time is better spent reviewing manually.
+**Max 2 Docker auto-fix attempts.** Rationale: each Docker cycle takes 2-5 minutes (container startup + module install + teardown). Two cycles = up to 10 minutes. Beyond that, user intervention is more efficient.
 
 ### Recommended Project Structure Changes
-
-Phase 7 adds to the existing structure:
 
 ```
 python/src/odoo_gen_utils/
 ├── validation/
 │   ├── auto_fix.py          # NEW: mechanical pylint fixes + auto-fix loop orchestration
-│   └── i18n_extractor.py    # NEW: static .pot file extraction (AST + XML parsing)
+│   ├── i18n_extractor.py    # NEW: static .pot file extraction (AST + XML parsing)
+│   ├── docker_runner.py     # EXISTING (no changes)
+│   ├── error_patterns.py    # EXISTING (no changes)
+│   ├── pylint_runner.py     # EXISTING (no changes)
+│   └── types.py             # EXISTING (may add AutoFixResult dataclass)
 workflows/
-├── generate.md              # MODIFIED: add checkpoint stages between waves
-├── generate-with-review.md  # ALTERNATIVE: separate workflow variant with explicit checkpoints
+├── generate.md              # MODIFIED: add 3 checkpoint stages + quality gate
 agents/
-├── odoo-validator.md        # MODIFIED: expand to handle LLM-based pylint fixes + Docker fixes
+├── odoo-validator.md        # MODIFIED: add LLM pylint fix + Docker fix instructions
 ```
 
 ### Anti-Patterns to Avoid
 
-- **Checkpoint spam:** Do NOT add a checkpoint after every individual file generation. One checkpoint per STAGE (models, views, security+tests) is correct. The anti-pattern in GSD's own docs explicitly warns against "checkpoint after every task."
-- **Diff on first generation:** Do NOT show a diff on the first generation pass — there is nothing to diff against. Only show diff when regenerating after user feedback.
-- **Blocking regeneration on validation:** Do NOT block the review checkpoint on pylint/Docker validation. Checkpoints are for human content review. Validation (QUAL-06, QUAL-09, QUAL-10) runs AFTER all stages are approved, as a separate quality gate.
-- **Infinite retry:** Never loop indefinitely. 3 regeneration retries for human review, 2 for auto-fix loops.
-- **Running odoo-bin for .pot generation during offline workflow:** The extension generates code offline. Do not attempt to run odoo-bin outside of Docker context.
+- **Checkpoint after every file:** Do NOT checkpoint after each individual file. One checkpoint per stage (structure, logic, views+tests). GSD explicitly warns against "checkpoint after every task."
+- **Diff on first generation:** No diff on initial generation -- nothing to compare against. Only show diff when regenerating after feedback.
+- **Validation blocking review:** Checkpoints are for human CONTENT review. Quality validation (QUAL-06, QUAL-09, QUAL-10) runs AFTER all stages are approved, as a separate quality gate after commit.
+- **Infinite retry:** Never loop without bounds. 3 for regeneration, 2 for auto-fix.
+- **Patching instead of rewriting:** When regenerating after feedback, always rewrite the ENTIRE file. Partial patching breaks Odoo model file interdependencies (imports, field order, method placement). This matches the existing Phase 5 decision.
+- **Running odoo-bin --i18n-export offline:** The extension generates code offline. odoo-bin requires a running server + database. Only use it inside Docker context, and only as an enhancement after successful module install.
 
 ---
 
@@ -359,134 +385,130 @@ agents/
 
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
-| Checkpoint UI and user interaction protocol | Custom pause/wait mechanism | GSD `checkpoint:human-verify` task type | Already implemented in execute-plan.md; handles auto-mode, fresh agent spawn, structured display |
-| Auto-advance / skip-checkpoint feature | Custom config flag and bypass logic | GSD `workflow.auto_advance = true` in config.json | Already implemented in execute-phase.md checkpoint_handling step |
-| Diff generation | Custom diff algorithm | Python stdlib `difflib.unified_diff()` | Battle-tested, no dependency |
-| AST parsing for _() extraction | Regex on Python source | Python stdlib `ast.parse()` | Regex fails on multiline strings, comments, nested calls |
-| .pot file format | Custom format string | Standard gettext format (write known-correct header + msgid/msgstr entries) | Standard is well-documented and simple to write correctly |
-| pylint output parsing | Custom parser | Already built: `parse_pylint_output()` in pylint_runner.py | Phase 3 deliverable, already handles JSON2 format |
-| Docker log parsing | Custom log parser | Already built: `parse_install_log()`, `parse_test_log()`, `diagnose_errors()` | Phase 3 deliverables |
+| Checkpoint pause/resume | Custom wait/poll mechanism | GSD checkpoint protocol (agent presents box, waits for user response) | Already implemented; handles auto-mode, structured display |
+| Skip-checkpoint config | Custom `--no-review` CLI flag | GSD `workflow.auto_advance = true` in config.json | Already implemented in execute-phase.md checkpoint_handling |
+| Diff generation | Custom diff algorithm | Python stdlib `difflib.unified_diff()` | Battle-tested, no dependency, git-compatible output |
+| Python string extraction | Regex on `.py` source | Python stdlib `ast.parse()` + `ast.walk()` | Regex fails on multiline strings, comments, nested calls, string escapes |
+| .pot file format | Custom serializer | Standard gettext format (known-correct header + msgid/msgstr entries) | Well-documented spec, trivial to implement correctly |
+| pylint output parsing | Custom JSON parser | Existing `parse_pylint_output()` in `pylint_runner.py` | Phase 3 deliverable; handles JSON2 format |
+| Docker error diagnosis | Custom log parser | Existing `diagnose_errors()` in `error_patterns.py` | Phase 3 deliverable; 25 patterns, caching, fallback to raw traceback |
+| Docker lifecycle | Custom container mgmt | Existing `docker_install_module()` / `docker_run_tests()` | Phase 3 deliverable; teardown guarantees via finally blocks |
+| Error classification | Custom error taxonomy | Existing `error_patterns.json` with pattern IDs | Phase 3 deliverable; maps regex to explanation + suggestion |
 
-**Key insight:** 80% of Phase 7 is wiring — connecting existing GSD mechanisms and existing Python utility functions to the right places in the workflow. New code is only: mechanical pylint fixer, static i18n extractor, and checkpoint placement in generate.md.
+**Key insight:** ~80% of Phase 7 is wiring existing mechanisms. The only genuinely new code is: (1) `i18n_extractor.py` (AST + XML extraction), (2) `auto_fix.py` (mechanical pylint fixes), and (3) checkpoint instructions in `generate.md`.
 
 ---
 
 ## Common Pitfalls
 
-### Pitfall 1: Checkpoint Placement in Workflow vs PLAN.md
+### Pitfall 1: Confusing PLAN.md Checkpoints with Workflow Checkpoints
 
-**What goes wrong:** Developer adds `type="checkpoint:human-verify"` syntax inside generate.md thinking it will work there.
+**What goes wrong:** Developer adds `<task type="checkpoint:human-verify">` XML syntax inside generate.md thinking the GSD executor will process it.
 
-**Why it happens:** The checkpoint syntax is documented for PLAN.md files. generate.md is a workflow document read by the orchestrating agent — it is processed as agent instructions, not as a structured PLAN to execute.
+**Why it happens:** GSD documentation shows checkpoint XML syntax for PLAN.md files. generate.md looks similar but is a different document type -- it's a workflow read by an agent, not a plan executed by the GSD executor.
 
-**How to avoid:** Checkpoints in generate.md must be expressed as AGENT INSTRUCTIONS — prose telling the orchestrating agent to "pause and ask the user to review" at this point. The orchestrating agent implements the checkpoint protocol from `checkpoints.md` in its main context (Pattern C). Alternatively, generate.md is refactored to explicitly instruct the agent to use the GSD checkpoint display format at each stage.
+**How to avoid:** Checkpoints in generate.md are expressed as **prose instructions** to the orchestrating agent. The agent implements the checkpoint by printing the review box and waiting for user input. The correct syntax is markdown sections like `## Checkpoint: Review Module Structure` followed by the display template and "Wait for user response."
 
-**Correct pattern in generate.md:**
-```markdown
-## Checkpoint: Review Generated Models
+**Warning signs:** If generate.md contains `<task type="checkpoint:...">` XML, it's wrong.
 
-Before proceeding to Wave 1, pause and present the following checkpoint to the user:
+### Pitfall 2: Regeneration Patch vs Full Rewrite
 
-Display the checkpoint box:
-╔══════════════════════════════════════════╗
-║  CHECKPOINT: Review Generated Models     ║
-╚══════════════════════════════════════════╝
+**What goes wrong:** When user requests changes at a checkpoint, the agent tries to Edit specific lines rather than rewriting the full file. This breaks field ordering, import chains, or method placement.
 
-What was built: {list all files from render-module output}
+**Why it happens:** Partial patching seems more efficient. But Odoo model files have tight interdependencies.
 
-How to verify:
-1. Review models/{model_var}.py for field definitions
-2. Check that all required fields are present
-3. Verify relationships match the spec
+**How to avoid:** Always use Write tool to rewrite the ENTIRE file. This matches the established Phase 5 pattern: "odoo-model-gen uses Write tool to rewrite ENTIRE model file (not patch stubs inline)."
 
-YOUR ACTION: Type "approved" or describe what needs to change
-```
+**Warning signs:** Agent uses Edit tool during regeneration. The regenerated file has import errors or missing method definitions.
 
-### Pitfall 2: Re-seeding vs Patching During Regeneration
+### Pitfall 3: i18n Extraction Missing Field String Translations
 
-**What goes wrong:** When user requests changes at a checkpoint, agent tries to patch only the changed section rather than rewriting the full file.
+**What goes wrong:** Static .pot extraction captures `_()` calls but misses field `string=` parameter translations that Odoo auto-handles.
 
-**Why it happens:** Partial patching seems efficient. But Odoo model files have interdependencies (imports, field order, method placement) that break if patched piecemeal.
+**Why it happens:** Field `string=` parameters don't use `_()`. Odoo registers them for translation through its field metadata mechanism at model loading time, not through gettext extraction.
 
-**How to avoid:** Always rewrite the ENTIRE file when regenerating after feedback — same pattern as odoo-model-gen Phase 5 design decision: "odoo-model-gen uses Write tool to rewrite ENTIRE model file (not patch stubs inline)."
+**How to avoid:** Document the limitation clearly in the .pot file header and in the generation report. Accept that the static .pot is a starting point. If higher fidelity is needed, `click-odoo-makepot` can run inside Docker after successful module install (future enhancement).
 
-**Warning signs:** Agent uses `Edit` tool with line ranges on a regeneration pass.
+### Pitfall 4: Mechanical pylint Fix Corrupting Python Source
 
-### Pitfall 3: click-odoo-makepot Requires Live Database
+**What goes wrong:** Regex-based removal of `string=` parameter leaves trailing comma, double comma, or breaks multi-line field definition.
 
-**What goes wrong:** Plan includes `click-odoo-makepot` as the .pot generation command without accounting for the fact that it requires a running Odoo instance with the module installed.
+**Why it happens:** Python field definitions span multiple lines with complex indentation. Regex operates on strings, not syntax trees.
 
-**Why it happens:** Documentation describes it as a tool for "generating .pot files" without prominently stating the database prerequisite.
+**How to avoid:** For each mechanical fix: (1) apply the regex fix, (2) verify the result parses with `ast.parse()`, (3) if parse fails, rollback and send to LLM agent instead. Only apply mechanical fixes to single-line cases where the pattern is unambiguous.
 
-**How to avoid:** Use static agent-driven extraction as the primary path. If Docker is available AND the module has already been successfully installed (post-QUAL-04 success), then `click-odoo-makepot` can be run inside the Docker container before teardown. Otherwise, static extraction is the fallback.
+**Warning signs:** The mechanical fixer introduces NEW pylint violations not present before.
 
-**Key distinction:** click-odoo-makepot runs INSIDE the Odoo environment after module install. It cannot run standalone.
+### Pitfall 5: Stale Docker State Between Auto-Fix Attempts
 
-### Pitfall 4: pylint Auto-Fix Corrupting Python Files
+**What goes wrong:** Auto-fix loop runs Docker install -> error -> fixes code -> runs Docker install AGAIN, but old container state persists causing false failures.
 
-**What goes wrong:** Mechanical regex-based pylint fixes corrupt Python files — e.g., removing `string=` parameter leaves trailing comma, or removing a parameter in the middle of a multi-line field definition breaks the AST.
+**Why it happens:** Race between teardown of first container and startup of second.
 
-**Why it happens:** Regex string replacement on Python source is brittle. Multi-line field definitions with complex indentation require proper AST manipulation.
+**How to avoid:** Each `docker_install_module()` call is fully self-contained with its own `up -d --wait` and `finally: _teardown()`. The existing implementation already guarantees fresh state. Never try to keep a container warm between fix attempts. Always use the full `docker_install_module()` call.
 
-**How to avoid:** For mechanical fixes, use `ast` module to parse and `astunparse` or `ast.unparse()` (Python 3.9+) to rewrite, OR use simple regex ONLY for single-line cases and fall back to LLM for multi-line. Verify the file parses cleanly after each mechanical fix:
+### Pitfall 6: Quality Gate Running Before Checkpoint Approval
 
-```python
-try:
-    ast.parse(fixed_source)
-except SyntaxError:
-    # rollback — revert to original source
-    raise
-```
+**What goes wrong:** Validation (pylint, Docker, i18n) runs between checkpoint stages, making the user wait for Docker cycles during content review.
 
-**Warning signs:** Mechanical fixer produces new pylint violations it didn't before.
+**Why it happens:** Developer sequences validation after each checkpoint instead of after all checkpoints.
 
-### Pitfall 5: Stale Docker Container Between Auto-Fix Attempts
+**How to avoid:** Quality validation is a single gate AFTER all three content checkpoints pass and the code is committed. The flow is: Checkpoint 1 -> Checkpoint 2 -> Checkpoint 3 -> Commit -> Quality Gate (i18n + pylint + Docker). This keeps the review loop fast and the validation comprehensive.
 
-**What goes wrong:** Auto-fix loop runs Docker install → finds error → fixes file → runs Docker install AGAIN without stopping the first container → port conflict or stale database state causes false failure.
+### Pitfall 7: .pot File in __manifest__.py data List
 
-**Why it happens:** `docker_install_module()` already calls `_teardown()` in a `finally` block, but if called twice rapidly, the second `up -d --wait` may race with the first teardown.
+**What goes wrong:** Generated .pot file gets added to `__manifest__.py` `data` list, causing a double-load error during module install.
 
-**How to avoid:** The existing `_teardown()` + `finally` pattern already handles this correctly. The auto-fix loop simply calls `docker_install_module()` again — each call is fully self-contained. The pitfall is only if someone tries to reuse a running container between attempts. Always use the full `docker_install_module()` call, never try to keep a container warm between fix attempts.
+**Why it happens:** Developer treats .pot like other data files.
 
-### Pitfall 6: i18n Extraction Missing Field String Translations
-
-**What goes wrong:** The static .pot extraction finds `_()` calls in Python but misses the `string=` parameter of fields (which Odoo auto-translates through its field mechanism).
-
-**Why it happens:** Field string parameters don't use `_()` — they're registered for translation differently by the Odoo framework at model loading time.
-
-**How to avoid:** Accept this limitation for the static extraction path. Document it: "The generated .pot file contains explicit `_()` strings and XML view strings. Field `string=` parameters are automatically translatable by Odoo and appear in the .pot file only when generated via `click-odoo-makepot` with a running Odoo instance." This is acceptable — the .pot file serves as a starting point, not a complete extraction.
+**How to avoid:** The `i18n/` directory is auto-discovered by Odoo. Do NOT add .pot to the `data` list. The `i18n_extractor.py` creates the directory and file, and `__manifest__.py` generation (already handled by Jinja2 templates) must not reference it.
 
 ---
 
 ## Code Examples
 
-Verified patterns from official sources and GSD internals:
+Verified patterns from official sources and project internals:
 
-### GSD Checkpoint Task Syntax (from checkpoints.md)
-```xml
-<!-- Source: ~/.claude/get-shit-done/references/checkpoints.md -->
-<task type="checkpoint:human-verify" gate="blocking">
-  <what-built>Generated Odoo module models — {count} model files with field definitions and method stubs</what-built>
-  <how-to-verify>
-    Review the following generated files:
-    1. models/__init__.py — imports all model modules
-    2. models/{model_var}.py per model — field definitions match spec
+### Checkpoint Display in generate.md (Prose Format)
+```markdown
+## Checkpoint 1: Review Module Structure
 
-    Check:
-    - All required fields from spec are present
-    - Field types match spec (Char, Integer, Many2one, etc.)
-    - Computed field stubs have correct @api.depends decorators
-  </how-to-verify>
-  <resume-signal>Type "approved" or describe what needs to change</resume-signal>
-</task>
+Before proceeding to Wave 1, check auto_advance config. If auto_advance is true,
+log "Auto-approved: module structure" and skip to Step 2.
+
+Otherwise, display:
+
++-------------------------------------------------------+
+|  CHECKPOINT: Review Module Structure                    |
++-------------------------------------------------------+
+
+What was built:
+  {list all files from render-module output, grouped by directory}
+
+How to verify:
+  1. Review models/*.py for field definitions -- do all spec fields appear?
+  2. Review security/ir.model.access.csv -- does every model have entries?
+  3. Review views/*.xml -- do views reference correct fields?
+  4. Review __manifest__.py -- are dependencies and data files correct?
+
+---------------------------------------------------------
+> YOUR ACTION: Type "approved" or describe what needs to change
+---------------------------------------------------------
+
+Wait for user response. If user describes changes:
+  1. Save current file contents (for diff generation later)
+  2. Re-run render-module with updated parameters OR re-invoke agent
+  3. Show unified diff of changes
+  4. Re-present this checkpoint
+  5. Max 3 regeneration attempts before escalating
 ```
 
-### GSD auto_advance Config Check (from execute-phase.md)
+### Auto-Advance Config Check
 ```bash
-# Source: ~/.claude/get-shit-done/workflows/execute-phase.md checkpoint_handling step
-AUTO_CFG=$(node ~/.claude/get-shit-done/bin/gsd-tools.cjs config-get workflow.auto_advance 2>/dev/null || echo "false")
+# Source: execute-phase.md checkpoint_handling step
+AUTO_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
 ```
-When `AUTO_CFG` is `"true"`, human-verify checkpoints auto-approve. This is the mechanism for REVW-05 (skippable via config).
+When `AUTO_CFG` is `"true"`, all human-verify checkpoints auto-approve. This satisfies REVW-05.
 
 ### Diff Generation (Python stdlib)
 ```python
@@ -494,90 +516,89 @@ When `AUTO_CFG` is `"true"`, human-verify checkpoints auto-approve. This is the 
 import difflib
 from pathlib import Path
 
-def generate_diff(original_path: Path, regenerated_content: str) -> str:
-    """Generate unified diff between original file and regenerated content."""
-    original_content = original_path.read_text(encoding="utf-8")
+def generate_diff(original_content: str, regenerated_content: str, filename: str) -> str:
+    """Generate unified diff between original and regenerated content."""
     original_lines = original_content.splitlines(keepends=True)
     regen_lines = regenerated_content.splitlines(keepends=True)
-
     diff_lines = difflib.unified_diff(
         original_lines,
         regen_lines,
-        fromfile=f"original/{original_path.name}",
-        tofile=f"regenerated/{original_path.name}",
+        fromfile=f"original/{filename}",
+        tofile=f"regenerated/{filename}",
         n=3,
     )
     return "".join(diff_lines)
 ```
 
-### AST-based _() String Extraction (Python stdlib)
+### AST-based _() String Extraction
 ```python
 # Source: Python stdlib ast documentation
 import ast
 from pathlib import Path
 
 def extract_translatable_strings(py_file: Path) -> list[tuple[str, int]]:
-    """Extract all _('...') call string literals with line numbers.
-
-    Returns list of (string, line_number) tuples.
-    """
+    """Extract _('...') call string literals with line numbers."""
     source = py_file.read_text(encoding="utf-8")
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return []
 
-    results = []
+    results: list[tuple[str, int]] = []
     for node in ast.walk(tree):
-        if (isinstance(node, ast.Call) and
-                isinstance(node.func, ast.Name) and
-                node.func.id == "_" and
-                node.args and
-                isinstance(node.args[0], ast.Constant) and
-                isinstance(node.args[0].value, str)):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
             results.append((node.args[0].value, node.lineno))
     return results
 ```
 
-### XML String Extraction for .pot
+### XML Translatable String Extraction
 ```python
 # Source: Python stdlib xml.etree.ElementTree
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-def extract_xml_translatable_strings(xml_file: Path) -> list[tuple[str, str]]:
-    """Extract translatable strings from Odoo view XML files.
+TRANSLATABLE_ATTRS = frozenset({"string", "placeholder", "confirm", "help", "sum"})
+TRANSLATABLE_TAGS = frozenset({
+    "button", "form", "tree", "group", "page",
+    "field", "filter", "separator",
+})
 
-    Returns list of (string, source_ref) tuples.
+def extract_xml_strings(xml_file: Path) -> list[tuple[str, str, int]]:
+    """Extract translatable strings from Odoo XML views.
+
+    Returns list of (msgid, source_file, approximate_line) tuples.
     """
     try:
         tree = ET.parse(xml_file)
     except ET.ParseError:
         return []
 
-    results = []
-    # Extract string= attributes from form/button/group/page elements
-    TRANSLATABLE_ATTRS = {"string", "placeholder", "confirm", "help", "sum"}
-    TRANSLATABLE_TAGS = {"button", "form", "tree", "group", "page", "field", "filter", "separator"}
-
+    results: list[tuple[str, str, int]] = []
     for elem in tree.iter():
         if elem.tag in TRANSLATABLE_TAGS:
             for attr in TRANSLATABLE_ATTRS:
                 value = elem.get(attr, "")
-                if value and not value.startswith("%("):  # skip format strings
-                    results.append((value, f"{xml_file.name}"))
+                if value and not value.startswith("%("):
+                    results.append((value, xml_file.name, 0))
     return results
 ```
 
 ### .pot File Writer
 ```python
-# Source: standard gettext PO Template format specification
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 def write_pot_file(
     module_path: Path,
-    strings: list[tuple[str, str, int]],  # (msgid, source_file, line)
+    py_strings: list[tuple[str, str, int]],  # (msgid, file, line)
+    xml_strings: list[tuple[str, str, int]],  # (msgid, file, line)
     module_name: str,
     author: str = "",
     version: str = "17.0.1.0.0",
@@ -587,11 +608,12 @@ def write_pot_file(
     pot_dir.mkdir(exist_ok=True)
     pot_file = pot_dir / f"{module_name}.pot"
 
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M+0000")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M+0000")
+    all_strings = py_strings + xml_strings
 
     lines = [
         f"# Translation Template for {module_name}\n",
-        f"# Copyright (C) {datetime.utcnow().year} {author}\n",
+        f"# Copyright (C) {datetime.now(timezone.utc).year} {author}\n",
         "#\n",
         'msgid ""\n',
         'msgstr ""\n',
@@ -610,7 +632,7 @@ def write_pot_file(
     ]
 
     seen: set[str] = set()
-    for msgid, source_file, lineno in sorted(strings, key=lambda x: x[0]):
+    for msgid, source_file, lineno in sorted(all_strings, key=lambda x: x[0]):
         if msgid in seen:
             continue
         seen.add(msgid)
@@ -626,20 +648,17 @@ def write_pot_file(
 
 ### Mechanical pylint Fix: W8113 (attribute-string-redundant)
 ```python
-# Source: pylint-odoo W8113 rule description
+import ast
 import re
+from pathlib import Path
+from odoo_gen_utils.validation.types import Violation
 
-def fix_redundant_string_attr(source: str, violation: Violation) -> str:
-    """Remove redundant string= parameter from field declarations.
-
-    W8113: string="Field Name" when it equals title-case of variable name.
-    Only fixes single-line cases. Multi-line: fall back to LLM.
-    """
+def fix_redundant_string(source: str, violation: Violation) -> str:
+    """Remove redundant string= parameter. Single-line only; multi-line falls back to LLM."""
     lines = source.splitlines(keepends=True)
-    line_idx = violation.line - 1  # 1-indexed to 0-indexed
+    line_idx = violation.line - 1
 
-    # Pattern: string="Any Text", — remove this parameter
-    # Only handle single-line cases
+    # Only fix single-line cases
     pattern = re.compile(r',?\s*string\s*=\s*["\'][^"\']*["\'],?')
     fixed_line = pattern.sub("", lines[line_idx], count=1)
 
@@ -648,25 +667,28 @@ def fix_redundant_string_attr(source: str, violation: Violation) -> str:
     fixed_line = re.sub(r',\s*\)', ')', fixed_line)
 
     lines[line_idx] = fixed_line
-    return "".join(lines)
+    result = "".join(lines)
+
+    # Verify parse still succeeds
+    try:
+        ast.parse(result)
+    except SyntaxError:
+        return source  # rollback
+    return result
 ```
 
-### Feedback Incorporation Prompt Pattern
+### Feedback Incorporation Prompt Template
 ```python
-# How to re-invoke odoo-model-gen with user feedback
-REGENERATION_PROMPT_TEMPLATE = """
-Read the file {model_path} and the spec at {spec_path}.
-Model to process: {model_name}.
-
-ORIGINAL GENERATION TASK:
-{original_task}
+REGENERATION_PROMPT = """
+Read the file {file_path} and the spec at {spec_path}.
+{agent_specific_instructions}
 
 USER FEEDBACK FROM REVIEW:
 {user_feedback}
 
-Rewrite the ENTIRE model file incorporating the user's feedback.
-Preserve all field declarations. Apply only the changes the user described.
-Confirm how many changes were made based on the feedback.
+Rewrite the ENTIRE file incorporating the user's feedback.
+Preserve all existing content that the feedback does not mention.
+Confirm what changes were made based on the feedback.
 """
 ```
 
@@ -674,56 +696,72 @@ Confirm how many changes were made based on the feedback.
 
 ## Odoo-Specific Patterns
 
-### i18n .pot Directory Placement
-Per OCA convention and Odoo 17 documentation:
+### i18n .pot Directory Convention
 ```
 {module_name}/
 ├── i18n/
-│   ├── {module_name}.pot   # Template (source strings)
-│   ├── fr.po               # French
-│   └── es.po               # Spanish
+│   └── {module_name}.pot   # Template (source strings)
 ```
+- .pot is auto-discovered by Odoo from the `i18n/` directory
+- Do NOT add to `__manifest__.py` `data` list
+- .po translation files (fr.po, es.po) go in the same directory
 
-The .pot file is listed in `__manifest__.py` `'data'` only if it contains data records. For i18n, the `i18n/` directory is auto-discovered by Odoo — do NOT add .pot to the `'data'` list. This is a common mistake.
+### Which Strings Are Translatable and How
 
-### pylint-odoo Auto-Fixable Violations — Definitive List
+| Source | Extraction Method | In Static .pot? |
+|--------|-------------------|-----------------|
+| `_("text")` in Python | AST parsing | YES |
+| `raise ValidationError(_("text"))` | AST parsing | YES |
+| `string="Label"` on XML elements | XML parsing | YES |
+| `placeholder="text"` on XML fields | XML parsing | YES |
+| Field `string="Label"` parameter | Odoo framework auto-translation | NO (requires odoo-bin export) |
+| Selection field labels `("key", "Label")` | Odoo framework auto-translation | NO |
+| QWeb template text | Odoo extraction tooling | NO |
 
-Based on OCA/pylint-odoo README and OCA/odoo-pre-commit-hooks analysis:
+### pylint-odoo Complete Auto-Fixable Violation Reference
 
-**Mechanical (regex/AST fix, no LLM):**
-- W8113 `attribute-string-redundant` — remove `string=` when redundant
-- W8111 `renamed-field-parameter` — rename deprecated params (track_visibility → tracking, etc.)
-- C8116 `manifest-superfluous-key` — remove manifest keys matching defaults (`installable: True`, `data: []`, `application: False`)
-- W8150 `odoo-addons-relative-import` — convert absolute odoo.addons imports to relative
+**Verified from [OCA/pylint-odoo README](https://github.com/OCA/pylint-odoo/blob/main/README.md):**
 
-**OCA odoo-pre-commit-hooks auto-fixable (has --fix flag):**
-- `field-string-redundant` (same as W8113)
-- `manifest-superfluous-key` (same as C8116)
-- `po-pretty-format` — sorts and reformats .po/.pot files
+| Code | Symbol | What It Checks | Mechanical Fix |
+|------|--------|----------------|----------------|
+| W8113 | `attribute-string-redundant` | `string=` equals title-cased field variable name | Remove `string=` parameter |
+| W8111 | `renamed-field-parameter` | Deprecated field param names | Rename: `track_visibility`->`tracking`, `oldname`->`_column_rename`, `digits_compute`->`digits` |
+| C8116 | `manifest-superfluous-key` | Manifest key matches default value | Remove key: `'installable': True`, `'auto_install': False`, `'data': []` |
+| W8150 | `odoo-addons-relative-import` | Absolute import of own addon's modules | Convert `from odoo.addons.mymod.x import y` to `from .x import y` |
+| C8107 | `translation-required` | User-facing string not in `_()` | Wrap with `_("...")` -- only for simple `raise`/`UserError`/`ValidationError` patterns |
 
-**LLM-required (spawn odoo-validator agent):**
-- W8160 `missing-translation` — add `_()` wrapping, requires understanding context
-- E8103 `sql-injection-risk` — fix SQL query parameterization
-- E8135 `write-in-compute` — restructure compute method
-- W8106 `method-compute` — add super() call
-- W8138 `except-pass` — fill empty except block
-- C8112 `missing-readme` — generate README.rst
+**LLM-required violations (send to odoo-validator agent):**
 
-### Common Odoo Docker Install Failures — Auto-Fixable vs Not
+| Code | Symbol | Why LLM Required |
+|------|--------|-----------------|
+| E8103 | `sql-injection` | Must understand query context to parameterize correctly |
+| E8135 | `no-write-in-compute` | Must restructure compute method to use assignment instead of write() |
+| W8106 | `method-required-super` | Must add super() call in correct position with correct arguments |
+| W8138 | `except-pass` | Must determine appropriate exception handling for the context |
+| E8102 | `invalid-commit` | Must understand transaction context to determine if commit is needed |
+| C8112 | `missing-readme` | Agent generates README.rst from spec context |
+| R8101 | `odoo-exception-warning` | Replace deprecated `Warning` with `UserError` -- context-dependent |
+| E8106 | `external-request-timeout` | Must add timeout parameter to requests/urllib calls |
+| W8160 | `deprecated-odoo-model-method` | Must replace deprecated method with current equivalent |
 
-Based on error_patterns.json (Phase 3) and Odoo community analysis:
+### Docker Error Pattern Classification (from error_patterns.json)
 
-| Failure | Auto-Fixable? | Fix Strategy |
-|---------|--------------|--------------|
-| XML parse error (mismatched tag) | YES | Parse error for file+line, rewrite file |
-| Missing ACL entry | YES | Regenerate ir.model.access.csv from spec |
-| Field not found in view | YES | Remove field from view or add to model |
-| Missing __init__.py import | YES | Add import to __init__.py |
-| Missing Odoo module dependency | NO | User must add to manifest + Docker image |
-| Python package not installed | NO | User must add to requirements.txt + Docker |
-| Circular dependency | NO | Requires architectural decision |
-| Database constraint violation | NO | Likely test data issue, user must review |
-| Timeout during install (>300s) | NO | Performance or Docker issue |
+| Pattern ID | Auto-Fixable | Agent Strategy |
+|------------|-------------|----------------|
+| `xml-parse-error` | YES | Read error for file+line, agent rewrites XML |
+| `missing-acl` | YES | Agent adds entry to ir.model.access.csv |
+| `view-field-not-found` | YES | Agent removes field from view or adds to model |
+| `import-error` | YES | Agent adds missing import to __init__.py |
+| `missing-required-field` | YES | Agent adds default value to field definition |
+| `invalid-field-definition` | YES | Agent fixes deprecated field parameter |
+| `access-denied` | YES | Agent adds/fixes ACL entry |
+| `field-not-found` | MAYBE | If in Python code: LLM fix. If in view XML: remove from view |
+| `model-not-found` | NO | Requires manifest dependency change + Docker rebuild |
+| `circular-dependency` | NO | Architectural decision |
+| `database-error` | NO | Schema corruption, needs clean run |
+| `constraint-violation` | NO | Business logic or test data issue |
+| `duplicate-xml-id` | NO | Naming decision |
+| `module-not-found` | NO | Missing dependency |
 
 ---
 
@@ -731,34 +769,35 @@ Based on error_patterns.json (Phase 3) and Odoo community analysis:
 
 | Old Approach | Current Approach | When Changed | Impact |
 |--------------|------------------|--------------|--------|
-| odoo-bin --i18n-export for .pot | click-odoo-makepot (requires DB) vs static extraction | Always | Static extraction is the offline-capable alternative |
-| Manual pylint fix review | Pre-commit hooks with `--fix` flag (OCA/odoo-pre-commit-hooks) | 2023-2024 | OCA pre-commit hooks have autofix for field-string-redundant, manifest-superfluous-key |
-| Checkpoint = custom pause logic | GSD `checkpoint:human-verify` task type | Phase 1 of this project | Already implemented, just wire it |
-| `@api.one`, `@api.multi` | Removed, iterate `for rec in self:` | Odoo 17.0 | All generated code already follows this |
+| `odoo-bin --i18n-export` for .pot | Still canonical but requires DB; static extraction for offline use | Always | Static extraction is offline-capable alternative |
+| Manual pylint-odoo fix review | OCA pre-commit hooks with `--fix` for field-string-redundant + manifest-superfluous-key | 2023+ | Partial mechanical fixing is standard practice |
+| Custom pause/wait for review | GSD checkpoint protocol (agent presents box, waits) | This project Phase 1 | Already built, just wire it |
+| Blocking review on every file | Stage-based checkpoints (review after each generation stage) | Best practice | GSD anti-pattern docs warn against per-task checkpoints |
 
 **Deprecated/outdated:**
-- `odoo-bin --i18n-export --language=` (still works but requires running server + DB)
-- `xgettext` on Python-only (misses XML view strings — incomplete extraction)
-- `pygettext` (Python 2 era, superseded by babel/xgettext)
+- `xgettext` on Python only (misses XML view strings)
+- `pygettext` (Python 2 era, superseded by ast-based extraction)
+- `odoo-bin --i18n-export` without database (does not work)
+- Custom feedback loops without retry limits (anti-pattern)
 
 ---
 
 ## Open Questions
 
-1. **Checkpoint placement granularity**
-   - What we know: GSD warns against checkpoints after every task
-   - What's unclear: Should security generation and test generation be one combined checkpoint (Wave 2) or two separate checkpoints?
-   - Recommendation: Combine security + tests into one checkpoint — they are reviewed together (does the security match the tests?). That gives 3 checkpoints: (1) after Jinja2 render, (2) after Wave 1 model methods, (3) after Wave 2 views+tests+security.
+1. **REVW-03 checkpoint granularity**
+   - What we know: Security files (security.xml, ir.model.access.csv) are generated in Jinja2 Pass 1 alongside model files
+   - What's unclear: Should security get its own checkpoint, or is reviewing it alongside models sufficient?
+   - Recommendation: Combine with REVW-01 (3 checkpoints total). Security files are deterministic from the spec (Jinja2 template) and straightforward to review alongside models. A separate checkpoint adds friction without value.
 
-2. **REVW-05 (skippable) — is auto_advance sufficient or does it need a per-command flag?**
-   - What we know: `workflow.auto_advance = true` in config.json bypasses all human-verify checkpoints
-   - What's unclear: User may want to skip checkpoints for one specific `/odoo-gen:new` call without changing global config
-   - Recommendation: For Phase 7, `auto_advance` is sufficient — it's already the GSD standard. A per-call `--no-review` flag is a Phase 9 polish item.
+2. **click-odoo-makepot integration timing**
+   - What we know: click-odoo-makepot requires running Odoo with module installed in a database
+   - What's unclear: Should we run it inside Docker AFTER successful module install (before teardown)?
+   - Recommendation: Defer to future enhancement. Static extraction is sufficient for v1. If desired later, add as a post-validation step inside docker_runner.py before _teardown().
 
-3. **click-odoo-makepot integration timing**
-   - What we know: click-odoo-makepot requires a running Odoo with module installed
-   - What's unclear: Should it run BEFORE Docker teardown (after successful QUAL-04 validation), or always use static extraction?
-   - Recommendation: Use static extraction always for simplicity. If click-odoo-makepot is desired in future, add it as a post-validation step before teardown in docker_runner.py.
+3. **Regeneration scope for Wave 2 feedback**
+   - What we know: Wave 2 runs view-gen and test-gen in parallel
+   - What's unclear: If user wants view changes at Checkpoint 3, do we also re-run test-gen?
+   - Recommendation: Re-run only the affected agent. If user says "fix the view buttons", re-spawn only odoo-view-gen. If user says "tests are wrong", re-spawn only odoo-test-gen. If ambiguous, re-spawn both.
 
 ---
 
@@ -767,68 +806,73 @@ Based on error_patterns.json (Phase 3) and Odoo community analysis:
 ### Test Framework
 | Property | Value |
 |----------|-------|
-| Framework | pytest 7.x (existing — Phase 3 infrastructure) |
+| Framework | pytest (existing -- Phase 3 infrastructure) |
 | Config file | `python/pyproject.toml` (existing) |
-| Quick run command | `cd python && python -m pytest tests/ -x -q` |
-| Full suite command | `cd python && python -m pytest tests/ -v` |
+| Quick run command | `cd /home/inshal-rauf/Odoo_module_automation/python && python -m pytest tests/ -x -q` |
+| Full suite command | `cd /home/inshal-rauf/Odoo_module_automation/python && python -m pytest tests/ -v` |
 
-### Phase Requirements → Test Map
+### Phase Requirements -> Test Map
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
 | REVW-01..04 | Checkpoint placement in generate.md | Manual review | Read generate.md and verify checkpoint instructions present | N/A (workflow doc) |
-| REVW-05 | auto_advance bypasses checkpoints | Unit (config parsing) | `pytest tests/test_auto_advance.py -x` | Wave 0 |
-| REVW-06 | Feedback incorporated in re-generation | Unit (prompt template) | `pytest tests/test_regeneration_prompt.py -x` | Wave 0 |
-| QUAL-06 | .pot file generated with correct format | Unit (i18n_extractor) | `pytest tests/test_i18n_extractor.py -x` | Wave 0 |
-| QUAL-09 | pylint auto-fix reduces violations | Unit (auto_fix) | `pytest tests/test_pylint_autofix.py -x` | Wave 0 |
-| QUAL-10 | Docker auto-fix re-validates | Integration (mock Docker) | `pytest tests/test_docker_autofix.py -x` | Wave 0 |
+| REVW-05 | auto_advance config skips checkpoints | Unit (config check) | `pytest tests/test_config_auto_advance.py -x` | Wave 0 |
+| REVW-06 | Feedback prompt template construction | Unit (prompt builder) | `pytest tests/test_feedback_prompt.py -x` | Wave 0 |
+| QUAL-06 | .pot file with correct entries | Unit (i18n_extractor) | `pytest tests/test_i18n_extractor.py -x` | Wave 0 |
+| QUAL-09 | Mechanical pylint fixes reduce violations | Unit (auto_fix) | `pytest tests/test_pylint_autofix.py -x` | Wave 0 |
+| QUAL-10 | Docker auto-fix loop re-validates | Integration (mock Docker) | `pytest tests/test_docker_autofix.py -x` | Wave 0 |
 
 ### Sampling Rate
-- **Per task commit:** `cd python && python -m pytest tests/ -x -q`
-- **Per wave merge:** `cd python && python -m pytest tests/ -v --tb=short`
+- **Per task commit:** `cd /home/inshal-rauf/Odoo_module_automation/python && python -m pytest tests/ -x -q`
+- **Per wave merge:** `cd /home/inshal-rauf/Odoo_module_automation/python && python -m pytest tests/ -v --tb=short`
 - **Phase gate:** Full suite green before `/gsd:verify-work`
 
 ### Wave 0 Gaps
-- [ ] `python/tests/test_i18n_extractor.py` — covers QUAL-06 (AST extraction, XML extraction, .pot format)
-- [ ] `python/tests/test_pylint_autofix.py` — covers QUAL-09 (W8113/W8111/C8116/W8150 mechanical fixes)
-- [ ] `python/tests/test_docker_autofix.py` — covers QUAL-10 (auto-fix loop with mock docker_install_module)
-- [ ] `python/tests/test_auto_advance.py` — covers REVW-05 (config flag behavior)
-- [ ] `python/tests/test_regeneration_prompt.py` — covers REVW-06 (prompt template construction)
+- [ ] `python/tests/test_i18n_extractor.py` -- covers QUAL-06 (AST extraction, XML extraction, .pot file writing, deduplication)
+- [ ] `python/tests/test_pylint_autofix.py` -- covers QUAL-09 (W8113 removal, W8111 rename, C8116 removal, W8150 conversion, AST parse safety check)
+- [ ] `python/tests/test_docker_autofix.py` -- covers QUAL-10 (auto-fix loop with mock docker_install_module, retry limit, escalation)
+- [ ] `python/tests/test_config_auto_advance.py` -- covers REVW-05 (config flag reading behavior)
+- [ ] `python/tests/test_feedback_prompt.py` -- covers REVW-06 (prompt template construction, diff generation)
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- GSD source: `/home/inshal-rauf/get-shit-done/get-shit-done/references/checkpoints.md` — full checkpoint protocol, task types, display format
-- GSD source: `/home/inshal-rauf/get-shit-done/get-shit-done/workflows/execute-phase.md` — checkpoint_handling step, auto_advance behavior
-- GSD source: `/home/inshal-rauf/get-shit-done/get-shit-done/workflows/execute-plan.md` — checkpoint_protocol step, Pattern A/B/C routing
-- Project source: `/home/inshal-rauf/Odoo_module_automation/workflows/generate.md` — current pipeline structure
-- Project source: `/home/inshal-rauf/Odoo_module_automation/python/src/odoo_gen_utils/validation/pylint_runner.py` — existing pylint infrastructure
-- Project source: `/home/inshal-rauf/Odoo_module_automation/python/src/odoo_gen_utils/validation/docker_runner.py` — Docker runner with teardown guarantees
-- Project source: `/home/inshal-rauf/Odoo_module_automation/python/src/odoo_gen_utils/validation/error_patterns.json` — existing error classification
-- Project source: `/home/inshal-rauf/Odoo_module_automation/knowledge/i18n.md` — i18n rules including .pot generation guidance
-- Python stdlib: `difflib.unified_diff` — official documentation
-- Python stdlib: `ast.parse`, `ast.walk` — official documentation
+- GSD source: `~/.claude/get-shit-done/references/checkpoints.md` -- full checkpoint protocol, 3 types, display format, auto-mode behavior
+- GSD source: `~/.claude/get-shit-done/workflows/execute-plan.md` -- Pattern A/B/C routing, checkpoint_protocol step, deviation rules
+- GSD source: `~/.claude/get-shit-done/workflows/execute-phase.md` -- checkpoint_handling step, auto_advance config check, wave execution
+- Project source: `workflows/generate.md` -- current two-pass pipeline (Jinja2 + Wave 1 + Wave 2)
+- Project source: `workflows/spec.md` -- trigger point for generate.md (Step 4.3)
+- Project source: `python/src/odoo_gen_utils/validation/pylint_runner.py` -- existing pylint infrastructure, JSON2 parsing
+- Project source: `python/src/odoo_gen_utils/validation/docker_runner.py` -- Docker lifecycle with teardown guarantees
+- Project source: `python/src/odoo_gen_utils/validation/error_patterns.py` -- error diagnosis engine
+- Project source: `python/src/odoo_gen_utils/validation/data/error_patterns.json` -- 25 error patterns with IDs
+- Project source: `python/src/odoo_gen_utils/validation/types.py` -- Violation, InstallResult, TestResult dataclasses
+- Project source: `knowledge/i18n.md` -- Odoo 17.0 i18n rules, _() usage, .pot generation
+- Python stdlib: `difflib.unified_diff`, `ast.parse`, `ast.walk`, `xml.etree.ElementTree` -- official documentation
 
 ### Secondary (MEDIUM confidence)
-- WebFetch: https://github.com/OCA/odoo-pre-commit-hooks — auto-fixable checks confirmed: field-string-redundant, manifest-superfluous-key, po-pretty-format
-- WebFetch: https://github.com/acsone/click-odoo-contrib — click-odoo-makepot confirmed requires database; confirmed CLI options
-- WebSearch + multiple sources: pylint-odoo W8113, W8111, C8116, W8150 confirmed as mechanical-fixable
+- [OCA/pylint-odoo README](https://github.com/OCA/pylint-odoo/blob/main/README.md) -- complete violation code table, verified W8113/W8111/C8116/W8150/C8107 codes and symbols
+- [OCA/odoo-pre-commit-hooks README](https://github.com/OCA/odoo-pre-commit-hooks/blob/main/README.md) -- auto-fixable checks confirmed: field-string-redundant, manifest-superfluous-key, po-pretty-format, prefer-env-translation
+- [acsone/click-odoo-contrib](https://github.com/acsone/click-odoo-contrib) -- click-odoo-makepot confirmed requires database connection; CLI options documented
 
-### Tertiary (LOW confidence — needs validation)
-- ReCode framework `max_retry: 4` parameter — used as reference for retry limit recommendation (set to 3 for this project)
-- OCA pre-commit hooks `oca-checks-odoo-module --fix` flag — confirmed existence, specific W8xxx codes need validation against current version
+### Tertiary (LOW confidence -- needs validation)
+- Max retry count of 3 for checkpoint regeneration: industry convention (3-5 retries), no single authoritative source
+- Max retry count of 2 for Docker auto-fix: derived from Docker cycle time estimate (2-5 min each)
+- `C8107 translation-required` as mechanically fixable: only for simple patterns (`raise ValidationError("text")`); complex cases need LLM
 
 ---
 
 ## Metadata
 
 **Confidence breakdown:**
-- GSD checkpoint mechanism: HIGH — read source directly
-- i18n .pot approach (static extraction): MEDIUM — no official Odoo static extractor exists, pattern derived from knowledge
-- pylint auto-fixable violations list: MEDIUM — confirmed from OCA pre-commit-hooks source + pylint-odoo README analysis
-- Docker auto-fix patterns: MEDIUM — derived from existing error_patterns.json + Odoo community
-- Max retry limits: LOW — industry convention (3-5 retries) supported by ReCode paper reference
+- GSD checkpoint mechanism: HIGH -- read source files directly, behavior verified
+- Checkpoint placement in generate.md: HIGH -- mapped to existing pipeline stages with clear rationale
+- i18n .pot extraction approach: HIGH -- Python stdlib AST and ET are well-understood; limitation of missing field strings is documented
+- pylint auto-fixable violations: HIGH -- verified against official OCA/pylint-odoo README table
+- Docker auto-fix patterns: MEDIUM-HIGH -- classified from existing error_patterns.json (verified) + community knowledge
+- Max retry limits: LOW -- industry convention, no single authoritative source
+- W8111 renamed parameters list: MEDIUM -- verified `track_visibility->tracking` from pylint-odoo; other renames need validation
 
 **Research date:** 2026-03-02
-**Valid until:** 2026-06-01 (90 days — pylint-odoo and GSD are stable; OCA pre-commit hooks evolve faster)
+**Valid until:** 2026-06-01 (90 days -- pylint-odoo and GSD are stable; OCA pre-commit hooks evolve faster)
