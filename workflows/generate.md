@@ -104,10 +104,18 @@ Spawn these two agents in parallel using the Task tool:
 **Prompt:**
 > Read all model files in `$OUTPUT_DIR/$MODULE_NAME/models/` and the corresponding test files
 > in `$OUTPUT_DIR/$MODULE_NAME/tests/`. Read spec at `$SPEC_PATH`.
-> For each model with computed fields, onchange handlers, or @api.constrains methods:
-> add test methods to the existing test_{model_var}.py file. Phase 5 scope: computed field
-> tests (2 per field), constraint tests (valid + invalid assertRaises), onchange tests (1 each).
-> Use TransactionCase. Do NOT duplicate existing test method names.
+> For each model: rewrite the complete test_{model_var}.py file with all Phase 6 test categories:
+> (1) Computed field tests (2 per computed field: basic + zero_case)
+> (2) Constraint tests (valid + invalid with assertRaises(ValidationError))
+> (3) Onchange tests (1 per onchange handler)
+> (4) CRUD write test (1 per model: write a field, assert changed)
+> (5) CRUD unlink test (1 per model: delete record, assert browse().exists() is False)
+> (6) Access rights tests (2 per model: test_user_can_create with module User group via with_user(),
+>     test_no_group_cannot_create with base.group_user only, assertRaises(AccessError))
+> (7) Workflow transition tests (1 per consecutive state pair when workflow_states in spec has 2+ entries,
+>     call action_STATE_KEY(), assert state changed)
+> Use TransactionCase. Import AccessError from odoo.exceptions. Do NOT duplicate existing test method names.
+> Read the module_name from spec.json to build group refs: MODULE_NAME.group_MODULE_NAME_user
 
 Wait for BOTH tasks to complete.
 
