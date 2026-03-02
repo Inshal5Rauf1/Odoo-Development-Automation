@@ -129,12 +129,12 @@ These capabilities come from GSD. Our work is wiring them to Odoo-specific workf
 
 *Note: GSD provides the checkpoint mechanism (GSD-05, GSD-06, GSD-07). These requirements specify WHERE checkpoints occur in the Odoo workflow.*
 
-- [ ] **REVW-01**: System pauses for human review after model generation (fields, relationships, constraints)
-- [ ] **REVW-02**: System pauses for human review after view generation (form, list, search XML)
-- [ ] **REVW-03**: System pauses for human review after security generation (groups, ACLs, record rules)
-- [ ] **REVW-04**: System pauses for human review after business logic generation (computed fields, workflows, CRUD overrides)
-- [ ] **REVW-05**: User can approve, request changes, or reject at each checkpoint (wired to GSD-06)
-- [ ] **REVW-06**: System incorporates user feedback and regenerates the rejected section (wired to GSD-07)
+- [x] **REVW-01**: System pauses for human review after model generation (fields, relationships, constraints)
+- [x] **REVW-02**: System pauses for human review after view generation (form, list, search XML)
+- [x] **REVW-03**: System pauses for human review after security generation (groups, ACLs, record rules)
+- [x] **REVW-04**: System pauses for human review after business logic generation (computed fields, workflows, CRUD overrides)
+- [x] **REVW-05**: User can approve, request changes, or reject at each checkpoint (wired to GSD-06)
+- [x] **REVW-06**: System incorporates user feedback and regenerates the rejected section (wired to GSD-07)
 
 ### Step 11-12: Quality & Validation
 
@@ -143,7 +143,7 @@ These capabilities come from GSD. Our work is wiring them to Odoo-specific workf
 - [x] **QUAL-03**: System spins up a Docker-based Odoo 17.0 + PostgreSQL environment for validation
 - [x] **QUAL-04**: System installs the generated module on the Docker Odoo instance and reports install success/failure
 - [x] **QUAL-05**: System runs the generated tests on the Docker Odoo instance and reports pass/fail results
-- [ ] **QUAL-06**: System generates i18n `.pot` file for translatable strings
+- [x] **QUAL-06**: System generates i18n `.pot` file for translatable strings
 - [x] **QUAL-07**: System parses Odoo error logs on validation failure and provides actionable diagnosis (which file, what broke, suggested fix)
 - [x] **QUAL-08**: All generated code targets Odoo 17.0 API exclusively (no mixing of deprecated API patterns)
 - [ ] **QUAL-09**: System attempts to auto-fix pylint-odoo violations and re-validate before escalating to human
@@ -241,13 +241,13 @@ Deferred to future release. Tracked but not in current roadmap.
 | TEST-04 | Phase 6: Security & Test Generation | Complete |
 | TEST-05 | Phase 6: Security & Test Generation | Complete |
 | TEST-06 | Phase 6: Security & Test Generation | Complete |
-| REVW-01 | Phase 7: Human Review & Quality Loops | Pending |
-| REVW-02 | Phase 7: Human Review & Quality Loops | Pending |
-| REVW-03 | Phase 7: Human Review & Quality Loops | Pending |
-| REVW-04 | Phase 7: Human Review & Quality Loops | Pending |
-| REVW-05 | Phase 7: Human Review & Quality Loops | Pending |
-| REVW-06 | Phase 7: Human Review & Quality Loops | Pending |
-| QUAL-06 | Phase 7: Human Review & Quality Loops | Pending |
+| REVW-01 | Phase 7: Human Review & Quality Loops | Complete |
+| REVW-02 | Phase 7: Human Review & Quality Loops | Complete |
+| REVW-03 | Phase 7: Human Review & Quality Loops | Complete |
+| REVW-04 | Phase 7: Human Review & Quality Loops | Complete |
+| REVW-05 | Phase 7: Human Review & Quality Loops | Complete |
+| REVW-06 | Phase 7: Human Review & Quality Loops | Complete |
+| QUAL-06 | Phase 7: Human Review & Quality Loops | Complete |
 | QUAL-09 | Phase 7: Human Review & Quality Loops | Pending |
 | QUAL-10 | Phase 7: Human Review & Quality Loops | Pending |
 | SRCH-01 | Phase 8: Search & Fork-Extend | Pending |

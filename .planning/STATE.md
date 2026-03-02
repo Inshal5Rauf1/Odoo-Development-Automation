@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-02T20:00:00.000Z"
+last_updated: "2026-03-02T20:25:00.000Z"
 progress:
   total_phases: 9
   completed_phases: 6
-  total_plans: 19
-  completed_plans: 18
+  total_plans: 20
+  completed_plans: 19
 ---
 
 # Project State
@@ -19,16 +19,16 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** Phase 6 - Security & Test Generation (Phases 1-5 complete)
+**Current focus:** Phase 7 - Human Review & Quality Loops (Phases 1-6 complete)
 
 ## Current Position
 
-Phase: 6 of 9 (Security & Test Generation) -- COMPLETE
-Plan: 2 of 2 complete in Phase 6 (06-02)
-Status: Phase 6 COMPLETE -- SECG-01..05 and TEST-01..06 satisfied; 130/130 tests pass; test template expanded, agents activated
-Last activity: 2026-03-02 -- Completed 06-02 (test_model.py.j2 expansion, odoo-test-gen/security-gen activation, generate.md Phase 6 update)
+Phase: 7 of 9 (Human Review & Quality Loops) -- IN PROGRESS
+Plan: 2 of 3 complete in Phase 7 (07-02)
+Status: 07-02 complete -- generate.md rewritten with 3 checkpoints (CP-1, CP-2, CP-3), i18n extraction step, regeneration logic
+Last activity: 2026-03-02 -- Completed 07-02 (generate.md checkpoint wiring for REVW-01..06)
 
-Progress: [█████████░] 83%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -57,6 +57,8 @@ Progress: [█████████░] 83%
 | Phase 05 P02 | 2 min | 2 tasks | 3 files |
 | Phase 06 P01 | 5min | 2 tasks | 3 files |
 | Phase 06 P02 | 3min | 2 tasks | 4 files |
+| Phase 07 P01 | 5min | 2 tasks | 3 files |
+| Phase 07 P02 | 4 min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -133,6 +135,14 @@ Recent decisions affecting current work:
 - [Phase 06-02]: Workflow transition tests guarded by state_field not None AND workflow_states|length >= 2
 - [Phase 06-02]: Access rights tests use groups_id [(6, 0, [...])] to SET group list (not additive (4, id) form)
 - [Phase 06-02]: odoo-test-gen now rewrites ENTIRE test file (not appends) with all 7 Phase 6 test categories
+- [Phase 07-01]: Static i18n extraction using ast + xml.etree.ElementTree (no new dependencies, no live Odoo server)
+- [Phase 07-01]: ElementTree line numbers unreliable -- use 0 for all XML entries in POT source references
+- [Phase 07-01]: Always generate POT header even when no translatable strings found (Odoo expects file to exist)
+- [Phase 07-01]: Known gap accepted: Python field string= auto-translations not extracted (requires Odoo runtime, deferred to Phase 9)
+- [Phase 07-02]: REVW-05 handled by existing GSD auto_advance config -- no new code, noted in workflow
+- [Phase 07-02]: Checkpoints written as prose markdown sections for agent consumption (not PLAN.md XML)
+- [Phase 07-02]: Max 3 retry limit per checkpoint with graceful escalation message
+- [Phase 07-02]: i18n extraction (Step 3.5) is non-blocking -- failure does not prevent commit
 
 ### Pending Todos
 
@@ -147,5 +157,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 06-02-PLAN.md — Phase 6 complete; test template expanded, agents activated, 130/130 tests pass
-Resume file: No active checkpoint -- Phase 6 complete, ready for Phase 7 (Human Review & Quality Loops)
+Stopped at: Completed 07-02-PLAN.md -- generate.md rewritten with 3 checkpoints, i18n step, regeneration logic
+Resume file: No active checkpoint -- ready for 07-03 (auto-fix validation wiring)
