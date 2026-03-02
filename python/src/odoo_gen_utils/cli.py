@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from odoo_gen_utils import __version__
+from odoo_gen_utils.auto_fix import format_escalation, run_pylint_fix_loop
 from odoo_gen_utils.i18n_extractor import extract_translatable_strings, generate_pot
 from odoo_gen_utils.kb_validator import validate_kb_directory, validate_kb_file
 from odoo_gen_utils.renderer import (
@@ -284,11 +285,13 @@ def extract_i18n(module_path: str) -> None:
 @main.command()
 @click.argument("module_path", type=click.Path(exists=True))
 @click.option("--pylint-only", is_flag=True, help="Run only pylint-odoo (skip Docker)")
+@click.option("--auto-fix", is_flag=True, help="Attempt to auto-fix pylint violations (max 2 cycles)")
 @click.option("--json", "json_output", is_flag=True, help="Output JSON report (machine-readable)")
 @click.option("--pylintrc", type=click.Path(exists=True), help="Path to .pylintrc-odoo config file")
 def validate(
     module_path: str,
     pylint_only: bool,
+    auto_fix: bool,
     json_output: bool,
     pylintrc: str | None,
 ) -> None:
@@ -297,6 +300,9 @@ def validate(
     Runs pylint-odoo static analysis and optionally Docker-based installation
     and test execution. Produces a structured report with violations, install
     result, test results, and actionable error diagnosis.
+
+    With --auto-fix, attempts to mechanically fix known pylint violations
+    (up to 2 cycles) before reporting remaining issues.
     """
     mod_path = Path(module_path).resolve()
 
@@ -315,8 +321,15 @@ def validate(
         if candidate.exists():
             pylintrc_path = candidate
 
-    # Step 1: Run pylint-odoo
-    violations = run_pylint_odoo(mod_path, pylintrc_path=pylintrc_path)
+    # Step 1: Run pylint-odoo (with optional auto-fix loop)
+    if auto_fix:
+        total_fixed, violations = run_pylint_fix_loop(mod_path, pylintrc_path=pylintrc_path)
+        if total_fixed > 0:
+            click.echo(f"Auto-fix: fixed {total_fixed} pylint violations")
+        if violations:
+            click.echo(format_escalation(violations))
+    else:
+        violations = run_pylint_odoo(mod_path, pylintrc_path=pylintrc_path)
 
     install_result = None
     test_results: tuple = ()

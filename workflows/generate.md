@@ -7,7 +7,7 @@ Called from spec.md after user approval. NOT called by scaffold.md or /odoo-gen:
 
 ## Overview
 
-This workflow implements a two-pass hybrid approach to module generation with **three human review checkpoints** and an **i18n extraction step**:
+This workflow implements a two-pass hybrid approach to module generation with **three human review checkpoints**, an **i18n extraction step**, and a **validation + auto-fix step**:
 
 1. **Pass 1 (Jinja2):** `odoo-gen-utils render-module` runs the Jinja2 template engine to produce all structural files, including `# TODO: implement` method stubs for computed fields, onchange handlers, and constraint methods.
 
@@ -25,9 +25,11 @@ This workflow implements a two-pass hybrid approach to module generation with **
 
 7. **i18n Extraction:** Extract translatable strings into a `.pot` file.
 
-8. **Commit:** All generated files are committed to git in a single atomic commit.
+8. **Validation + Auto-Fix:** Run pylint-odoo with auto-fix, optionally Docker validation.
 
-9. **Report:** A generation summary is displayed to the user.
+9. **Commit:** All generated files are committed to git in a single atomic commit.
+
+10. **Report:** A generation summary is displayed to the user.
 
 This workflow does NOT generate kanban views (deferred to Phase 7 per Decision F).
 This workflow does NOT generate CRUD overrides (deferred to Phase 7 per Decision A).
@@ -282,6 +284,58 @@ This scans all Python files for `_()` calls and XML files for `string=` attribut
 If the command fails, report the error but do NOT block the commit. The `.pot` file is a quality enhancement, not a generation blocker.
 
 Known limitation: field `string=` parameter translations (e.g., `fields.Char(string="My Field")`) are not extracted by static analysis. This is expected for v1.
+
+---
+
+## Step 3.6: Validate and Auto-Fix
+
+Run validation with auto-fix enabled:
+
+```bash
+odoo-gen-utils validate "$OUTPUT_DIR/$MODULE_NAME" --auto-fix --pylint-only
+```
+
+**Pylint auto-fix (QUAL-09):**
+The `--auto-fix` flag runs up to 2 fix cycles for these mechanically fixable violations:
+- W8113 (redundant `string=`), W8111 (renamed parameter), C8116 (superfluous manifest key),
+  W8150 (absolute-to-relative import), C8107 (missing manifest key)
+
+If violations remain after 2 cycles, present the escalation to the user:
+```
+Auto-fix exhausted. Remaining violations:
+
+[file:line] CODE: message
+  -> suggestion
+```
+
+Do NOT auto-spawn any agent for remaining violations. The user decides whether to fix manually or run `/odoo-gen:validate` again.
+
+**Docker auto-fix (QUAL-10):**
+If Docker validation is enabled (not `--pylint-only`), the system attempts to auto-fix these patterns:
+- `xml_parse_error`: check for unclosed tags, fix XML syntax
+- `missing_acl`: regenerate `ir.model.access.csv` via the `access_csv.j2` template
+- `missing_import`: add missing Python import to the relevant model file
+- `manifest_load_order`: reorder `data` list in `__manifest__.py`
+
+Max 2 Docker fix cycles (Docker runs take 2-5 min each; more would be too slow).
+
+If issues remain after 2 Docker attempts, present escalation:
+```
+Docker validation failed after 2 fix attempts. Remaining issues:
+
+INSTALL FAILED:
+  [description of failure with file reference]
+  -> suggestion
+
+TEST FAILURES:
+  [test_name]: FAIL
+  [error details]
+  -> suggestion
+
+Run /odoo-gen:validate for full details.
+```
+
+**Important:** Step 3.6 validation is informational -- it does NOT block the commit. The module is committed first (Step 4), then validation results are presented. This ensures the user always has the generated code available.
 
 ---
 
