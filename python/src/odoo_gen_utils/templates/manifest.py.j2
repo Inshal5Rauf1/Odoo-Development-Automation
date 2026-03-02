@@ -13,10 +13,8 @@
 {% endfor %}
     ],
     "data": [
-        "security/security.xml",
-        "security/ir.model.access.csv",
-{% for vf in view_files %}
-        "views/{{ vf }}",
+{% for f in manifest_files %}
+        "{{ f }}",
 {% endfor %}
     ],
     "demo": [
