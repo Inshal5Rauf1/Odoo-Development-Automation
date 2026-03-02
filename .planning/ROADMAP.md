@@ -129,11 +129,11 @@ Plans:
   3. System generates record rules for multi-company scenarios and a module category for the group hierarchy
   4. System generates test files using `TransactionCase` with real assertions covering CRUD, access rights, computed fields, constraints, and workflow transitions
   5. Generated tests are runnable via `/odoo-gen:validate` and exercise the actual security rules
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md — TDD: has_company_field detection + record_rules.xml.j2 template + renderer extensions (SECG-01, SECG-03, SECG-04, SECG-05)
+- [ ] 06-02-PLAN.md — Expand test_model.py.j2 + activate odoo-test-gen + activate odoo-security-gen + update generate.md (SECG-02, SECG-04, TEST-01..06)
 
 ### Phase 7: Human Review & Quality Loops
 **Goal**: GSD checkpoints are wired to each Odoo generation stage, with feedback incorporation and auto-fix before escalating
@@ -205,3 +205,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 *Roadmap created: 2026-03-01*
 *Revised: 2026-03-01 — architecture pivot to GSD extension*
 *Revised: 2026-03-02 — Phase 5 plans defined*
+*Revised: 2026-03-02 — Phase 6 plans defined (06-01, 06-02)*
