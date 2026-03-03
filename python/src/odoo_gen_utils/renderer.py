@@ -45,11 +45,56 @@ def _to_xml_id(name: str) -> str:
     return name.replace(".", "_")
 
 
+def _register_filters(env: Environment) -> Environment:
+    """Register Odoo-specific Jinja2 filters on an Environment.
+
+    Args:
+        env: Jinja2 Environment to register filters on.
+
+    Returns:
+        The same Environment with filters registered.
+    """
+    env.filters["model_ref"] = _model_ref
+    env.filters["to_class"] = _to_class
+    env.filters["to_python_var"] = _to_python_var
+    env.filters["to_xml_id"] = _to_xml_id
+    return env
+
+
+def create_versioned_renderer(version: str) -> Environment:
+    """Create a Jinja2 Environment that loads version-specific then shared templates.
+
+    Uses a FileSystemLoader with a fallback chain: version-specific directory first,
+    then shared directory. Templates in the version directory override shared ones.
+
+    Args:
+        version: Odoo version string (e.g., "17.0", "18.0").
+
+    Returns:
+        Configured Jinja2 Environment with versioned template loading.
+    """
+    base = Path(__file__).parent / "templates"
+    version_dir = str(base / version)
+    shared_dir = str(base / "shared")
+    env = Environment(
+        loader=FileSystemLoader([version_dir, shared_dir]),
+        undefined=StrictUndefined,
+        keep_trailing_newline=True,
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+    return _register_filters(env)
+
+
 def create_renderer(template_dir: Path) -> Environment:
     """Create a Jinja2 Environment configured for Odoo module rendering.
 
     Uses StrictUndefined to fail loudly on missing template variables (Pitfall 1 prevention).
     Registers custom filters for Odoo-specific name conversions.
+
+    If template_dir is the base templates directory (containing 17.0/, 18.0/, shared/
+    subdirectories), falls back to create_versioned_renderer("17.0") for backward
+    compatibility after the template reorganization in Phase 9.
 
     Args:
         template_dir: Path to the directory containing .j2 template files.
@@ -57,6 +102,11 @@ def create_renderer(template_dir: Path) -> Environment:
     Returns:
         Configured Jinja2 Environment.
     """
+    # Detect if this is the base templates dir (reorganized layout)
+    base_templates = Path(__file__).parent / "templates"
+    if template_dir.resolve() == base_templates.resolve():
+        return create_versioned_renderer("17.0")
+
     env = Environment(
         loader=FileSystemLoader(str(template_dir)),
         undefined=StrictUndefined,
@@ -64,13 +114,7 @@ def create_renderer(template_dir: Path) -> Environment:
         trim_blocks=True,
         lstrip_blocks=True,
     )
-
-    env.filters["model_ref"] = _model_ref
-    env.filters["to_class"] = _to_class
-    env.filters["to_python_var"] = _to_python_var
-    env.filters["to_xml_id"] = _to_xml_id
-
-    return env
+    return _register_filters(env)
 
 
 def render_template(
@@ -274,6 +318,11 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
         tests/, demo/, static/description/, README.rst,
         data/ (sequences.xml + data.xml), wizards/ (if spec has wizards)
 
+    When ``odoo_version`` is present in *spec*, templates are loaded from the
+    corresponding versioned directory (e.g. ``templates/18.0/``) with a fallback
+    to ``templates/shared/``.  The *template_dir* parameter is still accepted for
+    backward compatibility but is ignored when the spec contains ``odoo_version``.
+
     Args:
         spec: Module specification dictionary with module_name, models, etc.
         template_dir: Path to Jinja2 template files.
@@ -282,7 +331,8 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
     Returns:
         List of all created file paths.
     """
-    env = create_renderer(template_dir)
+    version = spec.get("odoo_version", "17.0")
+    env = create_versioned_renderer(version)
     module_name = spec["module_name"]
     module_dir = output_dir / module_name
     created_files: list[Path] = []
