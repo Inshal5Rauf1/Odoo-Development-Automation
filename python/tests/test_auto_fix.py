@@ -22,8 +22,11 @@ from odoo_gen_utils.auto_fix import (
     FIXABLE_DOCKER_PATTERNS,
     FIXABLE_PYLINT_CODES,
     MAX_FIX_CYCLES,
+    _DOCKER_PATTERN_KEYWORDS,
+    fix_missing_mail_thread,
     fix_pylint_violation,
     fix_pylint_violations,
+    fix_unused_imports,
     format_escalation,
     identify_docker_fix,
     is_fixable_pylint,
@@ -419,3 +422,336 @@ class TestFormatEscalation:
     def test_empty_violations_returns_no_issues(self):
         result = format_escalation(())
         assert result == "No remaining issues."
+
+
+# ---------------------------------------------------------------------------
+# fix_missing_mail_thread -- AFIX-01
+# ---------------------------------------------------------------------------
+
+
+class TestFixMissingMailThread:
+    """Detects chatter XML references and adds _inherit to model.py."""
+
+    def _make_module(self, tmp_path: Path, model_content: str, xml_content: str) -> Path:
+        """Helper: create a minimal module directory with models/ and views/."""
+        module_dir = tmp_path / "test_module"
+        (module_dir / "models").mkdir(parents=True)
+        (module_dir / "views").mkdir(parents=True)
+        (module_dir / "models" / "model.py").write_text(
+            textwrap.dedent(model_content), encoding="utf-8"
+        )
+        (module_dir / "views" / "model_views.xml").write_text(
+            textwrap.dedent(xml_content), encoding="utf-8"
+        )
+        return module_dir
+
+    def test_adds_inherit_when_oe_chatter_present(self, tmp_path: Path):
+        model_content = """\
+            from odoo import fields, models
+
+            class HrTraining(models.Model):
+                _name = "hr.training"
+                _description = "HR Training"
+
+                name = fields.Char(string="Name", required=True)
+        """
+        xml_content = """\
+            <odoo>
+                <record id="view_hr_training_form" model="ir.ui.view">
+                    <field name="arch" type="xml">
+                        <form>
+                            <sheet><group><field name="name"/></group></sheet>
+                            <div class="oe_chatter">
+                                <field name="message_follower_ids"/>
+                                <field name="message_ids"/>
+                            </div>
+                        </form>
+                    </field>
+                </record>
+            </odoo>
+        """
+        module_dir = self._make_module(tmp_path, model_content, xml_content)
+        result = fix_missing_mail_thread(module_dir)
+        assert result is True
+
+        content = (module_dir / "models" / "model.py").read_text(encoding="utf-8")
+        assert "_inherit = ['mail.thread', 'mail.activity.mixin']" in content
+
+    def test_adds_inherit_when_chatter_tag_present(self, tmp_path: Path):
+        model_content = """\
+            from odoo import fields, models
+
+            class HrTraining(models.Model):
+                _name = "hr.training"
+                _description = "HR Training"
+
+                name = fields.Char(string="Name", required=True)
+        """
+        xml_content = """\
+            <odoo>
+                <record id="view_hr_training_form" model="ir.ui.view">
+                    <field name="arch" type="xml">
+                        <form>
+                            <sheet><group><field name="name"/></group></sheet>
+                            <chatter/>
+                        </form>
+                    </field>
+                </record>
+            </odoo>
+        """
+        module_dir = self._make_module(tmp_path, model_content, xml_content)
+        result = fix_missing_mail_thread(module_dir)
+        assert result is True
+
+        content = (module_dir / "models" / "model.py").read_text(encoding="utf-8")
+        assert "_inherit = ['mail.thread', 'mail.activity.mixin']" in content
+
+    def test_adds_inherit_when_message_ids_present(self, tmp_path: Path):
+        model_content = """\
+            from odoo import fields, models
+
+            class HrTraining(models.Model):
+                _name = "hr.training"
+                _description = "HR Training"
+
+                name = fields.Char(string="Name", required=True)
+        """
+        xml_content = """\
+            <odoo>
+                <record id="view_hr_training_form" model="ir.ui.view">
+                    <field name="arch" type="xml">
+                        <form>
+                            <sheet><group><field name="name"/></group></sheet>
+                            <field name="message_ids"/>
+                        </form>
+                    </field>
+                </record>
+            </odoo>
+        """
+        module_dir = self._make_module(tmp_path, model_content, xml_content)
+        result = fix_missing_mail_thread(module_dir)
+        assert result is True
+
+        content = (module_dir / "models" / "model.py").read_text(encoding="utf-8")
+        assert "_inherit = ['mail.thread', 'mail.activity.mixin']" in content
+
+    def test_no_change_when_inherit_already_present(self, tmp_path: Path):
+        model_content = """\
+            from odoo import fields, models
+
+            class HrTraining(models.Model):
+                _name = "hr.training"
+                _inherit = ['mail.thread', 'mail.activity.mixin']
+                _description = "HR Training"
+
+                name = fields.Char(string="Name", required=True)
+        """
+        xml_content = """\
+            <odoo>
+                <record id="view_hr_training_form" model="ir.ui.view">
+                    <field name="arch" type="xml">
+                        <form>
+                            <sheet><group><field name="name"/></group></sheet>
+                            <div class="oe_chatter">
+                                <field name="message_follower_ids"/>
+                                <field name="message_ids"/>
+                            </div>
+                        </form>
+                    </field>
+                </record>
+            </odoo>
+        """
+        module_dir = self._make_module(tmp_path, model_content, xml_content)
+        result = fix_missing_mail_thread(module_dir)
+        assert result is False
+
+    def test_no_change_when_no_chatter_xml(self, tmp_path: Path):
+        model_content = """\
+            from odoo import fields, models
+
+            class HrTraining(models.Model):
+                _name = "hr.training"
+                _description = "HR Training"
+
+                name = fields.Char(string="Name", required=True)
+        """
+        xml_content = """\
+            <odoo>
+                <record id="view_hr_training_form" model="ir.ui.view">
+                    <field name="arch" type="xml">
+                        <form>
+                            <sheet><group><field name="name"/></group></sheet>
+                        </form>
+                    </field>
+                </record>
+            </odoo>
+        """
+        module_dir = self._make_module(tmp_path, model_content, xml_content)
+        result = fix_missing_mail_thread(module_dir)
+        assert result is False
+
+    def test_inherit_inserted_after_description(self, tmp_path: Path):
+        model_content = """\
+            from odoo import fields, models
+
+            class HrTraining(models.Model):
+                _name = "hr.training"
+                _description = "HR Training"
+
+                name = fields.Char(string="Name", required=True)
+        """
+        xml_content = """\
+            <odoo>
+                <record id="view_hr_training_form" model="ir.ui.view">
+                    <field name="arch" type="xml">
+                        <form>
+                            <sheet><group><field name="name"/></group></sheet>
+                            <div class="oe_chatter">
+                                <field name="message_follower_ids"/>
+                                <field name="message_ids"/>
+                            </div>
+                        </form>
+                    </field>
+                </record>
+            </odoo>
+        """
+        module_dir = self._make_module(tmp_path, model_content, xml_content)
+        fix_missing_mail_thread(module_dir)
+
+        content = (module_dir / "models" / "model.py").read_text(encoding="utf-8")
+        lines = content.split("\n")
+        desc_idx = next(i for i, line in enumerate(lines) if "_description" in line)
+        inherit_idx = next(i for i, line in enumerate(lines) if "_inherit" in line)
+        assert inherit_idx == desc_idx + 1
+
+
+# ---------------------------------------------------------------------------
+# fix_unused_imports -- AFIX-02
+# ---------------------------------------------------------------------------
+
+
+class TestFixUnusedImports:
+    """Detects and removes unused imports in generated Python files."""
+
+    def test_removes_unused_validation_error(self, tmp_path: Path):
+        src = textwrap.dedent("""\
+            from odoo import fields, models
+            from odoo.exceptions import ValidationError
+
+            class TestModel(models.Model):
+                _name = "test.model"
+                _description = "Test Model"
+
+                name = fields.Char(string="Name", required=True)
+        """)
+        py_file = tmp_path / "test_model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is True
+
+        content = py_file.read_text(encoding="utf-8")
+        assert "ValidationError" not in content
+
+    def test_removes_unused_api(self, tmp_path: Path):
+        src = textwrap.dedent("""\
+            from odoo import api, fields, models
+
+            class TestModel(models.Model):
+                _name = "test.model"
+                _description = "Test Model"
+
+                name = fields.Char(string="Name", required=True)
+        """)
+        py_file = tmp_path / "test_model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is True
+
+        content = py_file.read_text(encoding="utf-8")
+        assert "api" not in content
+        assert "from odoo import fields, models" in content
+
+    def test_keeps_used_imports(self, tmp_path: Path):
+        src = textwrap.dedent("""\
+            from odoo import api, fields, models
+            from odoo.exceptions import AccessError, ValidationError
+
+            class TestModel(models.Model):
+                _name = "test.model"
+                _description = "Test Model"
+
+                name = fields.Char(string="Name", required=True)
+
+                @api.constrains("name")
+                def _check_name(self):
+                    for record in self:
+                        if not record.name:
+                            raise ValidationError("Name is required")
+                        if not self.env.user.has_group("base.group_user"):
+                            raise AccessError("Not allowed")
+        """)
+        py_file = tmp_path / "test_model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is False
+
+    def test_removes_only_unused_from_multi_import(self, tmp_path: Path):
+        src = textwrap.dedent("""\
+            from odoo import fields, models
+            from odoo.exceptions import AccessError, ValidationError
+
+            class TestModel(models.Model):
+                _name = "test.model"
+                _description = "Test Model"
+
+                name = fields.Char(string="Name", required=True)
+
+                def check_access(self):
+                    if not self.env.user.has_group("base.group_user"):
+                        raise AccessError("Not allowed")
+        """)
+        py_file = tmp_path / "test_model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is True
+
+        content = py_file.read_text(encoding="utf-8")
+        assert "ValidationError" not in content
+        assert "AccessError" in content
+
+    def test_no_change_empty_file(self, tmp_path: Path):
+        py_file = tmp_path / "empty.py"
+        py_file.write_text("", encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Updated constants -- missing_mail_thread in Docker patterns
+# ---------------------------------------------------------------------------
+
+
+class TestUpdatedConstants:
+    """Verify FIXABLE_DOCKER_PATTERNS updated to include missing_mail_thread."""
+
+    def test_fixable_docker_patterns_contains_five(self):
+        assert len(FIXABLE_DOCKER_PATTERNS) == 5
+        assert "missing_mail_thread" in FIXABLE_DOCKER_PATTERNS
+
+    def test_docker_pattern_keywords_has_mail_thread(self):
+        assert "missing_mail_thread" in _DOCKER_PATTERN_KEYWORDS
+
+    def test_identify_docker_fix_mail_thread(self):
+        result = identify_docker_fix("missing mail.thread inheritance")
+        assert result == "missing_mail_thread"
+
+    def test_identify_docker_fix_oe_chatter(self):
+        result = identify_docker_fix(
+            "oe_chatter div found but model lacks mail.thread"
+        )
+        assert result == "missing_mail_thread"
