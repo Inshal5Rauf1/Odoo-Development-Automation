@@ -21,8 +21,10 @@ from odoo_gen_utils.search.query import (
     format_results_text,
     search_modules,
 )
+from odoo_gen_utils.edition import check_enterprise_dependencies
 from odoo_gen_utils.renderer import (
     create_renderer,
+    create_versioned_renderer,
     get_template_dir,
     render_module,
     render_template,
@@ -72,8 +74,14 @@ def render(template: str, output: str, var: tuple[str, ...], var_file: str | Non
         except json.JSONDecodeError:
             context[key] = value
 
-    template_dir = get_template_dir()
-    env = create_renderer(template_dir)
+    # Version-aware renderer: if --var odoo_version=18.0 is provided, use
+    # the versioned renderer for that Odoo version.
+    odoo_version = context.get("odoo_version")
+    if odoo_version:
+        env = create_versioned_renderer(odoo_version)
+    else:
+        template_dir = get_template_dir()
+        env = create_renderer(template_dir)
 
     try:
         output_path = render_template(env, template, Path(output), context)
@@ -84,27 +92,57 @@ def render(template: str, output: str, var: tuple[str, ...], var_file: str | Non
 
 
 @main.command("list-templates")
-def list_templates() -> None:
-    """List all available Jinja2 templates."""
+@click.option("--version", "odoo_version", default=None, help="Odoo version to list templates for (e.g., 17.0, 18.0)")
+def list_templates(odoo_version: str | None) -> None:
+    """List all available Jinja2 templates.
+
+    Lists templates from shared/ plus version-specific directories. Use --version
+    to filter to a specific Odoo version.
+    """
     template_dir = get_template_dir()
 
     if not template_dir.is_dir():
         click.echo(f"Templates directory not found: {template_dir}", err=True)
         sys.exit(1)
 
-    templates = sorted(template_dir.glob("*.j2"))
+    # Collect templates from version directories and shared/
+    shared_dir = template_dir / "shared"
+    all_templates: list[tuple[str, Path]] = []
 
-    if not templates:
+    if odoo_version:
+        # Show only the specified version + shared
+        version_dir = template_dir / odoo_version
+        if version_dir.is_dir():
+            for tmpl in sorted(version_dir.glob("*.j2")):
+                all_templates.append((f"[{odoo_version}]", tmpl))
+        if shared_dir.is_dir():
+            for tmpl in sorted(shared_dir.glob("*.j2")):
+                all_templates.append(("[shared]", tmpl))
+    else:
+        # Show all version dirs and shared
+        for subdir in sorted(template_dir.iterdir()):
+            if subdir.is_dir():
+                label = f"[{subdir.name}]"
+                for tmpl in sorted(subdir.glob("*.j2")):
+                    all_templates.append((label, tmpl))
+
+    # Fallback: try flat directory (pre-reorganization layout)
+    if not all_templates:
+        flat_templates = sorted(template_dir.glob("*.j2"))
+        for tmpl in flat_templates:
+            all_templates.append(("", tmpl))
+
+    if not all_templates:
         click.echo("No templates found.", err=True)
         sys.exit(1)
 
-    for tmpl in templates:
-        # Extract description from first Jinja2 comment if present
+    for label, tmpl in all_templates:
         description = _extract_template_description(tmpl)
+        prefix = f"{label:10s} " if label else ""
         if description:
-            click.echo(f"{tmpl.name:30s} {description}")
+            click.echo(f"{prefix}{tmpl.name:30s} {description}")
         else:
-            click.echo(tmpl.name)
+            click.echo(f"{prefix}{tmpl.name}")
 
 
 def _extract_template_description(template_path: Path) -> str:
@@ -289,6 +327,46 @@ def extract_i18n(module_path: str) -> None:
     except Exception as exc:
         click.echo(f"Error extracting i18n strings: {exc}", err=True)
         sys.exit(1)
+
+
+@main.command("check-edition")
+@click.argument("spec_file", type=click.Path(exists=True))
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def check_edition(spec_file: str, json_output: bool) -> None:
+    """Check a module spec for Enterprise-only dependencies.
+
+    Reads the depends list from a spec JSON file and reports any
+    Enterprise-only modules with Community alternatives.
+
+    Exit code is always 0 -- warnings are informational (Decision B).
+    """
+    try:
+        spec = json.loads(Path(spec_file).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        click.echo(f"Error reading spec file: {exc}", err=True)
+        sys.exit(1)
+
+    depends = spec.get("depends", ["base"])
+    warnings = check_enterprise_dependencies(depends)
+
+    if not warnings:
+        click.echo("All dependencies are Community-compatible.")
+        return
+
+    if json_output:
+        click.echo(json.dumps(warnings, indent=2))
+        return
+
+    click.echo(f"Found {len(warnings)} Enterprise-only dependency(ies):\n")
+    for w in warnings:
+        click.echo(f"  * {w['module']} ({w['display_name']}) [{w['category']}]")
+        if w.get("alternative"):
+            click.echo(f"    Community alternative: {w['alternative']} ({w['alternative_repo']})")
+            if w.get("notes"):
+                click.echo(f"    Notes: {w['notes']}")
+        else:
+            click.echo("    No known Community alternative.")
+        click.echo()
 
 
 @main.command()
