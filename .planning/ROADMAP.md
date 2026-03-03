@@ -26,7 +26,7 @@
 
 ### v1.1 Tech Debt Cleanup
 
-- [ ] **Phase 10: Environment & Dependencies** — GitHub auth, PyTorch CPU-only clean install verification
+- [x] **Phase 10: Environment & Dependencies** — GitHub auth, PyTorch CPU-only clean install verification (completed 2026-03-03)
 - [ ] **Phase 11: Live Integration Testing & i18n** — Docker live validation, field string= i18n extraction
 
 ## Phase Details
@@ -60,7 +60,7 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 10. Environment & Dependencies | v1.1 | 0/2 | Planned | - |
+| 10. Environment & Dependencies | 2/2 | Complete   | 2026-03-03 | - |
 | 11. Live Integration Testing & i18n | v1.1 | 0/TBD | Not started | - |
 
 ---
