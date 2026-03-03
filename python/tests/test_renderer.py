@@ -835,3 +835,339 @@ class TestRenderModule18:
             assert "<list" in content
             assert "<chatter/>" in content
             assert "<tree" not in content
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: _build_model_context -- inherit_list (TMPL-01)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildModelContextInheritList:
+    """Tests that _build_model_context builds inherit_list from mail dependency + explicit inherit."""
+
+    def test_inherit_list_with_mail_dependency(self):
+        """spec with depends=["base", "mail"], model with no explicit inherit -> inherit_list has mail mixins."""
+        model = {
+            "name": "test.model",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        spec = _make_spec(models=[model])
+        spec["depends"] = ["base", "mail"]
+        ctx = _build_model_context(spec, model)
+        assert ctx["inherit_list"] == ["mail.thread", "mail.activity.mixin"]
+
+    def test_inherit_list_merges_explicit_inherit(self):
+        """spec with mail + model with inherit="portal.mixin" -> inherit_list has all 3."""
+        model = {
+            "name": "test.model",
+            "inherit": "portal.mixin",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        spec = _make_spec(models=[model])
+        spec["depends"] = ["base", "mail"]
+        ctx = _build_model_context(spec, model)
+        assert "portal.mixin" in ctx["inherit_list"]
+        assert "mail.thread" in ctx["inherit_list"]
+        assert "mail.activity.mixin" in ctx["inherit_list"]
+        assert len(ctx["inherit_list"]) == 3
+
+    def test_inherit_list_no_mail_empty(self):
+        """spec with depends=["base"], model with no inherit -> inherit_list is empty."""
+        model = {
+            "name": "test.model",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["inherit_list"] == []
+
+    def test_inherit_list_no_mail_explicit_inherit(self):
+        """spec with depends=["base"], model with inherit="portal.mixin" -> inherit_list has only portal.mixin."""
+        model = {
+            "name": "test.model",
+            "inherit": "portal.mixin",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["inherit_list"] == ["portal.mixin"]
+
+    def test_inherit_list_mail_no_duplicates(self):
+        """spec with mail + model with inherit="mail.thread" -> mail.thread appears exactly once."""
+        model = {
+            "name": "test.model",
+            "inherit": "mail.thread",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        spec = _make_spec(models=[model])
+        spec["depends"] = ["base", "mail"]
+        ctx = _build_model_context(spec, model)
+        assert ctx["inherit_list"].count("mail.thread") == 1
+        assert "mail.activity.mixin" in ctx["inherit_list"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: _build_model_context -- needs_api (TMPL-02)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildModelContextNeedsApi:
+    """Tests that _build_model_context sets needs_api based on decorator usage."""
+
+    def test_needs_api_true_with_computed(self):
+        """Model with a computed field -> needs_api is True."""
+        model = {
+            "name": "test.model",
+            "fields": [
+                {"name": "total", "type": "Float", "compute": "_compute_total", "depends": ["qty"]},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["needs_api"] is True
+
+    def test_needs_api_true_with_onchange(self):
+        """Model with onchange field -> needs_api is True."""
+        model = {
+            "name": "test.model",
+            "fields": [
+                {"name": "partner_id", "type": "Many2one", "comodel_name": "res.partner", "onchange": True},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["needs_api"] is True
+
+    def test_needs_api_true_with_constrained(self):
+        """Model with constrained field -> needs_api is True."""
+        model = {
+            "name": "test.model",
+            "fields": [
+                {"name": "date_start", "type": "Date", "constrains": ["date_start", "date_end"]},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["needs_api"] is True
+
+    def test_needs_api_true_with_sequence(self):
+        """Model with sequence field (uses @api.model) -> needs_api is True."""
+        model = {
+            "name": "test.model",
+            "fields": [
+                {"name": "reference", "type": "Char", "required": True},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["needs_api"] is True
+
+    def test_needs_api_false_plain_fields(self):
+        """Model with only plain Char/Integer fields -> needs_api is False."""
+        model = {
+            "name": "test.model",
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {"name": "qty", "type": "Integer"},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["needs_api"] is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: Template rendering -- mail.thread inheritance (TMPL-01)
+# ---------------------------------------------------------------------------
+
+
+class TestTemplateMailInheritance:
+    """Tests that rendered model.py has correct _inherit line when mail is in depends."""
+
+    def test_model_py_has_mail_thread_inherit_when_mail_depends(self):
+        """render_module with mail in depends -> model.py contains _inherit = ['mail.thread', 'mail.activity.mixin']."""
+        spec = {
+            "module_name": "test_mail",
+            "depends": ["base", "mail"],
+            "models": [
+                {
+                    "name": "test.record",
+                    "description": "Test Record",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            model_file = next(f for f in files if "test_record.py" in str(f) and "test_" not in Path(f).parent.name)
+            content = Path(model_file).read_text(encoding="utf-8")
+            assert "_inherit = [" in content, f"Expected _inherit list in model.py. Got:\n{content}"
+            assert "mail.thread" in content
+            assert "mail.activity.mixin" in content
+
+    def test_model_py_no_inherit_when_no_mail(self):
+        """render_module without mail -> model.py does NOT contain _inherit."""
+        spec = {
+            "module_name": "test_nomail",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.record",
+                    "description": "Test Record",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            model_file = next(f for f in files if "test_record.py" in str(f) and "test_" not in Path(f).parent.name)
+            content = Path(model_file).read_text(encoding="utf-8")
+            assert "_inherit" not in content, f"Unexpected _inherit in model.py without mail. Got:\n{content}"
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: Template rendering -- conditional api import (TMPL-02)
+# ---------------------------------------------------------------------------
+
+
+class TestTemplateConditionalApiImport:
+    """Tests that rendered model.py conditionally imports api based on decorator usage."""
+
+    def test_model_py_no_api_import_plain_fields(self):
+        """render with plain fields only -> model.py does NOT have 'from odoo import api'."""
+        spec = {
+            "module_name": "test_noapi",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.simple",
+                    "description": "Test Simple",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "qty", "type": "Integer"},
+                    ],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            model_file = next(f for f in files if "test_simple.py" in str(f) and "test_" not in Path(f).parent.name)
+            content = Path(model_file).read_text(encoding="utf-8")
+            assert "from odoo import api" not in content, f"Unexpected api import in plain model. Got:\n{content}"
+            assert "from odoo import fields, models" in content, f"Missing fields/models import. Got:\n{content}"
+
+    def test_model_py_has_api_import_with_computed(self):
+        """render with computed field -> model.py has 'from odoo import api, fields, models'."""
+        spec = {
+            "module_name": "test_withapi",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.computed",
+                    "description": "Test Computed",
+                    "fields": [
+                        {"name": "qty", "type": "Integer"},
+                        {"name": "total", "type": "Float", "compute": "_compute_total", "depends": ["qty"]},
+                    ],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            model_file = next(f for f in files if "test_computed.py" in str(f) and "test_" not in Path(f).parent.name)
+            content = Path(model_file).read_text(encoding="utf-8")
+            assert "from odoo import api, fields, models" in content, f"Missing api import with computed. Got:\n{content}"
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: Template rendering -- clean manifest (TMPL-03)
+# ---------------------------------------------------------------------------
+
+
+class TestTemplateManifestClean:
+    """Tests that rendered __manifest__.py does not contain superfluous defaults."""
+
+    def test_manifest_no_installable_key(self):
+        """render module -> __manifest__.py does NOT contain '"installable"'."""
+        spec = {
+            "module_name": "test_manifest",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.item",
+                    "description": "Test Item",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            manifest_file = next(f for f in files if Path(f).name == "__manifest__.py")
+            content = Path(manifest_file).read_text(encoding="utf-8")
+            assert '"installable"' not in content, f"Unexpected 'installable' key in manifest. Got:\n{content}"
+
+    def test_manifest_no_auto_install_key(self):
+        """render module -> __manifest__.py does NOT contain '"auto_install"'."""
+        spec = {
+            "module_name": "test_manifest2",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.item",
+                    "description": "Test Item",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            manifest_file = next(f for f in files if Path(f).name == "__manifest__.py")
+            content = Path(manifest_file).read_text(encoding="utf-8")
+            assert '"auto_install"' not in content, f"Unexpected 'auto_install' key in manifest. Got:\n{content}"
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: Template rendering -- clean test file (TMPL-04)
+# ---------------------------------------------------------------------------
+
+
+class TestTemplateTestFileClean:
+    """Tests that rendered test files import only AccessError, not ValidationError."""
+
+    def test_test_file_no_validation_error_import(self):
+        """render module -> test file does NOT contain 'ValidationError'."""
+        spec = {
+            "module_name": "test_clean",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.item",
+                    "description": "Test Item",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            test_file = next(f for f in files if "test_test_item.py" in str(f))
+            content = Path(test_file).read_text(encoding="utf-8")
+            assert "ValidationError" not in content, f"Unexpected ValidationError in test file. Got:\n{content}"
+
+    def test_test_file_has_access_error_import(self):
+        """render module -> test file contains 'AccessError'."""
+        spec = {
+            "module_name": "test_clean2",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.item",
+                    "description": "Test Item",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            test_file = next(f for f in files if "test_test_item.py" in str(f))
+            content = Path(test_file).read_text(encoding="utf-8")
+            assert "AccessError" in content, f"Missing AccessError in test file. Got:\n{content}"
