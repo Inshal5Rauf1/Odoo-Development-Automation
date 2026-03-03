@@ -24,11 +24,11 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 ## Current Position
 
 Phase: 9 of 9 (Edition & Version Support) -- IN PROGRESS
-Plan: 1 of 3 complete in Phase 9 (09-01 done, 09-02 and 09-03 remaining)
-Status: Plan 09-01 complete -- Enterprise registry + edition checker. Ready for 09-02.
-Last activity: 2026-03-03 -- Completed 09-01 (Enterprise module registry and edition checker)
+Plan: 2 of 3 complete in Phase 9 (09-01, 09-02 done, 09-03 remaining)
+Status: Plan 09-02 complete -- Versioned templates (17.0/18.0/shared) + version-aware renderer. Ready for 09-03.
+Last activity: 2026-03-03 -- Completed 09-02 (versioned templates and renderer)
 
-Progress: [████████████████████████] 96% (Phases 1-8 complete, Phase 9: 1/3 plans done)
+Progress: [█████████████████████████] 97% (Phases 1-8 complete, Phase 9: 2/3 plans done)
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Progress: [███████████████████████
 | Phase 08 P01 | 5 min | 2 tasks | 8 files |
 | Phase 08 P02 | 4 min | 2 tasks | 6 files |
 | Phase 08 P03 | 5 min | 2 tasks | 7 files |
+| Phase 09 P02 | 3 min | 2 tasks | 26 files |
 | Phase 09 P01 | 2 min | 1 tasks | 3 files |
 
 ## Accumulated Context
@@ -167,6 +168,9 @@ Recent decisions affecting current work:
 - [Phase 08-03]: Security group extraction from res.groups records AND ir.module.category records with 'group' in ID
 - [Phase 08-03]: Companion module naming: {original}_ext suffix per Decision C
 - [Phase 08-03]: Refined spec saved to both {module}_ext/spec.json AND overwrites original (REFN-03)
+- [Phase 09-02]: FileSystemLoader([version_dir, shared_dir]) for template fallback -- version-specific overrides shared
+- [Phase 09-02]: create_renderer() backward compat: detects base templates dir, falls back to versioned 17.0 loading
+- [Phase 09-02]: Separate template files per version (no conditional version logic inside templates)
 - [Phase 09-01]: JSON data file for Enterprise registry (not hardcoded Python)
 - [Phase 09-01]: Module-level caching for registry to avoid repeated file I/O
 - [Phase 09-01]: community_alternative as nullable object (null when no OCA equivalent)
@@ -184,5 +188,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 09-01-PLAN.md (Enterprise registry + edition checker). 09-02 next.
-Resume file: No active checkpoint -- continue with 09-02
+Stopped at: Completed 09-02-PLAN.md (versioned templates + renderer). 243 tests pass. Ready for 09-03.
+Resume file: No active checkpoint -- continue with 09-03

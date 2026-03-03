@@ -154,9 +154,9 @@ These capabilities come from GSD. Our work is wiring them to Odoo-specific workf
 - [x] **VERS-01**: System knows which Odoo modules are Enterprise-only (e.g., `account_asset`, `helpdesk`, `quality_control`)
 - [x] **VERS-02**: System flags when user's description requires Enterprise-only dependencies
 - [x] **VERS-03**: System offers Community-compatible alternatives when Enterprise dependencies are detected
-- [ ] **VERS-04**: System supports generating modules for Odoo 18.0 in addition to 17.0
-- [ ] **VERS-05**: System uses version-specific templates and syntax rules per target version
-- [ ] **VERS-06**: User can specify target Odoo version via config or command parameter
+- [x] **VERS-04**: System supports generating modules for Odoo 18.0 in addition to 17.0
+- [x] **VERS-05**: System uses version-specific templates and syntax rules per target version
+- [x] **VERS-06**: User can specify target Odoo version via config or command parameter
 
 ## v2 Requirements
 
@@ -265,9 +265,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | VERS-01 | Phase 9: Edition & Version Support | Complete |
 | VERS-02 | Phase 9: Edition & Version Support | Complete |
 | VERS-03 | Phase 9: Edition & Version Support | Complete |
-| VERS-04 | Phase 9: Edition & Version Support | Pending |
-| VERS-05 | Phase 9: Edition & Version Support | Pending |
-| VERS-06 | Phase 9: Edition & Version Support | Pending |
+| VERS-04 | Phase 9: Edition & Version Support | Complete |
+| VERS-05 | Phase 9: Edition & Version Support | Complete |
+| VERS-06 | Phase 9: Edition & Version Support | Complete |
 
 **Coverage:**
 - GSD-inherited: 13 (free)
