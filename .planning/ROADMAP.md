@@ -53,7 +53,7 @@
 **Plans:** 2/2 plans complete
 Plans:
 - [x] 12-01-PLAN.md — Fix 4 template bugs (mail.thread inheritance, conditional api import, clean manifest, clean test imports)
-- [ ] 12-02-PLAN.md — Expand auto-fix (missing mail.thread, unused imports) and update knowledge base
+- [x] 12-02-PLAN.md — Expand auto-fix (missing mail.thread, unused imports) and update knowledge base
 
 ### Phase 13: Golden Path Regression Testing
 **Goal**: A single E2E test proves that the full pipeline (render templates with realistic spec, Docker install, run Odoo tests) produces a working module -- catching template regressions automatically
@@ -63,14 +63,16 @@ Plans:
   1. An E2E test renders a realistic module spec (including mail dependency, chatter views, computed fields) through the template engine and produces a complete module directory
   2. The rendered module installs successfully in a Docker Odoo 17.0 instance (no ImportError, no registry errors)
   3. The rendered module's own Odoo tests run inside Docker and all pass (zero failures)
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 13-01-PLAN.md — Golden path E2E regression test (render + Docker install + Docker test execution)
 
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 12. Template Correctness & Auto-Fix | 2/2 | Complete    | 2026-03-03 | 2026-03-03 |
-| 13. Golden Path Regression Testing | v1.2 | 0/TBD | Not started | - |
+| 12. Template Correctness & Auto-Fix | v1.2 | 2/2 | Complete | 2026-03-03 |
+| 13. Golden Path Regression Testing | v1.2 | 0/1 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-01*
