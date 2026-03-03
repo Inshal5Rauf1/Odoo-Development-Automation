@@ -9,10 +9,10 @@ Requirements for this release. Each maps to roadmap phases.
 
 ### Template Fixes
 
-- [ ] **TMPL-01**: model.py.j2 adds `_inherit = ['mail.thread', 'mail.activity.mixin']` when `mail` is in depends (both 17.0 and 18.0)
-- [ ] **TMPL-02**: model.py.j2 only imports `api` when @api.* decorators are used (both 17.0 and 18.0)
-- [ ] **TMPL-03**: manifest.py.j2 does not emit `installable: True` or `auto_install: False` (Odoo defaults)
-- [ ] **TMPL-04**: test_model.py.j2 does not import unused `ValidationError`
+- [x] **TMPL-01**: model.py.j2 adds `_inherit = ['mail.thread', 'mail.activity.mixin']` when `mail` is in depends (both 17.0 and 18.0)
+- [x] **TMPL-02**: model.py.j2 only imports `api` when @api.* decorators are used (both 17.0 and 18.0)
+- [x] **TMPL-03**: manifest.py.j2 does not emit `installable: True` or `auto_install: False` (Odoo defaults)
+- [x] **TMPL-04**: test_model.py.j2 does not import unused `ValidationError`
 
 ### Regression Prevention
 
@@ -21,13 +21,13 @@ Requirements for this release. Each maps to roadmap phases.
 
 ### Auto-Fix Expansion
 
-- [ ] **AFIX-01**: Auto-fix detects missing `mail.thread` inheritance when chatter XML references exist and adds the `_inherit` line
-- [ ] **AFIX-02**: Auto-fix detects and removes unused imports in generated Python files (e.g., `ValidationError`, `api`)
+- [x] **AFIX-01**: Auto-fix detects missing `mail.thread` inheritance when chatter XML references exist and adds the `_inherit` line
+- [x] **AFIX-02**: Auto-fix detects and removes unused imports in generated Python files (e.g., `ValidationError`, `api`)
 
 ### Knowledge Base
 
-- [ ] **KNOW-01**: Model generation knowledge file documents when `_inherit = ['mail.thread', 'mail.activity.mixin']` is required
-- [ ] **KNOW-02**: Model generation knowledge file documents the relationship between `mail` dependency, chatter XML, and model inheritance
+- [x] **KNOW-01**: Model generation knowledge file documents when `_inherit = ['mail.thread', 'mail.activity.mixin']` is required
+- [x] **KNOW-02**: Model generation knowledge file documents the relationship between `mail` dependency, chatter XML, and model inheritance
 
 ## Future Requirements
 
@@ -52,16 +52,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TMPL-01 | Phase 12 | Pending |
-| TMPL-02 | Phase 12 | Pending |
-| TMPL-03 | Phase 12 | Pending |
-| TMPL-04 | Phase 12 | Pending |
+| TMPL-01 | Phase 12 | Complete |
+| TMPL-02 | Phase 12 | Complete |
+| TMPL-03 | Phase 12 | Complete |
+| TMPL-04 | Phase 12 | Complete |
 | REGR-01 | Phase 13 | Pending |
 | REGR-02 | Phase 13 | Pending |
-| AFIX-01 | Phase 12 | Pending |
-| AFIX-02 | Phase 12 | Pending |
-| KNOW-01 | Phase 12 | Pending |
-| KNOW-02 | Phase 12 | Pending |
+| AFIX-01 | Phase 12 | Complete |
+| AFIX-02 | Phase 12 | Complete |
+| KNOW-01 | Phase 12 | Complete |
+| KNOW-02 | Phase 12 | Complete |
 
 **Coverage:**
 - v1.2 requirements: 10 total

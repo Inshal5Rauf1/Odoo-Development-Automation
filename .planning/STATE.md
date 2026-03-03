@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Template Quality
-status: planning
-stopped_at: Phase 12 context gathered
-last_updated: "2026-03-03T16:30:55.699Z"
-last_activity: 2026-03-03 -- Roadmap created for v1.2
+status: executing
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-03-03T17:14:51.243Z"
+last_activity: 2026-03-03 -- Completed 12-01 template correctness fixes
 progress:
   total_phases: 2
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State
@@ -27,24 +27,24 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 12 of 13 (Template Correctness & Auto-Fix)
-Plan: Ready to plan
-Status: Ready to plan
-Last activity: 2026-03-03 -- Roadmap created for v1.2
+Plan: 2 of 2 complete
+Status: Phase 12 complete
+Last activity: 2026-03-03 -- Completed 12-02 auto-fix and knowledge base
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0 (v1.2)
-- Average duration: --
-- Total execution time: --
+- Total plans completed: 2 (v1.2)
+- Average duration: 4.5min
+- Total execution time: 9min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 12 | 2 | 9min | 4.5min |
 
 *Updated after each plan completion*
 
@@ -65,7 +65,10 @@ Progress: [░░░░░░░░░░] 0%
 
 ### Decisions
 
-(New milestone -- no decisions yet)
+- inherit_list uses ordered list so explicit inherit appears first, mail mixins after (12-01)
+- needs_api computed from existing context vars rather than inline template logic (12-01)
+- [Phase 12]: Used AST parsing for import analysis rather than pure regex
+- [Phase 12]: Targeted unused import detection at known template patterns (api, ValidationError) rather than general-purpose analyzer
 
 ### Blockers/Concerns
 
@@ -73,6 +76,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T16:30:55.698Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-template-correctness-auto-fix/12-CONTEXT.md
+Last session: 2026-03-03T17:14:51.242Z
+Stopped at: Completed 12-02-PLAN.md
+Resume file: None

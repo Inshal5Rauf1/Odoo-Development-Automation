@@ -35,7 +35,7 @@
 
 ### v1.2 Template Quality
 
-- [ ] **Phase 12: Template Correctness & Auto-Fix** - Fix template bugs, expand auto-fix for structural issues, update knowledge base with mail.thread rules
+- [x] **Phase 12: Template Correctness & Auto-Fix** - Fix template bugs, expand auto-fix for structural issues, update knowledge base with mail.thread rules (completed 2026-03-03)
 - [ ] **Phase 13: Golden Path Regression Testing** - E2E test that renders a realistic module, Docker-installs it, runs its tests, and asserts everything passes
 
 ## Phase Details
@@ -50,9 +50,9 @@
   3. Rendered `__manifest__.py` contains no `installable` or `auto_install` keys (Odoo defaults omitted)
   4. Rendered test files do not import `ValidationError` unless the test actually uses it
   5. Running the auto-fix on a module with chatter XML but missing `mail.thread` inheritance adds the `_inherit` line, and running it on files with unused imports removes them
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
-- [ ] 12-01-PLAN.md — Fix 4 template bugs (mail.thread inheritance, conditional api import, clean manifest, clean test imports)
+- [x] 12-01-PLAN.md — Fix 4 template bugs (mail.thread inheritance, conditional api import, clean manifest, clean test imports)
 - [ ] 12-02-PLAN.md — Expand auto-fix (missing mail.thread, unused imports) and update knowledge base
 
 ### Phase 13: Golden Path Regression Testing
@@ -69,7 +69,7 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 12. Template Correctness & Auto-Fix | v1.2 | 0/2 | Planning complete | - |
+| 12. Template Correctness & Auto-Fix | 2/2 | Complete   | 2026-03-03 | 2026-03-03 |
 | 13. Golden Path Regression Testing | v1.2 | 0/TBD | Not started | - |
 
 ---
