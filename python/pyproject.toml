@@ -17,6 +17,13 @@ dependencies = [
 test = [
     "pytest>=8.0",
 ]
+search = [
+    "chromadb>=1.5",
+    "sentence-transformers>=5.2",
+    "torch>=2.6",
+    "PyGithub>=2.8",
+    "gitpython>=3.1",
+]
 
 [project.scripts]
 odoo-gen-utils = "odoo_gen_utils.cli:main"
@@ -27,6 +34,14 @@ packages = ["src/odoo_gen_utils"]
 [tool.ruff]
 target-version = "py312"
 line-length = 120
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
