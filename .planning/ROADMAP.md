@@ -72,7 +72,7 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 12. Template Correctness & Auto-Fix | v1.2 | 2/2 | Complete | 2026-03-03 |
-| 13. Golden Path Regression Testing | v1.2 | 1/1 | Complete | 2026-03-03 |
+| 13. Golden Path Regression Testing | v1.2 | Complete    | 2026-03-03 | 2026-03-03 |
 
 ---
 *Roadmap created: 2026-03-01*
