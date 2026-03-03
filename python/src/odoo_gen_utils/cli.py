@@ -12,6 +12,8 @@ from odoo_gen_utils import __version__
 from odoo_gen_utils.auto_fix import format_escalation, run_pylint_fix_loop
 from odoo_gen_utils.i18n_extractor import extract_translatable_strings, generate_pot
 from odoo_gen_utils.kb_validator import validate_kb_directory, validate_kb_file
+from odoo_gen_utils.search import build_oca_index, get_github_token, get_index_status
+from odoo_gen_utils.search.index import DEFAULT_DB_PATH
 from odoo_gen_utils.renderer import (
     create_renderer,
     get_template_dir,
@@ -377,3 +379,70 @@ def validate(
 
     if has_issues:
         sys.exit(1)
+
+
+@main.command("build-index")
+@click.option("--token", envvar="GITHUB_TOKEN", default=None, help="GitHub personal access token")
+@click.option("--db-path", default=None, help="ChromaDB storage path (default: ~/.local/share/odoo-gen/chromadb/)")
+@click.option("--update", is_flag=True, help="Only re-index repos pushed since last build")
+def build_index(token: str | None, db_path: str | None, update: bool) -> None:
+    """Build or update the local ChromaDB index of OCA Odoo modules.
+
+    Crawls all OCA GitHub repositories with a 17.0 branch, extracts module
+    metadata from __manifest__.py files, and stores embeddings in a local
+    ChromaDB database for semantic search.
+    """
+    if token is None:
+        token = get_github_token()
+
+    if not token:
+        click.echo(
+            "Index build requires GitHub authentication.\n"
+            "Run: gh auth login\n"
+            "Or set: export GITHUB_TOKEN=your_token\n"
+            "Then re-run your search."
+        )
+        sys.exit(1)
+
+    resolved_path = db_path or str(DEFAULT_DB_PATH)
+
+    def _progress(done: int, total: int) -> None:
+        click.echo(f"Indexing OCA repos... {done}/{total}", nl=False)
+        click.echo("\r", nl=False)
+
+    click.echo("Building OCA module index...")
+    count = build_oca_index(
+        token=token,
+        db_path=resolved_path,
+        incremental=update,
+        progress_callback=_progress,
+    )
+    click.echo(f"Indexed {count} modules from OCA")
+
+
+@main.command("index-status")
+@click.option("--db-path", default=None, help="ChromaDB storage path")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def index_status(db_path: str | None, json_output: bool) -> None:
+    """Show the status of the local OCA module search index.
+
+    Reports whether the index exists, how many modules are indexed,
+    when it was last built, and the storage location.
+    """
+    status = get_index_status(db_path)
+
+    if json_output:
+        import dataclasses
+
+        click.echo(json.dumps(dataclasses.asdict(status), indent=2))
+    else:
+        if status.exists:
+            click.echo(f"Index exists: yes")
+            click.echo(f"Modules indexed: {status.module_count}")
+            click.echo(f"Last built: {status.last_built or 'unknown'}")
+            click.echo(f"Storage path: {status.db_path}")
+            click.echo(f"Size: {status.size_bytes} bytes")
+        else:
+            click.echo("Index exists: no")
+            click.echo(f"Storage path: {status.db_path}")
+            click.echo("Run 'odoo-gen-utils build-index' to create the index.")
