@@ -19,8 +19,6 @@ test = [
 ]
 search = [
     "chromadb>=1.5",
-    "sentence-transformers>=5.2",
-    "torch>=2.6",
     "PyGithub>=2.8",
     "gitpython>=3.1",
 ]
@@ -35,13 +33,9 @@ packages = ["src/odoo_gen_utils"]
 target-version = "py312"
 line-length = 120
 
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
-[tool.uv.sources]
-torch = [{ index = "pytorch-cpu" }]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "e2e: End-to-end tests hitting real external services (GitHub API, ChromaDB). Skipped without GITHUB_TOKEN.",
+    "e2e_slow: Full OCA index build (200+ repos, 3-5 min). Requires GITHUB_TOKEN.",
+]
