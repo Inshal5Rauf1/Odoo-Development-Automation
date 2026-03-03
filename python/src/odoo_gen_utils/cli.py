@@ -14,6 +14,11 @@ from odoo_gen_utils.i18n_extractor import extract_translatable_strings, generate
 from odoo_gen_utils.kb_validator import validate_kb_directory, validate_kb_file
 from odoo_gen_utils.search import build_oca_index, get_github_token, get_index_status
 from odoo_gen_utils.search.index import DEFAULT_DB_PATH
+from odoo_gen_utils.search.query import (
+    format_results_json,
+    format_results_text,
+    search_modules,
+)
 from odoo_gen_utils.renderer import (
     create_renderer,
     get_template_dir,
@@ -446,3 +451,87 @@ def index_status(db_path: str | None, json_output: bool) -> None:
             click.echo("Index exists: no")
             click.echo(f"Storage path: {status.db_path}")
             click.echo("Run 'odoo-gen-utils build-index' to create the index.")
+
+
+@main.command("search-modules")
+@click.argument("query")
+@click.option("--limit", default=5, help="Number of results (default: 5)")
+@click.option("--db-path", default=None, help="ChromaDB storage path")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+@click.option(
+    "--github",
+    "github_fallback",
+    is_flag=True,
+    help="Fall back to GitHub search if no OCA results found",
+)
+def search_modules_cmd(
+    query: str,
+    limit: int,
+    db_path: str | None,
+    json_output: bool,
+    github_fallback: bool,
+) -> None:
+    """Semantically search for Odoo modules matching a natural language query.
+
+    Searches the local ChromaDB index for OCA modules, sorted by relevance.
+    With --github, falls back to live GitHub search when no OCA results found.
+    Auto-builds the index on first use if it does not exist.
+    """
+    resolved_path = db_path or str(DEFAULT_DB_PATH)
+
+    # Auto-build index on first use (Decision B)
+    status = get_index_status(resolved_path)
+    if not status.exists or status.module_count == 0:
+        token = get_github_token()
+        if not token:
+            click.echo(
+                "No index found. Building requires GitHub authentication.\n"
+                "Run: gh auth login\n"
+                "Or set: export GITHUB_TOKEN=your_token\n"
+                "Then re-run your search.",
+                err=True,
+            )
+            sys.exit(1)
+
+        click.echo("No index found. Building index first (this takes ~3-5 minutes)...")
+
+        def _progress(done: int, total: int) -> None:
+            click.echo(f"Indexing OCA repos... {done}/{total}", nl=False)
+            click.echo("\r", nl=False)
+
+        build_oca_index(
+            token=token,
+            db_path=resolved_path,
+            progress_callback=_progress,
+        )
+        click.echo("Index built successfully.\n")
+
+    # Run search
+    try:
+        results = search_modules(
+            query,
+            db_path=resolved_path,
+            n_results=limit,
+            github_fallback=github_fallback,
+        )
+    except ValueError as exc:
+        click.echo(f"Search error: {exc}", err=True)
+        sys.exit(1)
+
+    # Auto-fallback: if OCA returned 0 results and --github not set, retry with fallback
+    if not results and not github_fallback:
+        results = search_modules(
+            query,
+            db_path=resolved_path,
+            n_results=limit,
+            github_fallback=True,
+        )
+
+    if not results:
+        click.echo("No results found.")
+        sys.exit(1)
+
+    if json_output:
+        click.echo(format_results_json(results))
+    else:
+        click.echo(format_results_text(results))

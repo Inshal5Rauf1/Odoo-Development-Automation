@@ -1,23 +1,16 @@
 ---
 name: odoo-gen:search
-description: Semantically search GitHub/OCA for existing Odoo modules similar to your description
+description: Semantically search OCA/GitHub for existing Odoo modules matching your description
 argument-hint: "<search query>"
 ---
 <objective>
-Semantically search GitHub and OCA repositories for existing Odoo modules that match your description, using vector-based similarity matching for intent-aware results.
+Search the local OCA module index for Odoo modules that match your description. Returns ranked results with relevance scores and coverage estimates. Select a result for detailed gap analysis, or refine your search with follow-up queries.
 
-**This command is not yet available.** It will be implemented in Phase 8 (Search & Fork-Extend).
+If no local index exists, one will be built automatically on first use (~3-5 minutes, requires GitHub authentication).
 
-Run `/odoo-gen:help` to see currently available commands.
+Use `--github` flag to include broader GitHub search results beyond OCA repositories.
 </objective>
 
-<planned_capabilities>
-When activated in Phase 8, this command will:
-
-1. Accept a natural language search query describing the module need
-2. Search OCA and GitHub repositories using semantic matching (ChromaDB + sentence-transformers)
-3. Return ranked results with relevance scores and feature overlap analysis
-4. Present gap analysis showing which parts of your spec are already covered
-5. Allow selection of a match to fork via `/odoo-gen:extend` or choose to build from scratch
-6. Maintain a local vector index of OCA/GitHub module descriptions for fast matching
-</planned_capabilities>
+<execution_context>
+@~/.claude/odoo-gen/agents/odoo-search.md
+</execution_context>
