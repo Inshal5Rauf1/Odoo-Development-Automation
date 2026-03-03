@@ -16,8 +16,8 @@ Requirements for this release. Each maps to roadmap phases.
 
 ### Regression Prevention
 
-- [ ] **REGR-01**: Golden path E2E test renders a realistic module spec (with mail dependency), Docker-installs it, and asserts successful installation
-- [ ] **REGR-02**: Golden path E2E test runs the generated module's Odoo tests inside Docker and asserts they pass
+- [x] **REGR-01**: Golden path E2E test renders a realistic module spec (with mail dependency), Docker-installs it, and asserts successful installation
+- [x] **REGR-02**: Golden path E2E test runs the generated module's Odoo tests inside Docker and asserts they pass
 
 ### Auto-Fix Expansion
 
@@ -56,8 +56,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TMPL-02 | Phase 12 | Complete |
 | TMPL-03 | Phase 12 | Complete |
 | TMPL-04 | Phase 12 | Complete |
-| REGR-01 | Phase 13 | Pending |
-| REGR-02 | Phase 13 | Pending |
+| REGR-01 | Phase 13 | Complete |
+| REGR-02 | Phase 13 | Complete |
 | AFIX-01 | Phase 12 | Complete |
 | AFIX-02 | Phase 12 | Complete |
 | KNOW-01 | Phase 12 | Complete |

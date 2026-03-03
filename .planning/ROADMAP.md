@@ -4,7 +4,7 @@
 
 - **v1.0 Odoo Module Automation MVP** — Phases 1-9 (shipped 2026-03-03) | [Archive](milestones/v1.0-ROADMAP.md)
 - **v1.1 Tech Debt Cleanup** — Phases 10-11 (shipped 2026-03-03)
-- **v1.2 Template Quality** — Phases 12-13 (in progress)
+- **v1.2 Template Quality** — Phases 12-13 (shipped 2026-03-03)
 
 ## Phases
 
@@ -36,7 +36,7 @@
 ### v1.2 Template Quality
 
 - [x] **Phase 12: Template Correctness & Auto-Fix** - Fix template bugs, expand auto-fix for structural issues, update knowledge base with mail.thread rules (completed 2026-03-03)
-- [ ] **Phase 13: Golden Path Regression Testing** - E2E test that renders a realistic module, Docker-installs it, runs its tests, and asserts everything passes
+- [x] **Phase 13: Golden Path Regression Testing** - E2E test that renders a realistic module, Docker-installs it, runs its tests, and asserts everything passes (completed 2026-03-03)
 
 ## Phase Details
 
@@ -63,19 +63,19 @@ Plans:
   1. An E2E test renders a realistic module spec (including mail dependency, chatter views, computed fields) through the template engine and produces a complete module directory
   2. The rendered module installs successfully in a Docker Odoo 17.0 instance (no ImportError, no registry errors)
   3. The rendered module's own Odoo tests run inside Docker and all pass (zero failures)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
-- [ ] 13-01-PLAN.md — Golden path E2E regression test (render + Docker install + Docker test execution)
+- [x] 13-01-PLAN.md — Golden path E2E regression test (render + Docker install + Docker test execution)
 
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 12. Template Correctness & Auto-Fix | v1.2 | 2/2 | Complete | 2026-03-03 |
-| 13. Golden Path Regression Testing | v1.2 | 0/1 | Not started | - |
+| 13. Golden Path Regression Testing | v1.2 | 1/1 | Complete | 2026-03-03 |
 
 ---
 *Roadmap created: 2026-03-01*
 *v1.0 shipped: 2026-03-03*
 *v1.1 shipped: 2026-03-03*
-*v1.2 started: 2026-03-03*
+*v1.2 shipped: 2026-03-03*
