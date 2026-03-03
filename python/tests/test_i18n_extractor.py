@@ -88,6 +88,141 @@ class TestExtractPythonStrings:
 
 
 # ---------------------------------------------------------------------------
+# extract_python_strings — field string= patterns
+# ---------------------------------------------------------------------------
+
+
+class TestExtractFieldStrings:
+    """Tests for fields.*(string="...") extraction in extract_python_strings."""
+
+    def test_finds_fields_char_string(self, tmp_path: Path) -> None:
+        """extract_python_strings finds fields.Char(string="Order Name")."""
+        py_file = _write_file(
+            tmp_path, "models/order.py",
+            'from odoo import fields, models\n'
+            '\n'
+            'class Order(models.Model):\n'
+            '    name = fields.Char(string="Order Name")\n',
+        )
+        result = extract_python_strings(py_file)
+        assert len(result) == 1
+        assert result[0][0] == "Order Name"
+
+    def test_finds_many2one_with_positional_and_string(self, tmp_path: Path) -> None:
+        """extract_python_strings finds fields.Many2one('res.partner', string="Customer")."""
+        py_file = _write_file(
+            tmp_path, "models/order.py",
+            'from odoo import fields, models\n'
+            '\n'
+            'class Order(models.Model):\n'
+            '    partner_id = fields.Many2one("res.partner", string="Customer")\n',
+        )
+        result = extract_python_strings(py_file)
+        assert len(result) == 1
+        assert result[0][0] == "Customer"
+
+    def test_finds_selection_with_string(self, tmp_path: Path) -> None:
+        """extract_python_strings finds fields.Selection([...], string="Status")."""
+        py_file = _write_file(
+            tmp_path, "models/order.py",
+            'from odoo import fields, models\n'
+            '\n'
+            'class Order(models.Model):\n'
+            '    state = fields.Selection(\n'
+            '        [("draft", "Draft"), ("done", "Done")],\n'
+            '        string="Status",\n'
+            '    )\n',
+        )
+        result = extract_python_strings(py_file)
+        assert len(result) == 1
+        assert result[0][0] == "Status"
+
+    def test_finds_multiple_field_types(self, tmp_path: Path) -> None:
+        """extract_python_strings finds string= across Text, Boolean, Float field types."""
+        py_file = _write_file(
+            tmp_path, "models/order.py",
+            'from odoo import fields, models\n'
+            '\n'
+            'class Order(models.Model):\n'
+            '    note = fields.Text(string="Internal Notes")\n'
+            '    active = fields.Boolean(string="Active")\n'
+            '    amount = fields.Float(string="Total Amount")\n',
+        )
+        result = extract_python_strings(py_file)
+        msgids = sorted(r[0] for r in result)
+        assert msgids == ["Active", "Internal Notes", "Total Amount"]
+
+    def test_ignores_field_without_string_keyword(self, tmp_path: Path) -> None:
+        """extract_python_strings ignores fields.Char(required=True) with no string=."""
+        py_file = _write_file(
+            tmp_path, "models/order.py",
+            'from odoo import fields, models\n'
+            '\n'
+            'class Order(models.Model):\n'
+            '    name = fields.Char(required=True)\n'
+            '    active = fields.Boolean(default=True)\n',
+        )
+        result = extract_python_strings(py_file)
+        assert result == []
+
+    def test_ignores_help_keyword_not_string(self, tmp_path: Path) -> None:
+        """extract_python_strings ignores help= keyword (only string= matters)."""
+        py_file = _write_file(
+            tmp_path, "models/order.py",
+            'from odoo import fields, models\n'
+            '\n'
+            'class Order(models.Model):\n'
+            '    name = fields.Char(help="Enter the order name")\n',
+        )
+        result = extract_python_strings(py_file)
+        assert result == []
+
+    def test_coexists_with_underscore_calls(self, tmp_path: Path) -> None:
+        """extract_python_strings finds both _() calls and fields.*(string=...) in same file."""
+        py_file = _write_file(
+            tmp_path, "models/order.py",
+            'from odoo import _, fields, models\n'
+            '\n'
+            'class Order(models.Model):\n'
+            '    name = fields.Char(string="Order Name")\n'
+            '\n'
+            '    def action_confirm(self):\n'
+            '        raise UserError(_("Cannot confirm"))\n',
+        )
+        result = extract_python_strings(py_file)
+        msgids = sorted(r[0] for r in result)
+        assert msgids == ["Cannot confirm", "Order Name"]
+
+    def test_field_string_has_correct_line_number(self, tmp_path: Path) -> None:
+        """extract_python_strings returns correct line number for field string= entries."""
+        py_file = _write_file(
+            tmp_path, "models/order.py",
+            'from odoo import fields, models\n'
+            '\n'
+            'class Order(models.Model):\n'
+            '    name = fields.Char(string="Name")\n'
+            '    desc = fields.Text(string="Description")\n',
+        )
+        result = extract_python_strings(py_file)
+        lines = {r[0]: r[2] for r in result}
+        assert lines["Name"] == 4
+        assert lines["Description"] == 5
+
+    def test_extract_translatable_includes_field_strings(self, tmp_path: Path) -> None:
+        """extract_translatable_strings includes field string= entries from .py files."""
+        _write_file(
+            tmp_path / "models", "order.py",
+            'from odoo import fields, models\n'
+            '\n'
+            'class Order(models.Model):\n'
+            '    name = fields.Char(string="Order Name")\n',
+        )
+        result = extract_translatable_strings(tmp_path)
+        msgids = [r[0] for r in result]
+        assert "Order Name" in msgids
+
+
+# ---------------------------------------------------------------------------
 # extract_xml_strings
 # ---------------------------------------------------------------------------
 
