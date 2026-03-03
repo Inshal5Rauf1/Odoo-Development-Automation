@@ -3,7 +3,8 @@
 ## Milestones
 
 - **v1.0 Odoo Module Automation MVP** — Phases 1-9 (shipped 2026-03-03) | [Archive](milestones/v1.0-ROADMAP.md)
-- **v1.1 Tech Debt Cleanup** — Phases 10-11 (in progress)
+- **v1.1 Tech Debt Cleanup** — Phases 10-11 (shipped 2026-03-03)
+- **v1.2 Template Quality** — Phases 12-13 (in progress)
 
 ## Phases
 
@@ -24,46 +25,52 @@
 
 </details>
 
-### v1.1 Tech Debt Cleanup
+<details>
+<summary>v1.1 Tech Debt Cleanup (Phases 10-11) — SHIPPED 2026-03-03</summary>
 
-- [x] **Phase 10: Environment & Dependencies** — GitHub auth, PyTorch CPU-only clean install verification (completed 2026-03-03)
+- [x] **Phase 10: Environment & Dependencies** — GitHub auth, clean install verification (completed 2026-03-03)
 - [x] **Phase 11: Live Integration Testing & i18n** — Docker live validation, field string= i18n extraction (completed 2026-03-03)
+
+</details>
+
+### v1.2 Template Quality
+
+- [ ] **Phase 12: Template Correctness & Auto-Fix** - Fix template bugs, expand auto-fix for structural issues, update knowledge base with mail.thread rules
+- [ ] **Phase 13: Golden Path Regression Testing** - E2E test that renders a realistic module, Docker-installs it, runs its tests, and asserts everything passes
 
 ## Phase Details
 
-### Phase 10: Environment & Dependencies
-**Goal**: Search and index features work with real GitHub API and a clean sentence-transformers install
-**Depends on**: v1.0 shipped
-**Requirements**: DEBT-01, DEBT-02
+### Phase 12: Template Correctness & Auto-Fix
+**Goal**: Generated modules produce correct Python code out of the box -- proper inheritance, minimal imports, clean manifests -- and auto-fix catches any remaining structural issues
+**Depends on**: v1.1 shipped (Phase 11)
+**Requirements**: TMPL-01, TMPL-02, TMPL-03, TMPL-04, AFIX-01, AFIX-02, KNOW-01, KNOW-02
 **Success Criteria** (what must be TRUE):
-  1. `gh auth status` succeeds and `odoo-gen-utils search-modules "inventory"` returns results from GitHub API
-  2. A fresh `uv venv` + `uv pip install .[search]` completes without errors on CPU-only machine
-  3. `odoo-gen-utils build-index` successfully crawls OCA repos and builds a ChromaDB index
-  4. `odoo-gen-utils index-status` reports indexed module count > 0
-**Plans**: 2 plans (Wave 1 parallel)
-Plans:
-- [x] 10-01-PLAN.md — Remove unused deps (sentence-transformers/torch), add E2E test infrastructure
-- [x] 10-02-PLAN.md — GitHub auth setup wizard with --no-wizard flag
+  1. A module spec with `mail` in depends renders model.py containing `_inherit = ['mail.thread', 'mail.activity.mixin']` (both 17.0 and 18.0 templates)
+  2. A module spec with no `@api.*` decorators renders model.py that does NOT import `api` from odoo
+  3. Rendered `__manifest__.py` contains no `installable` or `auto_install` keys (Odoo defaults omitted)
+  4. Rendered test files do not import `ValidationError` unless the test actually uses it
+  5. Running the auto-fix on a module with chatter XML but missing `mail.thread` inheritance adds the `_inherit` line, and running it on files with unused imports removes them
+**Plans**: TBD
 
-### Phase 11: Live Integration Testing & i18n
-**Goal**: Docker validation runs against real Odoo 17.0 containers and i18n extracts field string= translations
-**Depends on**: Phase 10
-**Requirements**: DEBT-03, DEBT-04
+### Phase 13: Golden Path Regression Testing
+**Goal**: A single E2E test proves that the full pipeline (render templates with realistic spec, Docker install, run Odoo tests) produces a working module -- catching template regressions automatically
+**Depends on**: Phase 12
+**Requirements**: REGR-01, REGR-02
 **Success Criteria** (what must be TRUE):
-  1. `odoo-gen-utils validate <module> --docker` spins up a real Odoo 17.0 + PostgreSQL container, installs the module, and reports pass/fail
-  2. At least one integration test runs against the live Docker daemon (not mocked)
-  3. `odoo-gen-utils extract-i18n <module>` extracts `fields.Char(string="My Label")` patterns into the .pot file
-  4. Existing 243+ tests continue to pass (no regressions)
+  1. An E2E test renders a realistic module spec (including mail dependency, chatter views, computed fields) through the template engine and produces a complete module directory
+  2. The rendered module installs successfully in a Docker Odoo 17.0 instance (no ImportError, no registry errors)
+  3. The rendered module's own Odoo tests run inside Docker and all pass (zero failures)
 **Plans**: TBD
 
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 10. Environment & Dependencies | v1.1 | Complete    | 2026-03-03 | 2026-03-03 |
-| 11. Live Integration Testing & i18n | 2/2 | Complete    | 2026-03-03 | - |
+| 12. Template Correctness & Auto-Fix | v1.2 | 0/TBD | Not started | - |
+| 13. Golden Path Regression Testing | v1.2 | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-03-01*
 *v1.0 shipped: 2026-03-03*
-*v1.1 started: 2026-03-03*
+*v1.1 shipped: 2026-03-03*
+*v1.2 started: 2026-03-03*

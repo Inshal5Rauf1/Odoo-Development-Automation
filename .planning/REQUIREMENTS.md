@@ -52,22 +52,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TMPL-01 | — | Pending |
-| TMPL-02 | — | Pending |
-| TMPL-03 | — | Pending |
-| TMPL-04 | — | Pending |
-| REGR-01 | — | Pending |
-| REGR-02 | — | Pending |
-| AFIX-01 | — | Pending |
-| AFIX-02 | — | Pending |
-| KNOW-01 | — | Pending |
-| KNOW-02 | — | Pending |
+| TMPL-01 | Phase 12 | Pending |
+| TMPL-02 | Phase 12 | Pending |
+| TMPL-03 | Phase 12 | Pending |
+| TMPL-04 | Phase 12 | Pending |
+| REGR-01 | Phase 13 | Pending |
+| REGR-02 | Phase 13 | Pending |
+| AFIX-01 | Phase 12 | Pending |
+| AFIX-02 | Phase 12 | Pending |
+| KNOW-01 | Phase 12 | Pending |
+| KNOW-02 | Phase 12 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10 ⚠️
+- Mapped to phases: 10
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-03*
-*Last updated: 2026-03-03 after initial definition*
+*Last updated: 2026-03-03 after roadmap creation*
