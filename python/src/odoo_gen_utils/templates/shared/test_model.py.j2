@@ -1,6 +1,6 @@
 {# test_model.py.j2 -- Odoo TransactionCase tests: CRUD, access rights, workflow #}
 from odoo.tests.common import TransactionCase
-from odoo.exceptions import AccessError, ValidationError
+from odoo.exceptions import AccessError
 
 
 class Test{{ model_name | to_class }}(TransactionCase):

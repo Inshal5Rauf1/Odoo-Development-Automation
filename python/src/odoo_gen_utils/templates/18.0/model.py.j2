@@ -1,6 +1,6 @@
 {# model.py.j2 -- Odoo 18.0 Python model file with fields and constraints #}
 {# 18.0 differences: group_operator -> aggregator, states= parameter removed #}
-from odoo import api, fields, models
+from odoo import {{ 'api, ' if needs_api }}fields, models
 {% if has_constraints or constrained_fields %}
 from odoo.exceptions import ValidationError
 {% endif %}
@@ -9,8 +9,8 @@ from odoo.exceptions import ValidationError
 class {{ model_name | to_class }}(models.Model):
     _name = "{{ model_name }}"
     _description = "{{ model_description }}"
-{% if inherit %}
-    _inherit = ["{{ inherit }}"]
+{% if inherit_list %}
+    _inherit = [{% for inh in inherit_list %}"{{ inh }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 {% endif %}
 
 {% for field in fields %}

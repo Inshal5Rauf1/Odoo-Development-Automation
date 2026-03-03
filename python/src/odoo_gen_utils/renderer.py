@@ -209,6 +209,17 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         for f in fields
     )
 
+    # Phase 12: mail.thread auto-inheritance (TMPL-01)
+    explicit_inherit = model.get("inherit")
+    inherit_list = [explicit_inherit] if explicit_inherit else []
+    if "mail" in spec.get("depends", []):
+        for mixin in ("mail.thread", "mail.activity.mixin"):
+            if mixin not in inherit_list:
+                inherit_list.append(mixin)
+
+    # Phase 12: conditional api import (TMPL-02)
+    needs_api = bool(computed_fields or onchange_fields or constrained_fields or sequence_fields)
+
     return {
         "module_name": spec["module_name"],
         "module_title": spec.get("module_title", spec["module_name"].replace("_", " ").title()),
@@ -243,6 +254,9 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         # Phase 6 keys
         "has_company_field": has_company_field,
         "workflow_states": model.get("workflow_states", []),
+        # Phase 12 keys
+        "inherit_list": inherit_list,
+        "needs_api": needs_api,
     }
 
 
