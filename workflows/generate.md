@@ -276,7 +276,7 @@ Rejection at CP-3 re-runs Wave 2 only (`odoo-view-gen` and `odoo-test-gen`). Wav
 Run the i18n extractor to generate the `.pot` file:
 
 ```bash
-odoo-gen-utils extract-i18n "$OUTPUT_DIR/$MODULE_NAME" "$MODULE_NAME"
+odoo-gen-utils extract-i18n "$OUTPUT_DIR/$MODULE_NAME"
 ```
 
 This scans all Python files for `_()` calls and XML files for `string=` attributes, then writes the POT file to `$MODULE_NAME/i18n/$MODULE_NAME.pot`.
