@@ -642,3 +642,196 @@ class TestRenderModuleRecordRules:
             assert "security/record_rules.xml" in content, (
                 f"'security/record_rules.xml' not found in __manifest__.py. Content:\n{content}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 9: Versioned template rendering
+# ---------------------------------------------------------------------------
+
+
+def _make_versioned_spec(
+    odoo_version: str = "17.0",
+    models: list[dict] | None = None,
+    depends: list[str] | None = None,
+) -> dict:
+    """Helper to construct a spec with odoo_version for version testing."""
+    return {
+        "module_name": "test_ver",
+        "depends": depends or ["base"],
+        "odoo_version": odoo_version,
+        "models": models or [
+            {
+                "name": "test.item",
+                "description": "Test Item",
+                "fields": [
+                    {"name": "name", "type": "Char", "required": True},
+                    {"name": "description", "type": "Text"},
+                ],
+            }
+        ],
+    }
+
+
+class TestVersionedTemplates:
+    """Tests that version-specific templates produce correct output."""
+
+    def test_17_gets_tree_tag(self):
+        """render_module with odoo_version=17.0 produces XML containing '<tree'."""
+        spec = _make_versioned_spec("17.0")
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            views_file = next(
+                (f for f in files if "test_item_views.xml" in str(f)), None
+            )
+            assert views_file is not None
+            content = Path(views_file).read_text(encoding="utf-8")
+            assert "<tree" in content, f"Expected <tree in 17.0 views. Got:\n{content}"
+            assert "<list" not in content, f"Unexpected <list in 17.0 views. Got:\n{content}"
+
+    def test_18_gets_list_tag(self):
+        """render_module with odoo_version=18.0 produces XML containing '<list'."""
+        spec = _make_versioned_spec("18.0")
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            views_file = next(
+                (f for f in files if "test_item_views.xml" in str(f)), None
+            )
+            assert views_file is not None
+            content = Path(views_file).read_text(encoding="utf-8")
+            assert "<list" in content, f"Expected <list in 18.0 views. Got:\n{content}"
+            assert "<tree" not in content, f"Unexpected <tree in 18.0 views. Got:\n{content}"
+
+    def test_18_action_uses_list_viewmode(self):
+        """18.0 action.xml contains view_mode with 'list,form'."""
+        spec = _make_versioned_spec("18.0")
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            action_file = next(
+                (f for f in files if "test_item_action.xml" in str(f)), None
+            )
+            assert action_file is not None
+            content = Path(action_file).read_text(encoding="utf-8")
+            assert "list,form" in content, f"Expected 'list,form' in 18.0 action. Got:\n{content}"
+
+    def test_17_action_uses_tree_viewmode(self):
+        """17.0 action.xml contains view_mode with 'tree,form'."""
+        spec = _make_versioned_spec("17.0")
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            action_file = next(
+                (f for f in files if "test_item_action.xml" in str(f)), None
+            )
+            assert action_file is not None
+            content = Path(action_file).read_text(encoding="utf-8")
+            assert "tree,form" in content, f"Expected 'tree,form' in 17.0 action. Got:\n{content}"
+
+    def test_18_chatter_shorthand(self):
+        """18.0 form view uses '<chatter/>' not 'oe_chatter'."""
+        spec = _make_versioned_spec("18.0", depends=["base", "mail"])
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            views_file = next(
+                (f for f in files if "test_item_views.xml" in str(f)), None
+            )
+            assert views_file is not None
+            content = Path(views_file).read_text(encoding="utf-8")
+            assert "<chatter/>" in content, f"Expected <chatter/> in 18.0 form. Got:\n{content}"
+            assert "oe_chatter" not in content, f"Unexpected oe_chatter in 18.0 form. Got:\n{content}"
+
+    def test_shared_template_fallback(self):
+        """Shared templates (manifest, menu, etc.) resolve correctly for both versions."""
+        for version in ("17.0", "18.0"):
+            spec = _make_versioned_spec(version)
+            with tempfile.TemporaryDirectory() as d:
+                files = render_module(spec, get_template_dir(), Path(d))
+                names = [Path(f).name for f in files]
+                assert "__manifest__.py" in names, f"Missing manifest for {version}"
+                assert "menu.xml" in names, f"Missing menu for {version}"
+                assert "README.rst" in names, f"Missing README for {version}"
+
+
+class TestVersionConfig:
+    """Tests that odoo_version flows through spec correctly."""
+
+    def test_default_version_is_17(self):
+        """render_module with no odoo_version in spec defaults to 17.0."""
+        spec = {
+            "module_name": "test_default",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.item",
+                    "description": "Test Item",
+                    "fields": [{"name": "name", "type": "Char"}],
+                }
+            ],
+        }
+        # No odoo_version key at all
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            views_file = next(
+                (f for f in files if "test_item_views.xml" in str(f)), None
+            )
+            assert views_file is not None
+            content = Path(views_file).read_text(encoding="utf-8")
+            assert "<tree" in content, f"Default should produce 17.0 tree tags. Got:\n{content}"
+
+    def test_version_from_spec(self):
+        """render_module reads odoo_version from spec dict."""
+        spec = _make_versioned_spec("18.0")
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            action_file = next(
+                (f for f in files if "test_item_action.xml" in str(f)), None
+            )
+            assert action_file is not None
+            content = Path(action_file).read_text(encoding="utf-8")
+            assert "list,form" in content, f"Expected 18.0 view_mode. Got:\n{content}"
+
+
+class TestRenderModule18:
+    """Integration test: full 18.0 module renders without errors."""
+
+    def test_full_18_module_renders(self):
+        """Complete render_module with odoo_version=18.0 produces all expected files."""
+        spec = {
+            "module_name": "test_18_full",
+            "depends": ["base", "mail"],
+            "odoo_version": "18.0",
+            "models": [
+                {
+                    "name": "project.task",
+                    "description": "Project Task",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "description", "type": "Text"},
+                        {
+                            "name": "state",
+                            "type": "Selection",
+                            "selection": [["draft", "Draft"], ["done", "Done"]],
+                            "default": "draft",
+                        },
+                        {"name": "partner_id", "type": "Many2one", "comodel_name": "res.partner"},
+                    ],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files = render_module(spec, get_template_dir(), Path(d))
+            names = [Path(f).name for f in files]
+            # All expected file types present
+            assert "__manifest__.py" in names
+            assert "__init__.py" in names
+            assert "project_task.py" in names
+            assert "project_task_views.xml" in names
+            assert "project_task_action.xml" in names
+            assert "menu.xml" in names
+            assert "security.xml" in names
+            assert "ir.model.access.csv" in names
+            assert "README.rst" in names
+            # Verify 18.0 markers
+            views_file = next(f for f in files if "project_task_views.xml" in str(f))
+            content = Path(views_file).read_text(encoding="utf-8")
+            assert "<list" in content
+            assert "<chatter/>" in content
+            assert "<tree" not in content
