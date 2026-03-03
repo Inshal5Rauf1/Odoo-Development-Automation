@@ -1171,3 +1171,119 @@ class TestTemplateTestFileClean:
             test_file = next(f for f in files if "test_test_item.py" in str(f))
             content = Path(test_file).read_text(encoding="utf-8")
             assert "AccessError" in content, f"Missing AccessError in test file. Got:\n{content}"
+
+
+# ---------------------------------------------------------------------------
+# Phase 12: Full render integration test -- all 4 fixes together
+# ---------------------------------------------------------------------------
+
+
+class TestPhase12FullRenderIntegration:
+    """Comprehensive integration test: renders a realistic module spec with mail dependency,
+    computed fields, and plain models -- then asserts ALL 4 template fixes in a single render pass."""
+
+    @pytest.fixture(autouse=True)
+    def setup_render(self, tmp_path):
+        """Render a realistic HR training module with mail, computed fields, and plain models."""
+        self.spec = {
+            "module_name": "hr_training",
+            "depends": ["base", "mail", "hr"],
+            "models": [
+                {
+                    "name": "hr.training.course",
+                    "description": "Training Course",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True, "string": "Course Name"},
+                        {"name": "duration", "type": "Integer", "string": "Duration (Hours)"},
+                        {"name": "description", "type": "Text", "string": "Description"},
+                        {
+                            "name": "total_hours",
+                            "type": "Float",
+                            "string": "Total Hours",
+                            "compute": "_compute_total_hours",
+                            "depends": ["duration"],
+                        },
+                        {
+                            "name": "state",
+                            "type": "Selection",
+                            "string": "Status",
+                            "selection": [
+                                ["draft", "Draft"],
+                                ["confirmed", "Confirmed"],
+                                ["done", "Done"],
+                            ],
+                            "default": "draft",
+                        },
+                    ],
+                },
+                {
+                    "name": "hr.training.session",
+                    "description": "Training Session",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True, "string": "Session Name"},
+                        {"name": "date", "type": "Date", "string": "Date"},
+                        {"name": "attendee_count", "type": "Integer", "string": "Attendee Count"},
+                    ],
+                },
+            ],
+        }
+        self.files = render_module(self.spec, get_template_dir(), tmp_path)
+        self.module_dir = tmp_path / "hr_training"
+
+    def _read(self, relative_path: str) -> str:
+        """Read a file relative to the module directory."""
+        return (self.module_dir / relative_path).read_text(encoding="utf-8")
+
+    # -- TMPL-01: mail.thread inheritance on BOTH models --
+
+    def test_course_model_has_mail_inherit(self):
+        """hr_training_course model.py has _inherit with mail.thread and mail.activity.mixin."""
+        content = self._read("models/hr_training_course.py")
+        assert "_inherit = [" in content
+        assert "mail.thread" in content
+        assert "mail.activity.mixin" in content
+
+    def test_session_model_has_mail_inherit(self):
+        """hr_training_session model.py also has _inherit (mail applies to ALL models)."""
+        content = self._read("models/hr_training_session.py")
+        assert "_inherit = [" in content
+        assert "mail.thread" in content
+        assert "mail.activity.mixin" in content
+
+    # -- TMPL-02: conditional api import --
+
+    def test_course_model_has_api_import(self):
+        """hr_training_course has computed field -> imports api."""
+        content = self._read("models/hr_training_course.py")
+        assert "from odoo import api, fields, models" in content
+
+    def test_session_model_no_api_import(self):
+        """hr_training_session has NO computed/onchange/constrained -> does NOT import api."""
+        content = self._read("models/hr_training_session.py")
+        assert "from odoo import api" not in content
+        assert "from odoo import fields, models" in content
+
+    # -- TMPL-03: clean manifest --
+
+    def test_manifest_no_superfluous_keys(self):
+        """__manifest__.py has no installable or auto_install keys."""
+        content = self._read("__manifest__.py")
+        assert '"installable"' not in content
+        assert '"auto_install"' not in content
+        # But it still has essential keys
+        assert '"name"' in content
+        assert '"depends"' in content
+
+    # -- TMPL-04: clean test imports --
+
+    def test_course_test_no_validation_error(self):
+        """test_hr_training_course.py has no ValidationError import."""
+        content = self._read("tests/test_hr_training_course.py")
+        assert "ValidationError" not in content
+        assert "AccessError" in content
+
+    def test_session_test_no_validation_error(self):
+        """test_hr_training_session.py has no ValidationError import."""
+        content = self._read("tests/test_hr_training_session.py")
+        assert "ValidationError" not in content
+        assert "AccessError" in content
