@@ -178,11 +178,12 @@ Plans:
   2. System knows which standard Odoo modules are Enterprise-only and warns accordingly
   3. User can specify target Odoo version via config or command parameter, and the system uses version-specific templates and syntax rules
   4. System can generate modules for Odoo 18.0 in addition to 17.0, using correct version-specific API patterns for each
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 09-01: TBD
-- [ ] 09-02: TBD
+- [ ] 09-01-PLAN.md — Enterprise module registry JSON + edition.py with check_enterprise_dependencies() and tests (VERS-01, VERS-02, VERS-03)
+- [ ] 09-02-PLAN.md — Template reorganization (17.0/, 18.0/, shared/) + versioned renderer with FileSystemLoader fallback (VERS-04, VERS-05, VERS-06)
+- [ ] 09-03-PLAN.md — CLI check-edition command, spec.md edition check wiring, all 8 agents version-aware, KB "Changed in 18.0" sections (VERS-01..06)
 
 ## Progress
 
@@ -200,7 +201,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Security & Test Generation | 2/2 | Complete | 2026-03-02 |
 | 7. Human Review & Quality Loops | 3/3 | Complete | 2026-03-03 |
 | 8. Search & Fork-Extend | 1/3 | In Progress | - |
-| 9. Edition & Version Support | 0/2 | Not started | - |
+| 9. Edition & Version Support | 0/3 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-01*
@@ -209,3 +210,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 *Revised: 2026-03-02 — Phase 6 plans defined (06-01, 06-02)*
 *Revised: 2026-03-03 — Phase 7 plans defined (07-01, 07-02, 07-03)*
 *Revised: 2026-03-03 — Phase 8 plans defined (08-01, 08-02, 08-03)*
+*Revised: 2026-03-03 — Phase 9 plans defined (09-01, 09-02, 09-03)*
