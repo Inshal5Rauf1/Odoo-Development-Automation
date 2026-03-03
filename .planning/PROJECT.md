@@ -14,15 +14,15 @@ A domain-specific extension of the GSD (Get Shit Done) framework that automates 
 - 8 agents, 13 knowledge files, 24 Jinja2 templates, 12 commands
 - See: `.planning/MILESTONES.md` for details
 
-## Current Milestone: v1.1 Tech Debt Cleanup
+## Current Milestone: v1.2 Template Quality
 
-**Goal:** Resolve all accumulated tech debt from v1.0 — ensure the pipeline works end-to-end with real infrastructure (GitHub API, Docker, clean install).
+**Goal:** Fix template bugs that prevent generated modules from installing in Odoo, and build prevention infrastructure so template regressions are caught automatically.
 
-**Target items:**
-- GitHub CLI authentication for search/extend features
-- PyTorch CPU-only clean install verification for sentence-transformers
-- Docker live validation against real Odoo 17.0 daemon
-- Python field `string=` i18n extraction
+**Target features:**
+- Fix Jinja2 template bugs (mail.thread inheritance, conditional api import, superfluous manifest keys, unused test imports)
+- Golden path E2E test: render realistic spec → Docker install → run Odoo tests → assert pass
+- Expanded auto-fix: handle structural issues (missing model inheritance, wrong imports) not just pylint style
+- Knowledge base update: ensure agents know mail.thread/mail.activity.mixin rules when mail is in depends
 
 ## Core Value
 
@@ -91,7 +91,10 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 
 ### Active
 
-(No active requirements — next milestone not yet planned)
+- Fix template bugs so generated modules install cleanly in Odoo 17.0/18.0
+- Golden path E2E test catches template regressions automatically
+- Auto-fix handles structural template issues (not just pylint style)
+- Knowledge base updated with mail.thread/mixin inheritance rules
 
 ### Out of Scope
 
@@ -105,6 +108,7 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 
 ## Context
 
+- v1.1 shipped 2026-03-03 — GitHub auth, dependency cleanup, live Docker testing, field string= i18n
 - v1.0 shipped 2026-03-03 with 4,150 LOC Python, 243 tests, and full pipeline coverage
 - Tech stack: Python 3.12, Jinja2, Click CLI, pylint-odoo, ChromaDB, sentence-transformers, Docker
 - 8 specialized agents: odoo-scaffold, odoo-model-gen, odoo-view-gen, odoo-test-gen, odoo-security-gen, odoo-validator, odoo-search, odoo-extend
@@ -161,4 +165,4 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 | **LobeHub** | SKIP | Web chat platform, different product category |
 
 ---
-*Last updated: 2026-03-03 after v1.0 milestone*
+*Last updated: 2026-03-03 after v1.1 milestone — starting v1.2 Template Quality*
