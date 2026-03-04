@@ -326,12 +326,14 @@ def run_pylint_fix_loop(
         w0611_violations = [v for v in violations if v.rule_code == "W0611"]
         non_w0611 = tuple(v for v in violations if v.rule_code != "W0611")
 
+        w0611_applied = False
         if w0611_violations:
             w0611_files = {v.file for v in w0611_violations}
             for rel_file in w0611_files:
                 file_path = module_path / rel_file
                 if file_path.exists():
                     if fix_unused_imports(file_path):
+                        w0611_applied = True
                         total_fixed += sum(
                             1 for v in w0611_violations if v.file == rel_file
                         )
@@ -340,15 +342,16 @@ def run_pylint_fix_loop(
         has_fixable = any(is_fixable_pylint(v) for v in non_w0611)
         if not has_fixable:
             remaining = non_w0611
-            if not w0611_violations:
-                break
-            # W0611 was handled; if nothing else fixable, stop
+            if w0611_applied:
+                # W0611 fixes shifted line numbers; re-run pylint to get
+                # updated violations that may now be fixable
+                continue
             break
 
         cycle_fixed, remaining = fix_pylint_violations(non_w0611, module_path)
         total_fixed += cycle_fixed
 
-        if cycle_fixed == 0:
+        if cycle_fixed == 0 and not w0611_applied:
             break
 
     return total_fixed, remaining
