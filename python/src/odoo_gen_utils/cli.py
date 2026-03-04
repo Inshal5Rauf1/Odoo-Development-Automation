@@ -379,7 +379,7 @@ def check_edition(spec_file: str, json_output: bool) -> None:
 @main.command()
 @click.argument("module_path", type=click.Path(exists=True))
 @click.option("--pylint-only", is_flag=True, help="Run only pylint-odoo (skip Docker)")
-@click.option("--auto-fix", is_flag=True, help="Attempt to auto-fix pylint violations (max 2 cycles)")
+@click.option("--auto-fix", is_flag=True, help="Attempt to auto-fix pylint violations (max 5 cycles)")
 @click.option("--json", "json_output", is_flag=True, help="Output JSON report (machine-readable)")
 @click.option("--pylintrc", type=click.Path(exists=True), help="Path to .pylintrc-odoo config file")
 def validate(
@@ -396,7 +396,7 @@ def validate(
     result, test results, and actionable error diagnosis.
 
     With --auto-fix, attempts to mechanically fix known pylint violations
-    (up to 2 cycles) before reporting remaining issues.
+    (up to 5 cycles) before reporting remaining issues.
     """
     mod_path = Path(module_path).resolve()
 
