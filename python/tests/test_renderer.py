@@ -338,7 +338,7 @@ class TestRenderModuleWizards:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             names = [Path(f).name for f in files]
             assert "__init__.py" in names  # wizards/__init__.py is one of the __init__.py files
 
@@ -363,7 +363,7 @@ class TestRenderModuleWizards:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             relative_paths = [
                 str(Path(f).relative_to(Path(d) / "test_nowiz")) for f in files
             ]
@@ -392,7 +392,7 @@ class TestRenderModuleWizards:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             relative_paths = [
                 str(Path(f).relative_to(Path(d) / "test_wiz2")) for f in files
             ]
@@ -421,7 +421,7 @@ class TestRenderModuleWizards:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             names = [Path(f).name for f in files]
             assert "confirm_wizard_wizard_form.xml" in names or any(
                 "wizard_form" in n for n in names
@@ -445,7 +445,7 @@ class TestRenderModuleSequences:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             names = [Path(f).name for f in files]
             assert "sequences.xml" in names, f"Missing sequences.xml. Got: {names}"
 
@@ -465,7 +465,7 @@ class TestRenderModuleSequences:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             names = [Path(f).name for f in files]
             assert "sequences.xml" not in names, f"Unexpected sequences.xml in {names}"
 
@@ -484,7 +484,7 @@ class TestRenderModuleDataXml:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             names = [Path(f).name for f in files]
             assert "data.xml" in names, f"Missing data.xml. Got: {names}"
 
@@ -504,7 +504,7 @@ class TestRenderModuleDataXml:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             names = [Path(f).name for f in files]
             assert "data.xml" in names, f"Missing data.xml. Got: {names}"
             assert "sequences.xml" in names, f"Missing sequences.xml. Got: {names}"
@@ -591,7 +591,7 @@ class TestRenderModuleRecordRules:
     def test_company_field_model_generates_record_rules_xml(self):
         """spec with Many2one company_id → 'record_rules.xml' appears in generated file names."""
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(_COMPANY_SPEC, get_template_dir(), Path(d))
+            files, _ = render_module(_COMPANY_SPEC, get_template_dir(), Path(d))
             names = [Path(f).name for f in files]
             assert "record_rules.xml" in names, (
                 f"Expected record_rules.xml in generated files. Got: {names}"
@@ -611,7 +611,7 @@ class TestRenderModuleRecordRules:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             names = [Path(f).name for f in files]
             assert "record_rules.xml" not in names, (
                 f"Unexpected record_rules.xml in files without company_id: {names}"
@@ -620,7 +620,7 @@ class TestRenderModuleRecordRules:
     def test_record_rules_xml_contains_company_ids_domain(self):
         """Content of generated record_rules.xml contains 'company_ids' OCA shorthand."""
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(_COMPANY_SPEC, get_template_dir(), Path(d))
+            files, _ = render_module(_COMPANY_SPEC, get_template_dir(), Path(d))
             record_rules_file = next(
                 (f for f in files if Path(f).name == "record_rules.xml"), None
             )
@@ -633,7 +633,7 @@ class TestRenderModuleRecordRules:
     def test_manifest_includes_record_rules_when_company_field(self):
         """Generated __manifest__.py contains 'security/record_rules.xml' when company_id model present."""
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(_COMPANY_SPEC, get_template_dir(), Path(d))
+            files, _ = render_module(_COMPANY_SPEC, get_template_dir(), Path(d))
             manifest_file = next(
                 (f for f in files if Path(f).name == "__manifest__.py"), None
             )
@@ -679,7 +679,7 @@ class TestVersionedTemplates:
         """render_module with odoo_version=17.0 produces XML containing '<tree'."""
         spec = _make_versioned_spec("17.0")
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             views_file = next(
                 (f for f in files if "test_item_views.xml" in str(f)), None
             )
@@ -692,7 +692,7 @@ class TestVersionedTemplates:
         """render_module with odoo_version=18.0 produces XML containing '<list'."""
         spec = _make_versioned_spec("18.0")
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             views_file = next(
                 (f for f in files if "test_item_views.xml" in str(f)), None
             )
@@ -705,7 +705,7 @@ class TestVersionedTemplates:
         """18.0 action.xml contains view_mode with 'list,form'."""
         spec = _make_versioned_spec("18.0")
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             action_file = next(
                 (f for f in files if "test_item_action.xml" in str(f)), None
             )
@@ -717,7 +717,7 @@ class TestVersionedTemplates:
         """17.0 action.xml contains view_mode with 'tree,form'."""
         spec = _make_versioned_spec("17.0")
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             action_file = next(
                 (f for f in files if "test_item_action.xml" in str(f)), None
             )
@@ -729,7 +729,7 @@ class TestVersionedTemplates:
         """18.0 form view uses '<chatter/>' not 'oe_chatter'."""
         spec = _make_versioned_spec("18.0", depends=["base", "mail"])
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             views_file = next(
                 (f for f in files if "test_item_views.xml" in str(f)), None
             )
@@ -743,7 +743,7 @@ class TestVersionedTemplates:
         for version in ("17.0", "18.0"):
             spec = _make_versioned_spec(version)
             with tempfile.TemporaryDirectory() as d:
-                files = render_module(spec, get_template_dir(), Path(d))
+                files, _ = render_module(spec, get_template_dir(), Path(d))
                 names = [Path(f).name for f in files]
                 assert "__manifest__.py" in names, f"Missing manifest for {version}"
                 assert "menu.xml" in names, f"Missing menu for {version}"
@@ -768,7 +768,7 @@ class TestVersionConfig:
         }
         # No odoo_version key at all
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             views_file = next(
                 (f for f in files if "test_item_views.xml" in str(f)), None
             )
@@ -780,7 +780,7 @@ class TestVersionConfig:
         """render_module reads odoo_version from spec dict."""
         spec = _make_versioned_spec("18.0")
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             action_file = next(
                 (f for f in files if "test_item_action.xml" in str(f)), None
             )
@@ -817,7 +817,7 @@ class TestRenderModule18:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             names = [Path(f).name for f in files]
             # All expected file types present
             assert "__manifest__.py" in names
@@ -998,7 +998,7 @@ class TestTemplateMailInheritance:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             model_file = next(f for f in files if "test_record.py" in str(f) and "test_" not in Path(f).parent.name)
             content = Path(model_file).read_text(encoding="utf-8")
             assert "_inherit = [" in content, f"Expected _inherit list in model.py. Got:\n{content}"
@@ -1019,7 +1019,7 @@ class TestTemplateMailInheritance:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             model_file = next(f for f in files if "test_record.py" in str(f) and "test_" not in Path(f).parent.name)
             content = Path(model_file).read_text(encoding="utf-8")
             assert "_inherit" not in content, f"Unexpected _inherit in model.py without mail. Got:\n{content}"
@@ -1050,7 +1050,7 @@ class TestTemplateConditionalApiImport:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             model_file = next(f for f in files if "test_simple.py" in str(f) and "test_" not in Path(f).parent.name)
             content = Path(model_file).read_text(encoding="utf-8")
             assert "from odoo import api" not in content, f"Unexpected api import in plain model. Got:\n{content}"
@@ -1073,7 +1073,7 @@ class TestTemplateConditionalApiImport:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             model_file = next(f for f in files if "test_computed.py" in str(f) and "test_" not in Path(f).parent.name)
             content = Path(model_file).read_text(encoding="utf-8")
             assert "from odoo import api, fields, models" in content, f"Missing api import with computed. Got:\n{content}"
@@ -1101,7 +1101,7 @@ class TestTemplateManifestClean:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             manifest_file = next(f for f in files if Path(f).name == "__manifest__.py")
             content = Path(manifest_file).read_text(encoding="utf-8")
             assert '"installable"' not in content, f"Unexpected 'installable' key in manifest. Got:\n{content}"
@@ -1120,7 +1120,7 @@ class TestTemplateManifestClean:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             manifest_file = next(f for f in files if Path(f).name == "__manifest__.py")
             content = Path(manifest_file).read_text(encoding="utf-8")
             assert '"auto_install"' not in content, f"Unexpected 'auto_install' key in manifest. Got:\n{content}"
@@ -1148,7 +1148,7 @@ class TestTemplateTestFileClean:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             test_file = next(f for f in files if "test_test_item.py" in str(f))
             content = Path(test_file).read_text(encoding="utf-8")
             assert "ValidationError" not in content, f"Unexpected ValidationError in test file. Got:\n{content}"
@@ -1167,7 +1167,7 @@ class TestTemplateTestFileClean:
             ],
         }
         with tempfile.TemporaryDirectory() as d:
-            files = render_module(spec, get_template_dir(), Path(d))
+            files, _ = render_module(spec, get_template_dir(), Path(d))
             test_file = next(f for f in files if "test_test_item.py" in str(f))
             content = Path(test_file).read_text(encoding="utf-8")
             assert "AccessError" in content, f"Missing AccessError in test file. Got:\n{content}"
@@ -1227,7 +1227,7 @@ class TestPhase12FullRenderIntegration:
                 },
             ],
         }
-        self.files = render_module(self.spec, get_template_dir(), tmp_path)
+        self.files, _ = render_module(self.spec, get_template_dir(), tmp_path)
         self.module_dir = tmp_path / "hr_training"
 
     def _read(self, relative_path: str) -> str:

@@ -30,6 +30,7 @@ from odoo_gen_utils.renderer import (
     render_module,
     render_template,
 )
+from odoo_gen_utils.verifier import build_verifier_from_env
 from odoo_gen_utils.validation import (  # noqa: F401
     ValidationReport,
     check_docker_available,
@@ -196,9 +197,14 @@ def render_module_cmd(spec_file: str, output_dir: str) -> None:
     output_path = Path(output_dir)
 
     try:
-        created_files = render_module(spec, template_dir, output_path)
-        for f in created_files:
+        verifier = build_verifier_from_env()
+        files, warnings = render_module(spec, template_dir, output_path, verifier=verifier)
+        for f in files:
             click.echo(str(f))
+        for w in warnings:
+            click.echo(f"WARN [{w.check_type}] {w.subject}: {w.message}", err=True)
+            if w.suggestion:
+                click.echo(f"  Suggestion: {w.suggestion}", err=True)
     except Exception as exc:
         click.echo(f"Error rendering module: {exc}", err=True)
         sys.exit(1)

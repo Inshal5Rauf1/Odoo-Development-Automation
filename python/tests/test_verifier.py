@@ -297,7 +297,12 @@ class TestViewInheritTarget:
     """Tests for inherited view target existence verification."""
 
     def test_existing_target_returns_no_warnings(self, verifier, mock_client):
-        mock_client.search_read.return_value = [{"name": "some.view"}]
+        # First call: ir.model.fields for view field check -> "name" exists
+        # Second call: ir.ui.view for inherited view target check -> view exists
+        mock_client.search_read.side_effect = [
+            [{"name": "name"}],           # ir.model.fields: "name" field exists
+            [{"name": "some.view"}],       # ir.ui.view: target model has views
+        ]
         result = verifier.verify_view_spec(
             "hr.employee", ["name"], inherited_view_target="hr.employee"
         )
@@ -395,11 +400,11 @@ class TestBuildVerifierFromEnv:
             "ODOO_USER": "admin",
             "ODOO_API_KEY": "admin",
         }
-        # OdooClient.__init__ may not raise immediately, but it stores config.
-        # We simulate by patching OdooClient to raise on construction.
+        # OdooClient is imported lazily inside build_verifier_from_env.
+        # Patch it at the odoo_client module level.
         with patch.dict(os.environ, env):
             with patch(
-                "odoo_gen_utils.verifier.OdooClient",
+                "odoo_gen_utils.mcp.odoo_client.OdooClient",
                 side_effect=Exception("Connection refused"),
             ):
                 v = build_verifier_from_env()

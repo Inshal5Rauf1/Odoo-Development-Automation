@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
+if TYPE_CHECKING:
+    from odoo_gen_utils.verifier import EnvironmentVerifier, VerificationWarning
 
 
 # Sequence field names that trigger ir.sequence generation.
@@ -324,7 +327,12 @@ def _compute_view_files(spec: dict[str, Any]) -> list[str]:
     return view_files
 
 
-def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) -> list[Path]:
+def render_module(
+    spec: dict[str, Any],
+    template_dir: Path,
+    output_dir: Path,
+    verifier: "EnvironmentVerifier | None" = None,
+) -> "tuple[list[Path], list[VerificationWarning]]":
     """Render a complete Odoo module from a specification dictionary.
 
     Produces the full OCA directory structure:
@@ -341,15 +349,19 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
         spec: Module specification dictionary with module_name, models, etc.
         template_dir: Path to Jinja2 template files.
         output_dir: Root directory where the module will be created.
+        verifier: Optional EnvironmentVerifier for inline MCP-backed verification.
+            When None (default), verification is skipped and warnings is always [].
 
     Returns:
-        List of all created file paths.
+        Tuple of (created_files, verification_warnings).
+        verification_warnings is empty when verifier is None or Odoo is unavailable.
     """
     version = spec.get("odoo_version", "17.0")
     env = create_versioned_renderer(version)
     module_name = spec["module_name"]
     module_dir = output_dir / module_name
     created_files: list[Path] = []
+    all_warnings: list = []
 
     models = spec.get("models", [])
     spec_wizards = spec.get("wizards", [])
@@ -442,6 +454,10 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
         model_ctx = _build_model_context(spec, model)
         model_var = _to_python_var(model["name"])
 
+        # Inline environment verification (MCP-03): verify inherit and comodel targets.
+        if verifier is not None:
+            all_warnings.extend(verifier.verify_model_spec(model))
+
         # models/<model_var>.py
         created_files.append(
             render_template(env, "model.py.j2", module_dir / "models" / f"{model_var}.py", model_ctx)
@@ -451,6 +467,11 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
         created_files.append(
             render_template(env, "view_form.xml.j2", module_dir / "views" / f"{model_var}_views.xml", model_ctx)
         )
+
+        # Inline environment verification (MCP-04): verify view field references.
+        if verifier is not None:
+            field_names = [f.get("name", "") for f in model.get("fields", [])]
+            all_warnings.extend(verifier.verify_view_spec(model.get("name", ""), field_names))
 
         # views/<model_var>_action.xml
         created_files.append(
@@ -608,4 +629,4 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
         render_template(env, "readme.rst.j2", module_dir / "README.rst", module_context)
     )
 
-    return created_files
+    return created_files, all_warnings
