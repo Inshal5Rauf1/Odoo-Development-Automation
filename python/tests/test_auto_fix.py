@@ -1215,3 +1215,280 @@ class TestRunDockerFixLoopNewDispatch:
         error_text = "External ID not found: action_test. ir.actions.act_window does not exist"
         result = run_docker_fix_loop(module_dir, error_text)
         assert result is True
+
+
+# ---------------------------------------------------------------------------
+# Task 2: Configurable iteration caps
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultMaxFixIterations:
+    """DEFAULT_MAX_FIX_ITERATIONS replaces MAX_FIX_CYCLES."""
+
+    def test_default_max_fix_iterations_equals_five(self):
+        from odoo_gen_utils.auto_fix import DEFAULT_MAX_FIX_ITERATIONS
+
+        assert DEFAULT_MAX_FIX_ITERATIONS == 5
+
+
+class TestPylintFixLoopMaxIterations:
+    """run_pylint_fix_loop accepts and honors max_iterations parameter."""
+
+    def test_max_iterations_default_is_five(self):
+        """Default max_iterations runs up to 5 cycles."""
+        cycle_count = 0
+        fixable_v = Violation(
+            file="models/m.py", line=5, column=0,
+            rule_code="W8113", symbol="redundant-string",
+            severity="warning", message='Redundant string= on field "name"',
+        )
+        non_fixable_v = Violation(
+            file="models/m.py", line=10, column=0,
+            rule_code="E8103", symbol="missing-description",
+            severity="error", message="Model _description missing",
+        )
+
+        def mock_run_pylint(*args, **kwargs):
+            nonlocal cycle_count
+            cycle_count += 1
+            return (fixable_v, non_fixable_v)
+
+        with tempfile.TemporaryDirectory() as d:
+            mod = Path(d)
+            model_file = mod / "models" / "m.py"
+            model_file.parent.mkdir(parents=True)
+            model_file.write_text(
+                'from odoo import fields, models\n\n'
+                'class M(models.Model):\n'
+                '    _name = "m"\n'
+                '    name = fields.Char(string="Name")\n',
+                encoding="utf-8",
+            )
+
+            with patch("odoo_gen_utils.auto_fix.run_pylint_odoo", side_effect=mock_run_pylint):
+                total_fixed, remaining = run_pylint_fix_loop(mod)
+
+            assert cycle_count == 5
+
+    def test_max_iterations_one_runs_one_cycle(self):
+        """max_iterations=1 runs exactly 1 cycle."""
+        cycle_count = 0
+        fixable_v = Violation(
+            file="models/m.py", line=5, column=0,
+            rule_code="W8113", symbol="redundant-string",
+            severity="warning", message='Redundant string= on field "name"',
+        )
+
+        def mock_run_pylint(*args, **kwargs):
+            nonlocal cycle_count
+            cycle_count += 1
+            return (fixable_v,)
+
+        with tempfile.TemporaryDirectory() as d:
+            mod = Path(d)
+            model_file = mod / "models" / "m.py"
+            model_file.parent.mkdir(parents=True)
+            model_file.write_text(
+                'from odoo import fields, models\n\n'
+                'class M(models.Model):\n'
+                '    _name = "m"\n'
+                '    name = fields.Char(string="Name")\n',
+                encoding="utf-8",
+            )
+
+            with patch("odoo_gen_utils.auto_fix.run_pylint_odoo", side_effect=mock_run_pylint):
+                total_fixed, remaining = run_pylint_fix_loop(mod, max_iterations=1)
+
+            assert cycle_count == 1
+
+    def test_max_iterations_five_explicit(self):
+        """max_iterations=5 runs at most 5 cycles."""
+        cycle_count = 0
+        fixable_v = Violation(
+            file="models/m.py", line=5, column=0,
+            rule_code="W8113", symbol="redundant-string",
+            severity="warning", message='Redundant string= on field "name"',
+        )
+
+        def mock_run_pylint(*args, **kwargs):
+            nonlocal cycle_count
+            cycle_count += 1
+            return (fixable_v,)
+
+        with tempfile.TemporaryDirectory() as d:
+            mod = Path(d)
+            model_file = mod / "models" / "m.py"
+            model_file.parent.mkdir(parents=True)
+            model_file.write_text(
+                'from odoo import fields, models\n\n'
+                'class M(models.Model):\n'
+                '    _name = "m"\n'
+                '    name = fields.Char(string="Name")\n',
+                encoding="utf-8",
+            )
+
+            with patch("odoo_gen_utils.auto_fix.run_pylint_odoo", side_effect=mock_run_pylint):
+                total_fixed, remaining = run_pylint_fix_loop(mod, max_iterations=5)
+
+            assert cycle_count == 5
+
+
+class TestDockerFixLoopIterations:
+    """run_docker_fix_loop runs in a loop with iteration cap."""
+
+    def test_loops_with_revalidate_fn(self, tmp_path: Path):
+        """run_docker_fix_loop loops: fix -> revalidate -> fix again."""
+        from odoo_gen_utils.auto_fix import run_docker_fix_loop
+
+        call_count = 0
+        module_dir = tmp_path / "test_module"
+        (module_dir / "models").mkdir(parents=True)
+        (module_dir / "models" / "__init__.py").write_text("from . import m\n", encoding="utf-8")
+        (module_dir / "models" / "m.py").write_text(textwrap.dedent("""\
+            from odoo import fields, models
+
+            class M(models.Model):
+                _name = "test.m"
+                _description = "Test"
+                name = fields.Char(required=True)
+        """), encoding="utf-8")
+        (module_dir / "__manifest__.py").write_text(textwrap.dedent("""\
+            {
+                "name": "Test",
+                "version": "17.0.1.0.0",
+                "license": "LGPL-3",
+                "depends": ["base"],
+                "data": [],
+            }
+        """), encoding="utf-8")
+
+        def revalidate_fn():
+            nonlocal call_count
+            call_count += 1
+            # First revalidation: still has an error (different one this time)
+            if call_count == 1:
+                from odoo_gen_utils.validation.types import InstallResult
+                return InstallResult(success=False, log_output="", error_message="fixed now")
+            return InstallResult(success=True, log_output="", error_message="")
+
+        error_text = "No access rule for model test.m. ir.model.access required"
+        any_fixed, remaining = run_docker_fix_loop(
+            module_dir, error_text, max_iterations=5, revalidate_fn=revalidate_fn
+        )
+        assert any_fixed is True
+
+    def test_stops_when_no_fix_applied(self, tmp_path: Path):
+        """run_docker_fix_loop stops when fix function returns False."""
+        from odoo_gen_utils.auto_fix import run_docker_fix_loop
+
+        module_dir = tmp_path / "test_module"
+        module_dir.mkdir(parents=True)
+
+        error_text = "Something completely unrecognized"
+        any_fixed, remaining = run_docker_fix_loop(
+            module_dir, error_text, max_iterations=5
+        )
+        assert any_fixed is False
+
+    def test_stops_at_max_iterations_with_cap_message(self, tmp_path: Path):
+        """run_docker_fix_loop stops at max_iterations and includes cap message."""
+        from odoo_gen_utils.auto_fix import run_docker_fix_loop
+
+        revalidate_count = 0
+        module_dir = tmp_path / "test_module"
+        (module_dir / "models").mkdir(parents=True)
+        (module_dir / "models" / "__init__.py").write_text("from . import m\n", encoding="utf-8")
+
+        # Create a model that will always need ACL (fix is always "applied"
+        # because we keep recreating the missing state)
+        def make_model():
+            (module_dir / "models" / "m.py").write_text(textwrap.dedent("""\
+                from odoo import fields, models
+
+                class M(models.Model):
+                    _name = "test.m"
+                    _description = "Test"
+                    name = fields.Char(required=True)
+            """), encoding="utf-8")
+            (module_dir / "__manifest__.py").write_text(textwrap.dedent("""\
+                {
+                    "name": "Test",
+                    "version": "17.0.1.0.0",
+                    "license": "LGPL-3",
+                    "depends": ["base"],
+                    "data": [],
+                }
+            """), encoding="utf-8")
+            # Remove existing CSV so fix is needed again
+            csv = module_dir / "security" / "ir.model.access.csv"
+            if csv.exists():
+                csv.unlink()
+
+        make_model()
+
+        def revalidate_fn():
+            nonlocal revalidate_count
+            revalidate_count += 1
+            # Always return error to force continued iterations
+            make_model()  # Reset state so fix is needed again
+            from odoo_gen_utils.validation.types import InstallResult
+            return InstallResult(
+                success=False,
+                log_output="No access rule for model test.m. ir.model.access required",
+                error_message="still broken",
+            )
+
+        error_text = "No access rule for model test.m. ir.model.access required"
+        any_fixed, remaining = run_docker_fix_loop(
+            module_dir, error_text, max_iterations=2, revalidate_fn=revalidate_fn
+        )
+        assert any_fixed is True
+        assert "iteration cap" in remaining.lower() or "Iteration cap" in remaining
+
+    def test_iteration_cap_message_text(self, tmp_path: Path):
+        """Cap message includes 'Iteration cap (N) reached'."""
+        from odoo_gen_utils.auto_fix import run_docker_fix_loop
+
+        module_dir = tmp_path / "test_module"
+        (module_dir / "models").mkdir(parents=True)
+        (module_dir / "models" / "__init__.py").write_text("from . import m\n", encoding="utf-8")
+
+        def make_model():
+            (module_dir / "models" / "m.py").write_text(textwrap.dedent("""\
+                from odoo import fields, models
+
+                class M(models.Model):
+                    _name = "test.m"
+                    _description = "Test"
+                    name = fields.Char(required=True)
+            """), encoding="utf-8")
+            (module_dir / "__manifest__.py").write_text(textwrap.dedent("""\
+                {
+                    "name": "Test",
+                    "version": "17.0.1.0.0",
+                    "license": "LGPL-3",
+                    "depends": ["base"],
+                    "data": [],
+                }
+            """), encoding="utf-8")
+            csv = module_dir / "security" / "ir.model.access.csv"
+            if csv.exists():
+                csv.unlink()
+
+        make_model()
+
+        def revalidate_fn():
+            make_model()
+            from odoo_gen_utils.validation.types import InstallResult
+            return InstallResult(
+                success=False,
+                log_output="No access rule for model test.m. ir.model.access required",
+                error_message="still broken",
+            )
+
+        error_text = "No access rule for model test.m. ir.model.access required"
+        any_fixed, remaining = run_docker_fix_loop(
+            module_dir, error_text, max_iterations=3, revalidate_fn=revalidate_fn
+        )
+        assert "Iteration cap (3) reached" in remaining
+        assert "manual review" in remaining.lower()
