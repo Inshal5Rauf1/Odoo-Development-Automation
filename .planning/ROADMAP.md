@@ -82,7 +82,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 14-01-PLAN.md — Wire run_docker_fix_loop into auto_fix.py and CLI validate command
+- [x] 14-01-PLAN.md — Wire run_docker_fix_loop into auto_fix.py and CLI validate command
 
 ---
 *Roadmap created: 2026-03-01*
