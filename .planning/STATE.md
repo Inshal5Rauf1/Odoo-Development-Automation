@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Environment-Aware Generation
 status: executing
-stopped_at: Completed 15-01-PLAN.md
-last_updated: "2026-03-04T12:40:24.662Z"
-last_activity: 2026-03-04 — Plan 15-01 executed (Docker dev environment + scripts + README docs)
+stopped_at: Completed 15-02-PLAN.md
+last_updated: "2026-03-04T12:45:27.000Z"
+last_activity: 2026-03-04 — Plan 15-02 executed (dev instance unit + Docker integration tests)
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 83
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 
 Milestone: v2.0 Environment-Aware Generation
 Phase: 15 of 19 (Odoo Dev Instance)
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-03-04 — Plan 15-01 executed (Docker dev environment + scripts + README docs)
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase 15 complete
+Last activity: 2026-03-04 — Plan 15-02 executed (dev instance unit + Docker integration tests)
 
-Progress: [████████░░] 83%
+Progress: [██████████] 100%
 
 ## Key Decisions (v2.0)
 
@@ -45,6 +45,9 @@ Progress: [████████░░] 83%
 - Python3 urllib for healthcheck instead of curl (curl may not be in official Odoo image)
 - docker compose run --rm for module init (not exec, avoids serialization failures)
 - Separate docker/dev/ directory to avoid conflicts with existing validation compose
+- Unit tests validate config files directly (no Docker needed) for fast CI feedback
+- Docker integration tests use class-scoped fixture to share one startup cycle
+- Fixture teardown uses stop (not reset) to preserve data between test runs
 
 ## Blockers/Concerns
 
@@ -55,10 +58,11 @@ None yet.
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 15 | 01 | 3min | 3 | 6 |
+| 15 | 02 | 3min | 2 | 1 |
 
 ## Session Continuity
 
-Last session: 2026-03-04T12:40:24.660Z
-Stopped at: Completed 15-01-PLAN.md
+Last session: 2026-03-04T12:45:27Z
+Stopped at: Completed 15-02-PLAN.md
 Resume file: None
-Next step: `/gsd:execute-phase 15` (plan 15-02)
+Next step: Phase 15 complete. Next phase: 16 (MCP Server)

@@ -11,12 +11,12 @@
 **As a** developer using odoo-gen, **I need** a running Odoo dev instance accessible via XML-RPC/JSON-RPC, **so that** agents can introspect the live environment during module generation.
 
 **Acceptance criteria:**
-- [ ] Docker Compose config spins up Odoo 17.0 CE with PostgreSQL
-- [ ] Instance is accessible via XML-RPC at configurable host:port
-- [ ] Pre-installed with common modules (base, mail, sale, purchase, hr, account)
-- [ ] Startup script or CLI command to launch/stop the dev instance
-- [ ] Instance persists data between restarts (named volume)
-- [ ] Documented in README
+- [x] Docker Compose config spins up Odoo 17.0 CE with PostgreSQL
+- [x] Instance is accessible via XML-RPC at configurable host:port
+- [x] Pre-installed with common modules (base, mail, sale, purchase, hr, account)
+- [x] Startup script or CLI command to launch/stop the dev instance
+- [x] Instance persists data between restarts (named volume)
+- [x] Documented in README
 
 ### MCP-02: Odoo MCP Server — Model Introspection
 **As a** code generation agent, **I need** to query the live Odoo instance for model schemas and field definitions, **so that** I can verify inheritance chains and field references before generating code.
