@@ -7,7 +7,7 @@
 
 ### Auto-Fix
 
-- [ ] **DFIX-01**: Docker auto-fix pipeline handles all 5 common error patterns: missing module dependency, missing field reference in view XML, security access violation, missing data file in manifest, and missing mail.thread inheritance
+- [ ] **DFIX-01**: Docker auto-fix pipeline identifies all 5 common error patterns (missing module dependency, missing field reference in view XML, security access violation, missing data file in manifest, missing mail.thread inheritance) and provides automated fixes for those that are mechanically deterministic (missing_import requires human judgment and escalates with actionable message)
 - [ ] **AFIX-01**: Both pylint and Docker fix loops are capped at a configurable maximum (default: 5 iterations); when the cap is reached, remaining errors are reported and the loop stops
 - [ ] **AFIX-02**: Running `validate --auto-fix` on a module with known pylint violations resolves them automatically, verified by an integration test that runs in CI without Docker
 
