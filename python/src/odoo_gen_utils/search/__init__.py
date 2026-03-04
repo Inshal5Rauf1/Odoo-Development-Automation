@@ -21,6 +21,11 @@ from odoo_gen_utils.search.query import (  # noqa: F401
     search_modules,
 )
 from odoo_gen_utils.search.types import IndexEntry, IndexStatus  # noqa: F401
+from odoo_gen_utils.search.wizard import (  # noqa: F401
+    AuthStatus,
+    check_github_auth,
+    format_auth_guidance,
+)
 
 __all__ = [
     "ModuleAnalysis",
@@ -37,4 +42,7 @@ __all__ = [
     "SearchResult",
     "search_modules",
     "setup_companion_dir",
+    "AuthStatus",
+    "check_github_auth",
+    "format_auth_guidance",
 ]

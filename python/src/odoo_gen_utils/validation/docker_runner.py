@@ -221,14 +221,18 @@ def docker_run_tests(
     }
 
     try:
-        # Start services and wait for health checks
-        _run_compose(compose_file, ["up", "-d", "--wait"], env, timeout=120)
+        # Start only the database service to avoid a second Odoo process
+        # conflicting with the test runner on the same database.
+        _run_compose(compose_file, ["up", "-d", "--wait", "db"], env, timeout=120)
 
-        # Run tests
+        # Run tests in a fresh container (no entrypoint server conflict).
+        # --test-tags filters to only this module's tests, avoiding the
+        # 900+ base module tests that would otherwise run.
         result = _run_compose(
             compose_file,
             [
-                "exec",
+                "run",
+                "--rm",
                 "-T",
                 "odoo",
                 "odoo",
@@ -237,6 +241,7 @@ def docker_run_tests(
                 "-d",
                 "test_db",
                 "--test-enable",
+                f"--test-tags={module_name}",
                 "--stop-after-init",
                 "--no-http",
                 "--log-level=test",

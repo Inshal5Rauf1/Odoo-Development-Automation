@@ -32,7 +32,13 @@ _MODULES_LOADED = re.compile(
     re.IGNORECASE,
 )
 
-# Test pass pattern: "test_name ... ok"
+# Odoo 17 test start pattern: "Starting ClassName.test_method ..."
+_TEST_START = re.compile(
+    r"(\S+\.tests\.\S+):\s+Starting\s+\S+\.(test_\S+)\s+\.\.\.",
+    re.MULTILINE,
+)
+
+# Legacy test pass pattern (Odoo <17): "test_name ... ok"
 _TEST_PASS = re.compile(
     r"(\S+\.tests\.\S+):\s+(test_\S+)\s+\.\.\.\s+ok",
     re.MULTILINE,
@@ -40,11 +46,29 @@ _TEST_PASS = re.compile(
 
 # Test failure pattern: FAIL or ERROR followed by test info
 _TEST_FAIL = re.compile(
+    r"^\d{4}-\d{2}-\d{2}\s[\d:,]+\s+\d+\s+(FAIL|ERROR)\s+\S+\s+\S+\.tests\.\S+",
+    re.MULTILINE,
+)
+
+# Test failure with test name on same line
+_TEST_FAIL_NAMED = re.compile(
     r"^\d{4}-\d{2}-\d{2}\s[\d:,]+\s+\d+\s+(FAIL|ERROR)\s+\S+\s+\S+\.tests\.\S+:\s+(test_\S+)",
     re.MULTILINE,
 )
 
-# Test summary pattern
+# Odoo 17 test stats: "module_name: N tests Xs Q queries"
+_TEST_STATS = re.compile(
+    r"odoo\.tests\.stats:\s+(\S+):\s+(\d+)\s+tests?\s+([\d.]+)s",
+    re.MULTILINE,
+)
+
+# Odoo 17 result summary: "N failed, M error(s) of P tests"
+_TEST_RESULT = re.compile(
+    r"(\d+)\s+failed,\s+(\d+)\s+error\(s\)\s+of\s+(\d+)\s+tests?",
+    re.MULTILINE,
+)
+
+# Legacy test summary (Odoo <17): "Ran N tests in Xs"
 _TEST_SUMMARY = re.compile(
     r"Ran\s+(\d+)\s+tests?\s+in\s+([\d.]+)s",
     re.MULTILINE,
@@ -101,6 +125,9 @@ def parse_install_log(log_text: str) -> tuple[bool, str]:
 def parse_test_log(log_text: str) -> tuple[TestResult, ...]:
     """Parse Odoo test output to extract per-test pass/fail results.
 
+    Supports both Odoo 17 format (``Starting Class.test_method ...``)
+    and legacy format (``test_method ... ok``).
+
     Returns:
         Tuple of TestResult dataclasses, one per test found.
     """
@@ -110,35 +137,63 @@ def parse_test_log(log_text: str) -> tuple[TestResult, ...]:
     results: list[TestResult] = []
     seen_tests: set[str] = set()
 
-    # Find all passing tests
+    # Collect failed test names first so we can mark them
+    failed_tests: dict[str, str] = {}
+    for match in _TEST_FAIL_NAMED.finditer(log_text):
+        test_name = match.group(2)
+        failure_type = match.group(1)
+        if test_name not in failed_tests:
+            error_msg = _extract_failure_message(log_text, match.end())
+            failed_tests[test_name] = error_msg or f"{failure_type}: {test_name}"
+
+    # Odoo 17 format: "Starting ClassName.test_method ..."
+    for match in _TEST_START.finditer(log_text):
+        test_name = match.group(2)
+        if test_name not in seen_tests:
+            seen_tests.add(test_name)
+            if test_name in failed_tests:
+                results.append(
+                    TestResult(
+                        test_name=test_name,
+                        passed=False,
+                        error_message=failed_tests[test_name],
+                    )
+                )
+            else:
+                results.append(TestResult(test_name=test_name, passed=True))
+
+    # Legacy format (Odoo <17): "test_name ... ok"
     for match in _TEST_PASS.finditer(log_text):
         test_name = match.group(2)
         if test_name not in seen_tests:
             seen_tests.add(test_name)
             results.append(TestResult(test_name=test_name, passed=True))
 
-    # Find all failing tests
-    for match in _TEST_FAIL.finditer(log_text):
+    # Legacy failures not already captured
+    for match in _TEST_FAIL_NAMED.finditer(log_text):
         test_name = match.group(2)
-        failure_type = match.group(1)  # FAIL or ERROR
         if test_name not in seen_tests:
             seen_tests.add(test_name)
-            # Try to extract error message from following lines
             error_msg = _extract_failure_message(log_text, match.end())
             results.append(
                 TestResult(
                     test_name=test_name,
                     passed=False,
-                    error_message=error_msg or f"{failure_type}: {test_name}",
+                    error_message=error_msg or f"{match.group(1)}: {test_name}",
                 )
             )
 
-    # Parse test summary for duration info
+    # Parse duration from Odoo 17 stats or legacy summary
+    total_duration = 0.0
+    stats_match = _TEST_STATS.search(log_text)
     summary_match = _TEST_SUMMARY.search(log_text)
-    if summary_match and results:
+    if stats_match:
+        total_duration = float(stats_match.group(3))
+    elif summary_match:
         total_duration = float(summary_match.group(2))
-        avg_duration = total_duration / len(results) if results else 0.0
-        # Update results with averaged duration (frozen dataclass, create new)
+
+    if total_duration > 0 and results:
+        avg_duration = total_duration / len(results)
         results = [
             TestResult(
                 test_name=r.test_name,

@@ -16,10 +16,14 @@ from pathlib import Path
 
 
 def extract_python_strings(file_path: Path) -> list[tuple[str, str, int]]:
-    """Extract translatable strings from _() calls in a Python file.
+    """Extract translatable strings from a Python file.
 
-    Uses ast.parse() to build AST and walks for Call nodes where
-    func is Name(id='_') with a string Constant as first argument.
+    Finds two patterns:
+    1. _("text") calls — standard Odoo translation markers
+    2. fields.*(string="text") — field label declarations (auto-translated by Odoo)
+
+    Uses ast.parse() to build AST and walks for Call nodes matching
+    either pattern.
 
     Args:
         file_path: Path to the Python file to scan.
@@ -37,15 +41,29 @@ def extract_python_strings(file_path: Path) -> list[tuple[str, str, int]]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        if not isinstance(node.func, ast.Name):
-            continue
-        if node.func.id != "_":
-            continue
-        if not node.args:
-            continue
-        first_arg = node.args[0]
-        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-            results.append((first_arg.value, str(file_path), node.lineno))
+
+        # Pattern 1: _("text") calls
+        if isinstance(node.func, ast.Name) and node.func.id == "_":
+            if node.args:
+                first_arg = node.args[0]
+                if isinstance(first_arg, ast.Constant) and isinstance(
+                    first_arg.value, str
+                ):
+                    results.append((first_arg.value, str(file_path), node.lineno))
+
+        # Pattern 2: fields.*(string="text") keyword arguments
+        elif (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "fields"
+        ):
+            for kw in node.keywords:
+                if (
+                    kw.arg == "string"
+                    and isinstance(kw.value, ast.Constant)
+                    and isinstance(kw.value.value, str)
+                ):
+                    results.append((kw.value.value, str(file_path), node.lineno))
 
     return results
 

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
+if TYPE_CHECKING:
+    from odoo_gen_utils.verifier import EnvironmentVerifier, VerificationWarning
 
 
 # Sequence field names that trigger ir.sequence generation.
@@ -209,6 +212,17 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         for f in fields
     )
 
+    # Phase 12: mail.thread auto-inheritance (TMPL-01)
+    explicit_inherit = model.get("inherit")
+    inherit_list = [explicit_inherit] if explicit_inherit else []
+    if "mail" in spec.get("depends", []):
+        for mixin in ("mail.thread", "mail.activity.mixin"):
+            if mixin not in inherit_list:
+                inherit_list.append(mixin)
+
+    # Phase 12: conditional api import (TMPL-02)
+    needs_api = bool(computed_fields or onchange_fields or constrained_fields or sequence_fields)
+
     return {
         "module_name": spec["module_name"],
         "module_title": spec.get("module_title", spec["module_name"].replace("_", " ").title()),
@@ -243,6 +257,9 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         # Phase 6 keys
         "has_company_field": has_company_field,
         "workflow_states": model.get("workflow_states", []),
+        # Phase 12 keys
+        "inherit_list": inherit_list,
+        "needs_api": needs_api,
     }
 
 
@@ -310,7 +327,12 @@ def _compute_view_files(spec: dict[str, Any]) -> list[str]:
     return view_files
 
 
-def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) -> list[Path]:
+def render_module(
+    spec: dict[str, Any],
+    template_dir: Path,
+    output_dir: Path,
+    verifier: "EnvironmentVerifier | None" = None,
+) -> "tuple[list[Path], list[VerificationWarning]]":
     """Render a complete Odoo module from a specification dictionary.
 
     Produces the full OCA directory structure:
@@ -327,15 +349,31 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
         spec: Module specification dictionary with module_name, models, etc.
         template_dir: Path to Jinja2 template files.
         output_dir: Root directory where the module will be created.
+        verifier: Optional EnvironmentVerifier for inline MCP-backed verification.
+            When None (default), verification is skipped and warnings is always [].
 
     Returns:
-        List of all created file paths.
+        Tuple of (created_files, verification_warnings).
+        verification_warnings is empty when verifier is None or Odoo is unavailable.
     """
     version = spec.get("odoo_version", "17.0")
     env = create_versioned_renderer(version)
     module_name = spec["module_name"]
     module_dir = output_dir / module_name
     created_files: list[Path] = []
+    all_warnings: list = []
+
+    # --- Artifact state tracking (OBS-01) ---
+    try:
+        from odoo_gen_utils.artifact_state import (
+            ArtifactKind,
+            ArtifactStatus,
+            ModuleState,
+            save_state,
+        )
+        _state: ModuleState | None = ModuleState(module_name=module_name)
+    except Exception:
+        _state = None
 
     models = spec.get("models", [])
     spec_wizards = spec.get("wizards", [])
@@ -412,6 +450,16 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
     created_files.append(
         render_template(env, "manifest.py.j2", module_dir / "__manifest__.py", module_context)
     )
+    if _state is not None:
+        try:
+            _state = _state.transition(
+                kind=ArtifactKind.MANIFEST.value,
+                name="__manifest__",
+                file_path="__manifest__.py",
+                new_status=ArtifactStatus.GENERATED.value,
+            )
+        except Exception:
+            pass  # State tracking must never block generation
 
     # 2. Root __init__.py (conditionally imports wizards)
     created_files.append(
@@ -428,15 +476,44 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
         model_ctx = _build_model_context(spec, model)
         model_var = _to_python_var(model["name"])
 
+        # Inline environment verification (MCP-03): verify inherit and comodel targets.
+        if verifier is not None:
+            all_warnings.extend(verifier.verify_model_spec(model))
+
         # models/<model_var>.py
         created_files.append(
             render_template(env, "model.py.j2", module_dir / "models" / f"{model_var}.py", model_ctx)
         )
+        if _state is not None:
+            try:
+                _state = _state.transition(
+                    kind=ArtifactKind.MODEL.value,
+                    name=model["name"],
+                    file_path=str(created_files[-1].relative_to(module_dir)),
+                    new_status=ArtifactStatus.GENERATED.value,
+                )
+            except Exception:
+                pass  # State tracking must never block generation
 
         # views/<model_var>_views.xml (form + tree + search combined)
         created_files.append(
             render_template(env, "view_form.xml.j2", module_dir / "views" / f"{model_var}_views.xml", model_ctx)
         )
+        if _state is not None:
+            try:
+                _state = _state.transition(
+                    kind=ArtifactKind.VIEW.value,
+                    name=model["name"],
+                    file_path=str(created_files[-1].relative_to(module_dir)),
+                    new_status=ArtifactStatus.GENERATED.value,
+                )
+            except Exception:
+                pass  # State tracking must never block generation
+
+        # Inline environment verification (MCP-04): verify view field references.
+        if verifier is not None:
+            field_names = [f.get("name", "") for f in model.get("fields", [])]
+            all_warnings.extend(verifier.verify_view_spec(model.get("name", ""), field_names))
 
         # views/<model_var>_action.xml
         created_files.append(
@@ -457,6 +534,16 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
     created_files.append(
         render_template(env, "access_csv.j2", module_dir / "security" / "ir.model.access.csv", module_context)
     )
+    if _state is not None:
+        try:
+            _state = _state.transition(
+                kind=ArtifactKind.SECURITY.value,
+                name="ir.model.access.csv",
+                file_path="security/ir.model.access.csv",
+                new_status=ArtifactStatus.GENERATED.value,
+            )
+        except Exception:
+            pass  # State tracking must never block generation
 
     # 7b. security/record_rules.xml (if any model has company_id field)
     if has_company_modules:
@@ -572,6 +659,16 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
                 env, "test_model.py.j2", module_dir / "tests" / f"test_{model_var}.py", model_ctx
             )
         )
+        if _state is not None:
+            try:
+                _state = _state.transition(
+                    kind=ArtifactKind.TEST.value,
+                    name=model["name"],
+                    file_path=str(created_files[-1].relative_to(module_dir)),
+                    new_status=ArtifactStatus.GENERATED.value,
+                )
+            except Exception:
+                pass  # State tracking must never block generation
 
     # 13. demo/demo_data.xml
     created_files.append(
@@ -594,4 +691,11 @@ def render_module(spec: dict[str, Any], template_dir: Path, output_dir: Path) ->
         render_template(env, "readme.rst.j2", module_dir / "README.rst", module_context)
     )
 
-    return created_files
+    # --- Save artifact state (OBS-01) ---
+    if _state is not None:
+        try:
+            save_state(_state, module_dir)
+        except Exception:
+            pass  # State tracking must never block generation
+
+    return created_files, all_warnings

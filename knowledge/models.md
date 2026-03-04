@@ -413,6 +413,87 @@ class Employee(models.Model):
 
 Creates a composition relationship -- Employee "has a" Partner, accessing all Partner fields directly while storing them in `res_partner` table.
 
+## mail.thread and mail.activity.mixin
+
+### When to add mail.thread inheritance
+
+**Rule:** When `mail` is in the module's `depends` list, the model MUST inherit from both `mail.thread` and `mail.activity.mixin`.
+
+**WRONG:**
+```python
+# __manifest__.py has "depends": ["base", "mail"]
+# But model lacks mail.thread inheritance:
+class HrTraining(models.Model):
+    _name = "hr.training"
+    _description = "HR Training"
+
+    name = fields.Char(string="Name", required=True)
+```
+
+**CORRECT:**
+```python
+class HrTraining(models.Model):
+    _name = "hr.training"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _description = "HR Training"
+
+    name = fields.Char(string="Name", required=True)
+```
+
+**Why:** Without `mail.thread`, the model cannot use Odoo's chatter (messages, followers, activities). The module will install but chatter fields (`message_ids`, `message_follower_ids`, `activity_ids`) will cause `KeyError` at runtime.
+
+### The Triple Dependency
+
+**Rule:** Three things must be consistent when using mail/chatter:
+
+1. **Manifest:** `"mail"` in the `depends` list
+2. **Model:** `_inherit = ["mail.thread", "mail.activity.mixin"]`
+3. **View:** `<div class="oe_chatter">` with `message_follower_ids` and `message_ids` fields
+
+If any one is missing, the module will either fail to install or crash at runtime.
+
+**WRONG:** Chatter in view but no mail.thread inheritance:
+```xml
+<!-- views/hr_training_views.xml -->
+<div class="oe_chatter">
+    <field name="message_follower_ids"/>
+    <field name="message_ids"/>
+</div>
+```
+```python
+# models/hr_training.py -- MISSING _inherit!
+class HrTraining(models.Model):
+    _name = "hr.training"
+    _description = "HR Training"
+```
+
+**CORRECT:** All three aligned:
+```python
+# __manifest__.py
+{"depends": ["base", "mail"]}
+
+# models/hr_training.py
+class HrTraining(models.Model):
+    _name = "hr.training"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _description = "HR Training"
+```
+```xml
+<!-- views/hr_training_views.xml -->
+<div class="oe_chatter">
+    <field name="message_follower_ids"/>
+    <field name="message_ids"/>
+</div>
+```
+
+**Why:** Odoo 17.0 raises `ValueError` during module loading if a view references fields that don't exist on the model. `message_ids` and `message_follower_ids` only exist when the model inherits `mail.thread`.
+
+### mail.activity.mixin is always paired with mail.thread
+
+**Rule:** Always inherit both `mail.thread` AND `mail.activity.mixin` together. Never inherit just one.
+
+**Why:** `mail.activity.mixin` depends on `mail.thread` fields. Inheriting activity mixin without thread causes `MissingError`. Inheriting thread without activity mixin loses the activity scheduling feature that users expect when they see the chatter.
+
 ## OCA Conventions
 
 ### One model per Python file

@@ -9,10 +9,11 @@ from pathlib import Path
 import click
 
 from odoo_gen_utils import __version__
-from odoo_gen_utils.auto_fix import format_escalation, run_pylint_fix_loop
+from odoo_gen_utils.auto_fix import format_escalation, run_docker_fix_loop, run_pylint_fix_loop
 from odoo_gen_utils.i18n_extractor import extract_translatable_strings, generate_pot
 from odoo_gen_utils.kb_validator import validate_kb_directory, validate_kb_file
 from odoo_gen_utils.search import build_oca_index, get_github_token, get_index_status
+from odoo_gen_utils.search.wizard import check_github_auth, format_auth_guidance
 from odoo_gen_utils.search.analyzer import analyze_module, format_analysis_text
 from odoo_gen_utils.search.fork import clone_oca_module, setup_companion_dir
 from odoo_gen_utils.search.index import DEFAULT_DB_PATH
@@ -29,6 +30,7 @@ from odoo_gen_utils.renderer import (
     render_module,
     render_template,
 )
+from odoo_gen_utils.verifier import build_verifier_from_env
 from odoo_gen_utils.validation import (  # noqa: F401
     ValidationReport,
     check_docker_available,
@@ -195,9 +197,14 @@ def render_module_cmd(spec_file: str, output_dir: str) -> None:
     output_path = Path(output_dir)
 
     try:
-        created_files = render_module(spec, template_dir, output_path)
-        for f in created_files:
+        verifier = build_verifier_from_env()
+        files, warnings = render_module(spec, template_dir, output_path, verifier=verifier)
+        for f in files:
             click.echo(str(f))
+        for w in warnings:
+            click.echo(f"WARN [{w.check_type}] {w.subject}: {w.message}", err=True)
+            if w.suggestion:
+                click.echo(f"  Suggestion: {w.suggestion}", err=True)
     except Exception as exc:
         click.echo(f"Error rendering module: {exc}", err=True)
         sys.exit(1)
@@ -372,7 +379,7 @@ def check_edition(spec_file: str, json_output: bool) -> None:
 @main.command()
 @click.argument("module_path", type=click.Path(exists=True))
 @click.option("--pylint-only", is_flag=True, help="Run only pylint-odoo (skip Docker)")
-@click.option("--auto-fix", is_flag=True, help="Attempt to auto-fix pylint violations (max 2 cycles)")
+@click.option("--auto-fix", is_flag=True, help="Attempt to auto-fix pylint violations (max 5 cycles)")
 @click.option("--json", "json_output", is_flag=True, help="Output JSON report (machine-readable)")
 @click.option("--pylintrc", type=click.Path(exists=True), help="Path to .pylintrc-odoo config file")
 def validate(
@@ -389,7 +396,7 @@ def validate(
     result, test results, and actionable error diagnosis.
 
     With --auto-fix, attempts to mechanically fix known pylint violations
-    (up to 2 cycles) before reporting remaining issues.
+    (up to 5 cycles) before reporting remaining issues.
     """
     mod_path = Path(module_path).resolve()
 
@@ -432,6 +439,21 @@ def validate(
             if install_result.log_output:
                 error_logs.append(install_result.log_output)
 
+            # Step 2b: Auto-fix Docker errors if --auto-fix enabled
+            if auto_fix and not install_result.success and install_result.log_output:
+                any_docker_fixed, remaining_errors = run_docker_fix_loop(
+                    mod_path,
+                    install_result.log_output,
+                    revalidate_fn=lambda: docker_install_module(mod_path),
+                )
+                if any_docker_fixed:
+                    click.echo("Auto-fix: applied Docker error fix(es), retrying validation...")
+                    install_result = docker_install_module(mod_path)
+                    if install_result.log_output:
+                        error_logs.append(install_result.log_output)
+                    if remaining_errors and "iteration cap" in remaining_errors.lower():
+                        click.echo(remaining_errors)
+
             # Step 3: Run tests if install succeeded
             if install_result.success:
                 test_results = docker_run_tests(mod_path)
@@ -466,11 +488,27 @@ def validate(
         sys.exit(1)
 
 
+def _handle_auth_failure(no_wizard: bool) -> None:
+    """Handle GitHub auth failure with optional wizard guidance."""
+    if no_wizard:
+        click.echo(
+            "GitHub authentication required.\n"
+            "Run: gh auth login\n"
+            "Or set: export GITHUB_TOKEN=your_token",
+            err=True,
+        )
+    else:
+        status = check_github_auth()
+        click.echo(format_auth_guidance(status), err=True)
+    sys.exit(1)
+
+
 @main.command("build-index")
 @click.option("--token", envvar="GITHUB_TOKEN", default=None, help="GitHub personal access token")
 @click.option("--db-path", default=None, help="ChromaDB storage path (default: ~/.local/share/odoo-gen/chromadb/)")
 @click.option("--update", is_flag=True, help="Only re-index repos pushed since last build")
-def build_index(token: str | None, db_path: str | None, update: bool) -> None:
+@click.option("--no-wizard", is_flag=True, help="Skip interactive setup guidance on auth failure")
+def build_index(token: str | None, db_path: str | None, update: bool, no_wizard: bool) -> None:
     """Build or update the local ChromaDB index of OCA Odoo modules.
 
     Crawls all OCA GitHub repositories with a 17.0 branch, extracts module
@@ -481,13 +519,7 @@ def build_index(token: str | None, db_path: str | None, update: bool) -> None:
         token = get_github_token()
 
     if not token:
-        click.echo(
-            "Index build requires GitHub authentication.\n"
-            "Run: gh auth login\n"
-            "Or set: export GITHUB_TOKEN=your_token\n"
-            "Then re-run your search."
-        )
-        sys.exit(1)
+        _handle_auth_failure(no_wizard)
 
     resolved_path = db_path or str(DEFAULT_DB_PATH)
 
@@ -544,12 +576,14 @@ def index_status(db_path: str | None, json_output: bool) -> None:
     is_flag=True,
     help="Fall back to GitHub search if no OCA results found",
 )
+@click.option("--no-wizard", is_flag=True, help="Skip interactive setup guidance on auth failure")
 def search_modules_cmd(
     query: str,
     limit: int,
     db_path: str | None,
     json_output: bool,
     github_fallback: bool,
+    no_wizard: bool,
 ) -> None:
     """Semantically search for Odoo modules matching a natural language query.
 
@@ -564,14 +598,7 @@ def search_modules_cmd(
     if not status.exists or status.module_count == 0:
         token = get_github_token()
         if not token:
-            click.echo(
-                "No index found. Building requires GitHub authentication.\n"
-                "Run: gh auth login\n"
-                "Or set: export GITHUB_TOKEN=your_token\n"
-                "Then re-run your search.",
-                err=True,
-            )
-            sys.exit(1)
+            _handle_auth_failure(no_wizard)
 
         click.echo("No index found. Building index first (this takes ~3-5 minutes)...")
 
@@ -633,6 +660,7 @@ def search_modules_cmd(
 )
 @click.option("--branch", default="17.0", help="Git branch to clone (default: 17.0)")
 @click.option("--json", "json_output", is_flag=True, help="Output analysis as JSON")
+@click.option("--no-wizard", is_flag=True, help="Skip interactive setup guidance on auth failure")
 def extend_module_cmd(
     module_name: str,
     repo: str,
@@ -640,6 +668,7 @@ def extend_module_cmd(
     spec_file: str | None,
     branch: str,
     json_output: bool,
+    no_wizard: bool,
 ) -> None:
     """Clone an OCA module and set up a companion extension module.
 
@@ -652,6 +681,11 @@ def extend_module_cmd(
     (REFN-03: refined spec is the new source of truth).
     """
     out_path = Path(output_dir).resolve()
+
+    # Auth check for extend-module (requires GitHub for cloning)
+    token = get_github_token()
+    if not token:
+        _handle_auth_failure(no_wizard)
 
     # Step 1: Clone the module via sparse checkout
     click.echo(f"Cloning {repo}/{module_name} (branch {branch})...")
@@ -712,3 +746,46 @@ def extend_module_cmd(
     click.echo("Output:")
     click.echo(f"  Original module: {cloned_path}")
     click.echo(f"  Companion module: {companion_path}")
+
+
+@main.command("show-state")
+@click.argument("module_path", type=click.Path(exists=True))
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def show_state(module_path: str, json_output: bool) -> None:
+    """Show artifact generation state for a module."""
+    from odoo_gen_utils.artifact_state import format_state_table, load_state
+
+    mod_path = Path(module_path).resolve()
+    state = load_state(mod_path)
+
+    if state is None:
+        click.echo("No state file found. Module has not been tracked.")
+        return
+
+    if json_output:
+        state_file = mod_path / ".odoo-gen-state.json"
+        raw = state_file.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        click.echo(json.dumps(data, indent=2))
+        return
+
+    click.echo(format_state_table(state))
+
+
+@main.command("context7-status")
+def context7_status() -> None:
+    """Check Context7 API configuration status."""
+    from odoo_gen_utils.context7 import build_context7_from_env
+
+    client = build_context7_from_env()
+
+    if not client.is_configured:
+        click.echo("Context7 not configured. Set CONTEXT7_API_KEY to enable live Odoo docs.")
+        return
+
+    click.echo("Context7 configured.")
+    library_id = client.resolve_odoo_library()
+    if library_id is not None:
+        click.echo(f"Odoo library resolved: {library_id}")
+    else:
+        click.echo("Odoo library resolution failed (docs may be unavailable).")

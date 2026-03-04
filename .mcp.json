@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "odoo-introspection": {
+      "type": "stdio",
+      "command": "/home/inshal-rauf/Odoo_module_automation/python/.venv/bin/python",
+      "args": ["-m", "odoo_gen_utils.mcp.server"],
+      "env": {
+        "ODOO_URL": "http://localhost:8069",
+        "ODOO_DB": "odoo_dev",
+        "ODOO_USER": "admin",
+        "ODOO_API_KEY": "admin"
+      }
+    }
+  }
+}

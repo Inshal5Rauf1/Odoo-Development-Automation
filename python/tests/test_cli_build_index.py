@@ -14,12 +14,28 @@ from odoo_gen_utils.search.types import IndexStatus
 class TestBuildIndexCommand:
     """build-index CLI command tests."""
 
+    @patch("odoo_gen_utils.cli.check_github_auth")
     @patch("odoo_gen_utils.cli.get_github_token", return_value=None)
-    def test_no_token_exits_code_1(self, mock_token: MagicMock) -> None:
+    def test_no_token_exits_code_1(self, mock_token: MagicMock, mock_wizard: MagicMock) -> None:
+        from odoo_gen_utils.search.wizard import AuthStatus
+
+        mock_wizard.return_value = AuthStatus(
+            gh_installed=True,
+            gh_authenticated=False,
+            token_source=None,
+            guidance="not authenticated",
+        )
         runner = CliRunner()
         result = runner.invoke(main, ["build-index"])
         assert result.exit_code == 1
-        assert "Index build requires GitHub authentication" in result.output
+        assert "gh auth login" in result.output
+
+    @patch("odoo_gen_utils.cli.get_github_token", return_value=None)
+    def test_no_token_no_wizard_exits_code_1(self, mock_token: MagicMock) -> None:
+        runner = CliRunner()
+        result = runner.invoke(main, ["build-index", "--no-wizard"])
+        assert result.exit_code == 1
+        assert "GitHub authentication required" in result.output
         assert "gh auth login" in result.output
 
     @patch("odoo_gen_utils.cli.build_oca_index", return_value=42)

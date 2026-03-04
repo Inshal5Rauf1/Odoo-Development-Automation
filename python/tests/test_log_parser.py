@@ -88,7 +88,8 @@ class TestParseInstallLogEmpty:
 class TestParseTestLogAllPass:
     """Log with all passing tests returns TestResult with passed=True."""
 
-    def test_parse_test_log_all_pass(self) -> None:
+    def test_parse_test_log_all_pass_legacy(self) -> None:
+        """Legacy format: test_name ... ok."""
         log = (
             "2026-03-02 10:00:00,000 1 INFO test_db "
             "odoo.addons.test_mod.tests.test_model: test_create ... ok\n"
@@ -104,11 +105,29 @@ class TestParseTestLogAllPass:
         assert all(isinstance(r, TestResult) for r in results)
         assert all(r.passed is True for r in results)
 
+    def test_parse_test_log_all_pass_odoo17(self) -> None:
+        """Odoo 17 format: Starting ClassName.test_method ..."""
+        log = (
+            "2026-03-03 14:01:30,973 1 INFO test_db "
+            "odoo.addons.docker_test_module.tests.test_basic: "
+            "Starting TestDockerTestModel.test_create_record ... \n"
+            "2026-03-03 14:01:32,381 1 INFO test_db "
+            "odoo.tests.stats: docker_test_module: 1 tests 0.02s 9 queries\n"
+            "2026-03-03 14:01:32,381 1 INFO test_db "
+            "odoo.tests.result: 0 failed, 0 error(s) of 1 tests\n"
+        )
+        results = parse_test_log(log)
+        assert len(results) == 1
+        assert results[0].passed is True
+        assert results[0].test_name == "test_create_record"
+        assert results[0].duration_seconds > 0
+
 
 class TestParseTestLogWithFailures:
     """Log with test failure patterns returns TestResult with passed=False."""
 
-    def test_parse_test_log_with_failure(self) -> None:
+    def test_parse_test_log_with_failure_legacy(self) -> None:
+        """Legacy format failure."""
         log = (
             "2026-03-02 10:00:00,000 1 INFO test_db "
             "odoo.addons.test_mod.tests.test_model: test_create ... ok\n"
@@ -124,6 +143,29 @@ class TestParseTestLogWithFailures:
         assert len(passed) == 1
         assert len(failed) == 1
         assert failed[0].test_name == "test_invalid"
+
+    def test_parse_test_log_with_failure_odoo17(self) -> None:
+        """Odoo 17 format: Starting ... followed by FAIL log."""
+        log = (
+            "2026-03-03 14:01:30,973 1 INFO test_db "
+            "odoo.addons.test_mod.tests.test_model: "
+            "Starting TestModel.test_create ... \n"
+            "2026-03-03 14:01:30,980 1 INFO test_db "
+            "odoo.addons.test_mod.tests.test_model: "
+            "Starting TestModel.test_fail_example ... \n"
+            "2026-03-03 14:01:30,985 1 FAIL test_db "
+            "odoo.addons.test_mod.tests.test_model: test_fail_example\n"
+            "AssertionError: expected 42 got 0\n"
+            "2026-03-03 14:01:32,381 1 INFO test_db "
+            "odoo.tests.stats: test_mod: 2 tests 0.05s 15 queries\n"
+        )
+        results = parse_test_log(log)
+        passed = [r for r in results if r.passed]
+        failed = [r for r in results if not r.passed]
+        assert len(passed) == 1
+        assert len(failed) == 1
+        assert passed[0].test_name == "test_create"
+        assert failed[0].test_name == "test_fail_example"
 
 
 class TestParseTestLogNoTests:
@@ -141,7 +183,8 @@ class TestParseTestLogNoTests:
 class TestParseTestLogMixed:
     """Log with 2 passes and 1 fail returns correct TestResult tuples."""
 
-    def test_parse_test_log_mixed_results(self) -> None:
+    def test_parse_test_log_mixed_results_legacy(self) -> None:
+        """Legacy format mixed results."""
         log = (
             "2026-03-02 10:00:00,000 1 INFO test_db "
             "odoo.addons.test_mod.tests.test_model: test_create ... ok\n"

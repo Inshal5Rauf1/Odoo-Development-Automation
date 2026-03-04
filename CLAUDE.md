@@ -56,6 +56,12 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 <!-- Track mistakes made during development to avoid repeating them -->
 
 1. **Built standalone CLI plans before confirming architecture** — Spent time planning Typer CLI, custom config, custom state management when the actual vision was a GSD extension. Wasted Phase 1 planning cycle. Lesson: confirm the product form factor FIRST.
+2. **Assumed sentence-transformers was required for ChromaDB** — Included ~200MB sentence-transformers + torch as dependencies when ChromaDB ships its own 22MB ONNX embedding model. Discovered in Phase 10; removed both deps. Lesson: verify what a library actually uses before adding its transitive deps.
+3. **Mocked Docker tests gave false confidence** — Original `test_docker_runner.py` mocked `_run_compose()` which hid two real bugs: (a) `exec` causes race condition with entrypoint server on same DB, and (b) log parser regex didn't match Odoo 17's actual test output format (`Starting ClassName.test_method ...` not `test_method ... ok`). Only discovered when Phase 11 added unmocked live Docker tests. Lesson: mocked tests validate logic, not integration — always add real integration tests for Docker/container workflows.
+4. **Docker `exec` into running Odoo container causes serialization failures** — Two Odoo processes (entrypoint server + exec'd process) write to the same PostgreSQL database simultaneously, causing `psycopg2.errors.SerializationFailure`. Fix: use `docker compose run --rm` (fresh container, no entrypoint server) and `--test-tags` to filter only target module tests. Lesson: `exec` into a service container means TWO processes share the same DB.
+5. **`--test-enable` runs ALL module tests, not just the target** — Without `--test-tags={module}`, Odoo runs tests for base + all dependencies (938 tests for a simple module). This takes 30+ seconds and is fragile. Lesson: always use `--test-tags` when running Odoo tests in Docker.
+6. **Planner agent sometimes produces no output on first invocation** — During Phase 11 planning, the planner agent ran 29 tool uses (49k tokens) but created no PLAN.md files. Required resuming the agent. Lesson: always spot-check that plan files exist after planner returns; be prepared to resume.
+7. **AskUserQuestion tool silently drops selections** — During Phase 11 discussion, multi-select questions returned empty answers (".") even though user made selections. Workaround: re-ask questions individually. Lesson: if AskUserQuestion returns empty, re-ask — don't assume user skipped.
 
 ## Lessons Learned
 
