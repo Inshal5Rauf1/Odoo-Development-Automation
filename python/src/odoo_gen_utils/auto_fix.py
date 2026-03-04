@@ -519,6 +519,375 @@ def fix_missing_mail_thread(module_path: Path) -> bool:
 
 
 # -------------------------------------------------------------------------
+# Module-level auto-fix: XML parse error (fix mismatched tags)
+# -------------------------------------------------------------------------
+
+
+def fix_xml_parse_error(module_path: Path, error_output: str) -> bool:
+    """Detect and fix mismatched closing tags in XML view files.
+
+    Parses the error output to find the file and the mismatched tag details.
+    Common pattern from lxml: "Opening and ending tag mismatch: X line N and Y"
+    This means the opening tag is X but the closing tag is Y (a typo).
+
+    Args:
+        module_path: Root path of the Odoo module.
+        error_output: Error text from Docker validation.
+
+    Returns:
+        True if fix was applied, False if not applicable or XML is well-formed.
+    """
+    import xml.etree.ElementTree as ET
+
+    # Try to find referenced XML files in the error output
+    xml_files: list[Path] = []
+
+    # Pattern: "(filename, line N)" or "File "...filename""
+    file_matches = re.findall(
+        r'(?:(?:\(|File\s+["\'])([^)"\']+\.xml))', error_output
+    )
+    for fname in file_matches:
+        candidate = module_path / fname
+        if candidate.exists():
+            xml_files.append(candidate)
+
+    # If no specific file found, scan all XML files in views/
+    if not xml_files:
+        views_dir = module_path / "views"
+        if views_dir.is_dir():
+            xml_files = sorted(views_dir.glob("*.xml"))
+
+    if not xml_files:
+        return False
+
+    # Extract mismatch info from error output
+    # Pattern: "Opening and ending tag mismatch: OPEN line N and CLOSE"
+    mismatch_match = re.search(
+        r"(?:Opening and ending tag mismatch|Mismatched tag):\s*(\w+)\s+line\s+\d+\s+and\s+(\w+)",
+        error_output,
+    )
+
+    any_fixed = False
+
+    for xml_file in xml_files:
+        content = xml_file.read_text(encoding="utf-8")
+
+        # First, try to parse -- if it parses fine, no fix needed
+        try:
+            ET.fromstring(content)
+            continue  # Well-formed, skip
+        except ET.ParseError:
+            pass  # Has errors, try to fix
+
+        if mismatch_match:
+            open_tag = mismatch_match.group(1)
+            close_tag = mismatch_match.group(2)
+
+            # Replace the wrong closing tag with the correct one
+            wrong_close = f"</{close_tag}>"
+            right_close = f"</{open_tag}>"
+
+            if wrong_close in content:
+                new_content = content.replace(wrong_close, right_close, 1)
+                if new_content != content:
+                    xml_file.write_text(new_content, encoding="utf-8")
+                    any_fixed = True
+                    continue
+
+        # Fallback: try heuristic detection of common mismatched tags
+        # Look for closing tags that don't have matching opening tags
+        opening_tags = re.findall(r"<(\w+)[\s>]", content)
+        closing_tags = re.findall(r"</(\w+)>", content)
+
+        open_counts: dict[str, int] = {}
+        for tag in opening_tags:
+            open_counts[tag] = open_counts.get(tag, 0) + 1
+
+        close_counts: dict[str, int] = {}
+        for tag in closing_tags:
+            close_counts[tag] = close_counts.get(tag, 0) + 1
+
+        # Find tags that appear in closing but not in opening (likely typos)
+        new_content = content
+        for close_tag_name in close_counts:
+            if close_tag_name not in open_counts:
+                # This closing tag has no matching opener -- find the best match
+                # by looking for an opener with more opens than closes
+                for open_tag_name in open_counts:
+                    open_excess = open_counts.get(open_tag_name, 0) - close_counts.get(
+                        open_tag_name, 0
+                    )
+                    if open_excess > 0:
+                        wrong = f"</{close_tag_name}>"
+                        right = f"</{open_tag_name}>"
+                        new_content = new_content.replace(wrong, right, 1)
+                        break
+
+        if new_content != content:
+            xml_file.write_text(new_content, encoding="utf-8")
+            any_fixed = True
+
+    return any_fixed
+
+
+# -------------------------------------------------------------------------
+# Module-level auto-fix: missing ACL (create ir.model.access.csv)
+# -------------------------------------------------------------------------
+
+
+def _extract_model_names(module_path: Path) -> tuple[str, ...]:
+    """Scan models/ directory for all Python files defining _name.
+
+    Returns:
+        Tuple of model technical names found (e.g., ("my.model", "my.other")).
+    """
+    models_dir = module_path / "models"
+    if not models_dir.is_dir():
+        return ()
+
+    model_names: list[str] = []
+    for py_file in sorted(models_dir.glob("*.py")):
+        if py_file.name == "__init__.py":
+            continue
+        content = py_file.read_text(encoding="utf-8")
+        # Match _name = "model.name" or _name = 'model.name'
+        matches = re.findall(r"""_name\s*=\s*["']([^"']+)["']""", content)
+        model_names.extend(matches)
+
+    return tuple(model_names)
+
+
+def _build_acl_line(model_name: str) -> str:
+    """Build a single ACL CSV line for a model.
+
+    Format: access_{underscored},access.{dotted},model_{underscored},base.group_user,1,1,1,0
+    """
+    model_underscore = model_name.replace(".", "_")
+    return (
+        f"access_{model_underscore},"
+        f"access.{model_name},"
+        f"model_{model_underscore},"
+        f"base.group_user,1,1,1,0"
+    )
+
+
+def fix_missing_acl(module_path: Path, error_output: str) -> bool:
+    """Create or update security/ir.model.access.csv for all models.
+
+    Scans models/ for _name definitions, checks if CSV exists with entries
+    for each model, and creates/updates as needed. Also ensures __manifest__.py
+    includes the CSV path in its data list.
+
+    Args:
+        module_path: Root path of the Odoo module.
+        error_output: Error text from Docker validation.
+
+    Returns:
+        True if fix was applied, False if all models already have ACL entries.
+    """
+    model_names = _extract_model_names(module_path)
+    if not model_names:
+        return False
+
+    csv_path = module_path / "security" / "ir.model.access.csv"
+    header = "id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink"
+
+    existing_content = ""
+    if csv_path.exists():
+        existing_content = csv_path.read_text(encoding="utf-8")
+
+    # Find which models are missing from the CSV
+    missing_models: list[str] = []
+    for model_name in model_names:
+        model_underscore = model_name.replace(".", "_")
+        if f"model_{model_underscore}" not in existing_content:
+            missing_models.append(model_name)
+
+    if not missing_models:
+        return False
+
+    # Build new CSV content (immutable: create new string, don't mutate)
+    if existing_content.strip():
+        # Append to existing CSV
+        lines = existing_content.rstrip("\n").split("\n")
+        new_lines = list(lines)
+        for model_name in missing_models:
+            new_lines.append(_build_acl_line(model_name))
+        new_csv_content = "\n".join(new_lines) + "\n"
+    else:
+        # Create new CSV
+        csv_lines = [header]
+        for model_name in missing_models:
+            csv_lines.append(_build_acl_line(model_name))
+        new_csv_content = "\n".join(csv_lines) + "\n"
+
+    # Create security/ directory if needed
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text(new_csv_content, encoding="utf-8")
+
+    # Update __manifest__.py to include the CSV path if not already there
+    manifest_path = module_path / "__manifest__.py"
+    if manifest_path.exists():
+        manifest_content = manifest_path.read_text(encoding="utf-8")
+        csv_ref = "security/ir.model.access.csv"
+        if csv_ref not in manifest_content:
+            # Insert into the 'data' list using AST for safe parsing
+            try:
+                tree = ast.parse(manifest_content)
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Dict):
+                        for key_node, value_node in zip(node.keys, node.values):
+                            if (
+                                isinstance(key_node, ast.Constant)
+                                and key_node.value == "data"
+                                and isinstance(value_node, ast.List)
+                            ):
+                                # Found the data list -- insert CSV reference
+                                # Use string manipulation to add it
+                                new_manifest = manifest_content.replace(
+                                    '"data": [',
+                                    f'"data": [\n        "{csv_ref}",',
+                                )
+                                if new_manifest == manifest_content:
+                                    # Try alternate formatting
+                                    new_manifest = manifest_content.replace(
+                                        "'data': [",
+                                        f"'data': [\n        '{csv_ref}',",
+                                    )
+                                if new_manifest != manifest_content:
+                                    manifest_path.write_text(new_manifest, encoding="utf-8")
+                                break
+            except SyntaxError:
+                pass  # Cannot parse manifest, skip update
+
+    return True
+
+
+# -------------------------------------------------------------------------
+# Module-level auto-fix: manifest load order (reorder data files)
+# -------------------------------------------------------------------------
+
+
+def _is_action_definer(file_path: Path) -> bool:
+    """Check if an XML file defines actions (ir.actions.act_window or <act_window>)."""
+    if not file_path.exists():
+        return False
+    content = file_path.read_text(encoding="utf-8")
+    return bool(
+        "ir.actions.act_window" in content
+        or "<act_window" in content
+    )
+
+
+def _is_action_reference(file_path: Path) -> bool:
+    """Check if an XML file references actions (action= attribute in menus)."""
+    if not file_path.exists():
+        return False
+    content = file_path.read_text(encoding="utf-8")
+    return bool(re.search(r'\baction\s*=\s*["\']', content))
+
+
+def fix_manifest_load_order(module_path: Path, error_output: str) -> bool:
+    """Reorder manifest data list so action definitions precede action references.
+
+    Reads __manifest__.py, identifies files that define actions and files that
+    reference actions, and reorders so definitions come first.
+
+    Args:
+        module_path: Root path of the Odoo module.
+        error_output: Error text from Docker validation.
+
+    Returns:
+        True if fix was applied, False if order is already correct.
+    """
+    manifest_path = module_path / "__manifest__.py"
+    if not manifest_path.exists():
+        return False
+
+    manifest_content = manifest_path.read_text(encoding="utf-8")
+
+    try:
+        tree = ast.parse(manifest_content)
+    except SyntaxError:
+        return False
+
+    # Find the 'data' list in the manifest dict
+    data_list: list[str] | None = None
+    data_node: ast.List | None = None
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            for key_node, value_node in zip(node.keys, node.values):
+                if (
+                    isinstance(key_node, ast.Constant)
+                    and key_node.value == "data"
+                    and isinstance(value_node, ast.List)
+                ):
+                    data_list = []
+                    data_node = value_node
+                    for elt in value_node.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                            data_list.append(elt.value)
+                    break
+
+    if data_list is None or len(data_list) < 2:
+        return False
+
+    # Classify each file
+    definers: list[str] = []
+    referencers: list[str] = []
+    others: list[str] = []
+
+    for file_ref in data_list:
+        file_path = module_path / file_ref
+        if _is_action_definer(file_path):
+            definers.append(file_ref)
+        elif _is_action_reference(file_path):
+            referencers.append(file_ref)
+        else:
+            others.append(file_ref)
+
+    if not definers or not referencers:
+        return False
+
+    # Check if order is already correct: all definers before all referencers
+    first_referencer_idx = min(data_list.index(r) for r in referencers)
+    last_definer_idx = max(data_list.index(d) for d in definers)
+
+    if last_definer_idx < first_referencer_idx:
+        # Already in correct order
+        return False
+
+    # Build new order: others first, then definers, then referencers
+    # Preserve relative order within each group
+    reordered = others + definers + referencers
+
+    # Rebuild the manifest content with the new data list
+    # Get the source text segment for the old data list and replace it
+    assert data_node is not None
+    # Build new list repr
+    new_list_items = ", ".join(f'"{item}"' for item in reordered)
+    new_list_str = f"[{new_list_items}]"
+
+    # Extract old data list string from source
+    # Use line/col info from AST
+    lines = manifest_content.split("\n")
+    # Find "data": [...] and replace the list portion
+    new_manifest = re.sub(
+        r'("data"\s*:\s*)\[.*?\]',
+        rf'\1{new_list_str}',
+        manifest_content,
+        flags=re.DOTALL,
+    )
+
+    if new_manifest == manifest_content:
+        return False
+
+    manifest_path.write_text(new_manifest, encoding="utf-8")
+    return True
+
+
+# -------------------------------------------------------------------------
 # Docker auto-fix dispatch loop
 # -------------------------------------------------------------------------
 
@@ -577,16 +946,26 @@ def run_docker_fix_loop(module_path: Path, error_output: str) -> bool:
 
     logger.info("run_docker_fix_loop: detected pattern '%s'", pattern_id)
 
-    dispatch: dict[str, object] = {
-        "missing_mail_thread": fix_missing_mail_thread,
+    # Dispatch dict: pattern_id -> (fix_function, needs_error_output)
+    # missing_mail_thread only needs module_path; the 3 new functions
+    # also need error_output for context-aware fixing.
+    dispatch: dict[str, tuple[object, bool]] = {
+        "xml_parse_error": (fix_xml_parse_error, True),
+        "missing_acl": (fix_missing_acl, True),
+        "manifest_load_order": (fix_manifest_load_order, True),
+        "missing_mail_thread": (fix_missing_mail_thread, False),
     }
 
-    fix_func = dispatch.get(pattern_id)
-    if fix_func is None:
+    entry = dispatch.get(pattern_id)
+    if entry is None:
         logger.debug("run_docker_fix_loop: no fix function for pattern '%s'", pattern_id)
         return False
 
-    result = fix_func(module_path)  # type: ignore[operator]
+    fix_func, needs_error = entry
+    if needs_error:
+        result = fix_func(module_path, error_output)  # type: ignore[operator]
+    else:
+        result = fix_func(module_path)  # type: ignore[operator]
     logger.info("run_docker_fix_loop: fix for '%s' returned %s", pattern_id, result)
     return result
 
