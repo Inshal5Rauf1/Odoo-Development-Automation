@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Environment-Aware Generation
-status: verifying
-stopped_at: Completed 17-01-PLAN.md - Phase 17 plan 01 complete (EnvironmentVerifier + render_module tuple)
-last_updated: "2026-03-04T14:42:09.718Z"
-last_activity: 2026-03-04 — Plan 16-02 complete (MCP config verified by human against live Odoo instance, all 6 tools confirmed working)
+status: completed
+stopped_at: Completed 17-02-PLAN.md - Phase 17 plan 02 complete (Docker integration tests + CLI warning checkpoint approved)
+last_updated: "2026-03-04T15:46:09.823Z"
+last_activity: 2026-03-04 — Plan 17-02 complete (Docker integration tests + CLI warning output confirmed by human; v2.0 milestone DONE)
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 6
-  completed_plans: 5
-  percent: 67
+  completed_plans: 6
+  percent: 90
 ---
 
 # Project State
@@ -22,17 +22,17 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v2.0 Phase 17 — Inline Environment Verification
+**Current focus:** v2.0 complete — next: v2.1 Phase 18 Auto-Fix Hardening (deferred)
 
 ## Current Position
 
 Milestone: v2.0 Environment-Aware Generation
-Phase: 17 of 19 (Inline Environment Verification) — Plan 01 complete
-Plan: 1 of 1 in current phase (ALL COMPLETE)
-Status: Phase 17 plan 01 complete; MCP-03 and MCP-04 requirements satisfied
-Last activity: 2026-03-04 — Plan 17-01 complete (EnvironmentVerifier implemented, render_module returns tuple, 381 tests green)
+Phase: 17 of 19 (Inline Environment Verification) — COMPLETE (2/2 plans done)
+Plan: 2 of 2 in current phase (ALL COMPLETE)
+Status: Phase 17 complete; MCP-03 and MCP-04 requirements satisfied; v2.0 milestone complete
+Last activity: 2026-03-04 — Plan 17-02 complete (Docker integration tests pass, CLI WARN output confirmed by human)
 
-Progress: [█████████░] 90%
+Progress: [██████████] 100%
 
 ## Key Decisions (v2.0)
 
@@ -53,6 +53,9 @@ Progress: [█████████░] 90%
 - Lazy OdooClient import in build_verifier_from_env avoids circular imports and keeps cold import fast
 - TYPE_CHECKING guard in renderer.py prevents circular import between verifier.py and renderer.py
 - render_module() returns tuple[list[Path], list[VerificationWarning]] -- backward-compatible (verifier defaults to None)
+- pytestmark=pytest.mark.docker excludes live-Odoo integration tests from CI unit suite (no Docker daemon in CI)
+- scope=module OdooClient fixture shares one auth cycle across all integration tests (faster, matches real usage)
+- CLI WARN output confirmed non-blocking: generation proceeds exit 0 with WARN lines on stderr (human verified)
 
 ## Blockers/Concerns
 
@@ -67,10 +70,11 @@ None yet.
 | 16 | 01 | 4min | 2 | 6 |
 | 16 | 02 | 3min | 2 | 1 |
 | 17 | 01 | 4min | 2 | 5 |
+| 17 | 02 | 5min | 2 | 1 |
 
 ## Session Continuity
 
-Last session: 2026-03-04T14:42:09.716Z
-Stopped at: Completed 17-01-PLAN.md - Phase 17 plan 01 complete (EnvironmentVerifier + render_module tuple)
+Last session: 2026-03-04T15:46:09.822Z
+Stopped at: Completed 17-02-PLAN.md - Phase 17 plan 02 complete (Docker integration tests + CLI warning checkpoint approved)
 Resume file: None
 Next step: Phase 17 — Inline Environment Verification (MCP-03, MCP-04)

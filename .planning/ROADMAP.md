@@ -52,7 +52,7 @@
 
 - [x] **Phase 15: Odoo Dev Instance** - Docker Compose Odoo 17 CE dev environment with XML-RPC access (completed 2026-03-04)
 - [x] **Phase 16: Odoo MCP Server** - 6-tool MCP server for live model introspection via XML-RPC (completed 2026-03-04)
-- [ ] **Phase 17: Inline Environment Verification** - Model and view agents verify against live instance during generation
+- [x] **Phase 17: Inline Environment Verification** - Model and view agents verify against live instance during generation (completed 2026-03-04)
 
 ### v2.1 Auto-Fix & Enhancements (Phases 18-19) — PLANNED
 
@@ -101,11 +101,11 @@ Plans:
   3. Verification mismatches produce warnings with suggested corrections (not hard blocks) so generation can proceed
   4. When the MCP server is unavailable, generation falls back to current static behavior with no errors
   5. Integration tests demonstrate: (a) model inheriting hr.employee triggers MCP checks, (b) view referencing non-existent field triggers a warning
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 17-01-PLAN.md — EnvironmentVerifier + VerificationWarning (TDD) + renderer.py wiring + caller updates
-- [ ] 17-02-PLAN.md — Docker integration tests (live Odoo) + CLI warning output checkpoint
+- [x] 17-01-PLAN.md — EnvironmentVerifier + VerificationWarning (TDD) + renderer.py wiring + caller updates
+- [x] 17-02-PLAN.md — Docker integration tests (live Odoo) + CLI warning output checkpoint
 
 ### Phase 18: Auto-Fix Hardening
 **Goal**: The auto-fix pipeline handles all 5 common Docker error patterns and has bounded iteration caps so failures escalate to human review instead of looping forever
@@ -134,8 +134,8 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 15. Odoo Dev Instance | v2.0 | 2/2 | Complete | 2026-03-04 |
-| 16. Odoo MCP Server | 2/2 | Complete    | 2026-03-04 | - |
-| 17. Inline Environment Verification | 1/2 | In Progress|  | - |
+| 16. Odoo MCP Server | v2.0 | 2/2 | Complete | 2026-03-04 |
+| 17. Inline Environment Verification | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 18. Auto-Fix Hardening | v2.1 | 0/? | Deferred | - |
 | 19. Enhancements | v2.1 | 0/? | Deferred | - |
 
@@ -145,3 +145,4 @@ Plans:
 *v1.1 shipped: 2026-03-03*
 *v1.2 shipped: 2026-03-04*
 *v2.0 roadmap added: 2026-03-04*
+*v2.0 shipped: 2026-03-04*
