@@ -51,7 +51,7 @@ You: "I need a module to track employee training courses and sessions"
 - **[GSD](https://github.com/get-shit-done/gsd)** installed at `~/.claude/get-shit-done/`
 - **[uv](https://docs.astral.sh/uv/)** — Python package manager
 - **Python 3.12** (Odoo 17 requires 3.10-3.12; 3.13+ breaks validation)
-- **Docker** (optional, for module validation)
+- **Docker + Docker Compose v2** (for module validation and dev instance)
 - **GitHub Token** (optional, for OCA search: `export GITHUB_TOKEN=...`)
 - An AI coding assistant: [Claude Code](https://claude.ai/code), Gemini, Codex, or OpenCode
 
@@ -260,6 +260,65 @@ uv run pytest tests/test_golden_path.py -v
 - `@pytest.mark.e2e` — Requires `GITHUB_TOKEN` environment variable
 - `@pytest.mark.e2e_slow` — Full OCA index build (200+ repos, 3-5 min)
 - `@pytest.mark.docker` — Requires Docker daemon running
+
+## Dev Instance
+
+A persistent Odoo 17 CE development instance is available for local development and MCP server integration. It runs separately from the ephemeral validation Docker setup.
+
+### Prerequisites
+
+- **Docker** and **Docker Compose v2** (`docker compose` subcommand, not standalone `docker-compose`) are required. See [Docker installation docs](https://docs.docker.com/get-docker/).
+
+### Quick Start
+
+```bash
+# Start the Odoo 17 CE dev instance
+scripts/odoo-dev.sh start
+
+# Stop the instance (data is preserved)
+scripts/odoo-dev.sh stop
+
+# View logs
+scripts/odoo-dev.sh logs
+
+# Check status and XML-RPC connectivity
+scripts/odoo-dev.sh status
+
+# Reset (destroys all data)
+scripts/odoo-dev.sh reset
+```
+
+### Access
+
+| Property | Value |
+|----------|-------|
+| URL | `http://localhost:8069` |
+| Database | `odoo_dev` |
+| Username | `admin` |
+| Password | `admin` |
+
+The port is configurable via the `ODOO_DEV_PORT` environment variable.
+
+### Verify Connectivity
+
+Run the XML-RPC smoke test to verify the instance is running and accessible:
+
+```bash
+scripts/verify-odoo-dev.py
+```
+
+This performs XML-RPC authentication against the dev instance and checks that all required modules are installed.
+
+### Pre-installed Modules
+
+The following modules are automatically installed on first start:
+
+- `base` -- Core framework
+- `mail` -- Messaging and activity tracking
+- `sale` -- Sales management
+- `purchase` -- Purchase management
+- `hr` -- Human resources
+- `account` -- Accounting and invoicing
 
 ## Configuration
 
