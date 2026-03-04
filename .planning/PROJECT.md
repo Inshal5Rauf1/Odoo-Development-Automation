@@ -17,6 +17,15 @@ A domain-specific extension of the GSD (Get Shit Done) framework that automates 
 - Auto-fix pipeline fully wired: pylint W0611 + Docker missing_mail_thread dispatch
 - See: `.planning/MILESTONES.md` for full history
 
+**In Progress:** v2.0 — Environment-Aware Generation
+- Core thesis: "generate then validate" → "verify as you generate" via MCP
+- Odoo MCP server integrated into odoo-gen (XML-RPC to live Odoo instance)
+- Inline environment verification during generation (not batch at end)
+- Context7 MCP for live Odoo documentation
+- Expanded Docker fix patterns (5/5 error types)
+- Bounded auto-fix iterations + CLI --auto-fix integration test
+- Generation pipeline observability
+
 ## Core Value
 
 Compress months of repetitive Odoo module development into days by leveraging GSD's orchestration + existing open-source modules as foundations + Odoo-specialized AI agents, so developers focus on business logic and design decisions.
@@ -94,9 +103,9 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 - Golden path E2E test catches template regressions (render → Docker install → test) — v1.2
 - Auto-fix functions wired into CLI runtime (run_docker_fix_loop + pylint W0611) — v1.2
 
-### Active
+### Active (v2.0 — Environment-Aware Generation)
 
-(None — planning next milestone)
+See: `.planning/REQUIREMENTS.md` for full requirement IDs and acceptance criteria
 
 ### Out of Scope
 
@@ -110,6 +119,7 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 
 ## Context
 
+- v2.0 in progress — environment-aware generation via MCP integration
 - v1.2 shipped 2026-03-04 — template correctness, golden path E2E, auto-fix dispatch wiring
 - v1.1 shipped 2026-03-03 — GitHub auth, dependency cleanup, live Docker testing, field string= i18n
 - v1.0 shipped 2026-03-03 with 4,150 LOC Python, 243 tests, and full pipeline coverage
@@ -117,6 +127,7 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 - 8 specialized agents: odoo-scaffold, odoo-model-gen, odoo-view-gen, odoo-test-gen, odoo-security-gen, odoo-validator, odoo-search, odoo-extend
 - 12 user commands via /odoo-gen:* prefix (new, validate, search, plan, extend, etc.)
 - 13 knowledge base files covering Odoo 17.0/18.0 OCA standards
+- v2.0 adds: MCP server (XML-RPC), inline verification, Context7, expanded Docker fixes
 - Remaining tech debt: CLI --auto-fix path has no integration test, FIXABLE_DOCKER_PATTERNS handles 1/5 patterns
 - Distribution: users clone into `~/.claude/odoo-gen/` and run `install.sh`
 
@@ -165,6 +176,9 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 | **LangExtract** (Google) | REFERENCE | Source-grounded extraction → informs spec parsing approach |
 | **Agent Lightning** (Microsoft) | FUTURE | RL-based agent optimization → v2+ when we have agents to optimize |
 | **Gemini-Odoo-Module-Generator** | COMPETITOR | Single-agent Gemini CLI → baseline we must exceed |
+| **Personal AI Employee** (Psqasim) | ADOPT PATTERN | Odoo MCP server architecture (XML-RPC, tool definitions, safety-first) |
+| **AgentFactory SDD** (Panaversity) | REFERENCE | Three SDD levels, constitution pattern — validates our existing approach |
+| **Context7** | INTEGRATE | Live documentation MCP for real-time Odoo API reference |
 
 ---
-*Last updated: 2026-03-04 after v1.2 milestone — all milestones shipped*
+*Last updated: 2026-03-04 — v2.0 Environment-Aware Generation in progress*

@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Template Quality
-status: shipped
-stopped_at: v1.2 milestone archived
-last_updated: "2026-03-04T01:45:00Z"
-last_activity: 2026-03-04 -- v1.2 milestone completed and archived
+milestone: v2.0
+milestone_name: Environment-Aware Generation
+status: planning
+stopped_at: defining requirements
+last_updated: "2026-03-04T02:00:00Z"
+last_activity: 2026-03-04 -- new-milestone workflow step 3 (version + PROJECT.md update)
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -22,33 +22,26 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** Planning next milestone
+**Current focus:** v2.0 — Environment-Aware Generation
 
 ## Current Position
 
-Milestone: v1.2 Template Quality — SHIPPED 2026-03-04
-All phases complete. Milestone archived to .planning/milestones/
+Milestone: v2.0 Environment-Aware Generation — PLANNING
+Defining requirements and roadmap.
 
-Progress: [██████████] 100% — SHIPPED
+Progress: [░░░░░░░░░░] 0% — Planning
 
-## Performance Metrics
+## Key Decisions (v2.0)
 
-**Velocity (v1.2):**
-- Total plans completed: 4
-- Average duration: 4min
-- Total execution time: 15min
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 12 | 2 | 9min | 4.5min |
-| 13 | 1 | 3min | 3min |
-| 14 | 1 | 3min | 3min |
+- Version: v2.0 (major architectural shift, not incremental)
+- MCP structure: Integrated into odoo-gen codebase (not standalone)
+- Odoo dev instance: Set up as part of milestone (none exists yet)
+- Scope: 7 gaps from MILESTONE-CONTEXT.md (all accepted)
+- Branching: Per milestone (gsd/v2.0-environment-aware-generation)
 
 ## Session Continuity
 
-Last session: 2026-03-04T01:45:00Z
-Stopped at: v1.2 milestone archived
-Resume file: None
-Next step: /gsd:new-milestone
+Last session: 2026-03-04T02:00:00Z
+Stopped at: new-milestone workflow step 3 complete, proceeding to requirements
+Resume file: .planning/.continue-here.md
+Next step: Define REQUIREMENTS.md → Create ROADMAP.md
