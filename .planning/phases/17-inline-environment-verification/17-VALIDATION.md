@@ -38,8 +38,8 @@ created: 2026-03-04
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 17-01-01 | 01 | 1 | MCP-03 | unit | `cd python && .venv/bin/python -m pytest tests/test_verifier.py::TestModelVerification -x -q` | ❌ W0 | ⬜ pending |
-| 17-01-02 | 01 | 1 | MCP-04 | unit | `cd python && .venv/bin/python -m pytest tests/test_verifier.py::TestViewVerification -x -q` | ❌ W0 | ⬜ pending |
+| 17-01-01 | 01 | 1 | MCP-03 | unit | `cd python && .venv/bin/python -m pytest tests/test_verifier.py::TestModelInheritCheck tests/test_verifier.py::TestRelationalComodelCheck tests/test_verifier.py::TestFieldOverrideCheck -x -q` | ❌ W0 | ⬜ pending |
+| 17-01-02 | 01 | 1 | MCP-04 | unit | `cd python && .venv/bin/python -m pytest tests/test_verifier.py::TestViewFieldCheck tests/test_verifier.py::TestViewInheritTarget -x -q` | ❌ W0 | ⬜ pending |
 | 17-02-01 | 02 | 2 | MCP-03, MCP-04 | integration | `cd python && .venv/bin/python -m pytest tests/test_verifier_integration.py -x -q -m docker` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
@@ -48,7 +48,7 @@ created: 2026-03-04
 
 ## Wave 0 Requirements
 
-- [ ] `python/tests/test_verifier.py` — stubs for MCP-03 (model verification) and MCP-04 (view verification)
+- [ ] `python/tests/test_verifier.py` — stubs for MCP-03 (model/field-override verification) and MCP-04 (view verification)
 - [ ] `python/tests/test_verifier_integration.py` — stubs for Docker integration tests
 
 *Existing infrastructure (pytest, pyproject.toml, OdooClient) covers framework needs.*
