@@ -70,7 +70,11 @@
   2. XML-RPC calls to the instance succeed at the configured host:port (e.g., `xmlrpc.client.ServerProxy` can authenticate and call `execute_kw`)
   3. Instance data persists across `docker compose down` and `docker compose up` cycles (named volume)
   4. A CLI command or script starts and stops the dev instance without manual Docker knowledge
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — Docker Compose dev environment config + management script + XML-RPC smoke test
+- [ ] 15-02-PLAN.md — Unit tests (config validation) + Docker integration tests (live instance verification)
 
 ### Phase 16: Odoo MCP Server
 **Goal**: Code generation agents can query the live Odoo instance for model schemas, field definitions, installed modules, and view architectures through a standardized MCP tool interface
@@ -121,7 +125,7 @@
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 15. Odoo Dev Instance | v2.0 | 0/? | Not started | - |
+| 15. Odoo Dev Instance | v2.0 | 0/2 | Planning complete | - |
 | 16. Odoo MCP Server | v2.0 | 0/? | Not started | - |
 | 17. Inline Environment Verification | v2.0 | 0/? | Not started | - |
 | 18. Auto-Fix Hardening | v2.1 | 0/? | Deferred | - |
