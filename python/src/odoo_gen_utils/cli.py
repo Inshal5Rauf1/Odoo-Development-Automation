@@ -746,3 +746,46 @@ def extend_module_cmd(
     click.echo("Output:")
     click.echo(f"  Original module: {cloned_path}")
     click.echo(f"  Companion module: {companion_path}")
+
+
+@main.command("show-state")
+@click.argument("module_path", type=click.Path(exists=True))
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def show_state(module_path: str, json_output: bool) -> None:
+    """Show artifact generation state for a module."""
+    from odoo_gen_utils.artifact_state import format_state_table, load_state
+
+    mod_path = Path(module_path).resolve()
+    state = load_state(mod_path)
+
+    if state is None:
+        click.echo("No state file found. Module has not been tracked.")
+        return
+
+    if json_output:
+        state_file = mod_path / ".odoo-gen-state.json"
+        raw = state_file.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        click.echo(json.dumps(data, indent=2))
+        return
+
+    click.echo(format_state_table(state))
+
+
+@main.command("context7-status")
+def context7_status() -> None:
+    """Check Context7 API configuration status."""
+    from odoo_gen_utils.context7 import build_context7_from_env
+
+    client = build_context7_from_env()
+
+    if not client.is_configured:
+        click.echo("Context7 not configured. Set CONTEXT7_API_KEY to enable live Odoo docs.")
+        return
+
+    click.echo("Context7 configured.")
+    library_id = client.resolve_odoo_library()
+    if library_id is not None:
+        click.echo(f"Odoo library resolved: {library_id}")
+    else:
+        click.echo("Odoo library resolution failed (docs may be unavailable).")
