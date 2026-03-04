@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Environment-Aware Generation
-status: completed
-stopped_at: Completed 15-02-PLAN.md
-last_updated: "2026-03-04T12:53:10.118Z"
-last_activity: 2026-03-04 — Plan 15-02 executed (dev instance unit + Docker integration tests)
+status: in_progress
+stopped_at: Completed 16-01-PLAN.md
+last_updated: "2026-03-04T13:30:55Z"
+last_activity: 2026-03-04 — Plan 16-01 executed (Odoo MCP server with 6 tools + OdooClient wrapper)
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 100
+  total_plans: 3
+  completed_plans: 3
+  percent: 60
 ---
 
 # Project State
@@ -22,17 +22,17 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v2.0 Phase 15 — Odoo Dev Instance
+**Current focus:** v2.0 Phase 16 — Odoo MCP Server
 
 ## Current Position
 
 Milestone: v2.0 Environment-Aware Generation
-Phase: 15 of 19 (Odoo Dev Instance)
-Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase 15 complete
-Last activity: 2026-03-04 — Plan 15-02 executed (dev instance unit + Docker integration tests)
+Phase: 16 of 19 (Odoo MCP Server)
+Plan: 1 of 1 in current phase (COMPLETE)
+Status: Phase 16 Plan 01 complete
+Last activity: 2026-03-04 — Plan 16-01 executed (Odoo MCP server with 6 tools + OdooClient wrapper)
 
-Progress: [██████████] 100%
+Progress: [██████____] 60%
 
 ## Key Decisions (v2.0)
 
@@ -48,6 +48,8 @@ Progress: [██████████] 100%
 - Unit tests validate config files directly (no Docker needed) for fast CI feedback
 - Docker integration tests use class-scoped fixture to share one startup cycle
 - Fixture teardown uses stop (not reset) to preserve data between test runs
+- MCP test strategy: FastMCP direct call_tool()/list_tools() instead of in-memory Client (mcp package v1.26.0 has no Client class at top level)
+- asyncio_mode=auto in pyproject.toml eliminates per-test async markers for MCP tests
 
 ## Blockers/Concerns
 
@@ -59,10 +61,11 @@ None yet.
 |-------|------|----------|-------|-------|
 | 15 | 01 | 3min | 3 | 6 |
 | 15 | 02 | 3min | 2 | 1 |
+| 16 | 01 | 4min | 2 | 6 |
 
 ## Session Continuity
 
-Last session: 2026-03-04T12:45:27Z
-Stopped at: Completed 15-02-PLAN.md
+Last session: 2026-03-04T13:30:55Z
+Stopped at: Completed 16-01-PLAN.md
 Resume file: None
-Next step: Phase 15 complete. Next phase: 16 (MCP Server)
+Next step: Phase 16 complete. Next phase: 17 (Claude Code Integration)

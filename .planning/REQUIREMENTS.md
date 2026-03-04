@@ -140,7 +140,7 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | MCP-01 | Phase 15: Odoo Dev Instance | Complete |
-| MCP-02 | Phase 16: Odoo MCP Server | Pending |
+| MCP-02 | Phase 16: Odoo MCP Server | Complete |
 | MCP-03 | Phase 17: Inline Environment Verification | Pending |
 | MCP-04 | Phase 17: Inline Environment Verification | Pending |
 | DFIX-01 | Phase 18: Auto-Fix Hardening | Deferred to v2.1 |
