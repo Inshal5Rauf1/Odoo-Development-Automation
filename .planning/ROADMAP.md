@@ -51,7 +51,7 @@
 **Milestone Goal:** Move from "generate then validate" to "verify as you generate" by connecting agents to a live Odoo instance via MCP.
 
 - [x] **Phase 15: Odoo Dev Instance** - Docker Compose Odoo 17 CE dev environment with XML-RPC access (completed 2026-03-04)
-- [ ] **Phase 16: Odoo MCP Server** - 6-tool MCP server for live model introspection via XML-RPC
+- [x] **Phase 16: Odoo MCP Server** - 6-tool MCP server for live model introspection via XML-RPC (completed 2026-03-04)
 - [ ] **Phase 17: Inline Environment Verification** - Model and view agents verify against live instance during generation
 
 ### v2.1 Auto-Fix & Enhancements (Phases 18-19) — PLANNED
@@ -85,7 +85,7 @@ Plans:
   2. Each tool returns structured data (e.g., `get_model_fields` returns field name, type, relation, required, readonly for any model)
   3. MCP server handles Odoo-unreachable gracefully (returns error response, does not crash)
   4. Unit tests with mocked XML-RPC responses cover all 6 tools
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 16-01-PLAN.md — OdooClient wrapper + MCP server with 6 tools + unit tests (TDD)
@@ -130,7 +130,7 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 15. Odoo Dev Instance | v2.0 | 2/2 | Complete | 2026-03-04 |
-| 16. Odoo MCP Server | 1/2 | In Progress|  | - |
+| 16. Odoo MCP Server | 2/2 | Complete   | 2026-03-04 | - |
 | 17. Inline Environment Verification | v2.0 | 0/? | Not started | - |
 | 18. Auto-Fix Hardening | v2.1 | 0/? | Deferred | - |
 | 19. Enhancements | v2.1 | 0/? | Deferred | - |
