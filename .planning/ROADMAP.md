@@ -135,7 +135,7 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 15. Odoo Dev Instance | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 16. Odoo MCP Server | v2.0 | 2/2 | Complete | 2026-03-04 |
-| 17. Inline Environment Verification | v2.0 | 2/2 | Complete | 2026-03-04 |
+| 17. Inline Environment Verification | v2.0 | Complete    | 2026-03-04 | 2026-03-04 |
 | 18. Auto-Fix Hardening | v2.1 | 0/? | Deferred | - |
 | 19. Enhancements | v2.1 | 0/? | Deferred | - |
 
