@@ -19,9 +19,9 @@ from unittest.mock import patch
 import pytest
 
 from odoo_gen_utils.auto_fix import (
+    DEFAULT_MAX_FIX_ITERATIONS,
     FIXABLE_DOCKER_PATTERNS,
     FIXABLE_PYLINT_CODES,
-    MAX_FIX_CYCLES,
     _DOCKER_PATTERN_KEYWORDS,
     fix_missing_mail_thread,
     fix_pylint_violation,
@@ -52,8 +52,8 @@ class TestConstants:
             "manifest_load_order", "missing_mail_thread",
         })
 
-    def test_max_fix_cycles_is_two(self):
-        assert MAX_FIX_CYCLES == 2
+    def test_default_max_fix_iterations_is_five(self):
+        assert DEFAULT_MAX_FIX_ITERATIONS == 5
 
 
 # ---------------------------------------------------------------------------
@@ -297,8 +297,8 @@ class TestFixPylintViolations:
 
 
 class TestRunPylintFixLoop:
-    def test_max_two_cycles(self):
-        """Should run at most 2 cycles and return remaining violations."""
+    def test_max_default_cycles(self):
+        """Should run at most DEFAULT_MAX_FIX_ITERATIONS (5) cycles."""
         cycle_count = 0
         fixable_v = Violation(
             file="models/m.py", line=5, column=0,
@@ -314,6 +314,14 @@ class TestRunPylintFixLoop:
         def mock_run_pylint(*args, **kwargs):
             nonlocal cycle_count
             cycle_count += 1
+            # Re-create the file each cycle so the fix always has work to do
+            model_file.write_text(
+                'from odoo import fields, models\n\n'
+                'class M(models.Model):\n'
+                '    _name = "m"\n'
+                '    name = fields.Char(string="Name")\n',
+                encoding="utf-8",
+            )
             # Always return both a fixable and non-fixable violation
             return (fixable_v, non_fixable_v)
 
@@ -332,7 +340,7 @@ class TestRunPylintFixLoop:
             with patch("odoo_gen_utils.auto_fix.run_pylint_odoo", side_effect=mock_run_pylint):
                 total_fixed, remaining = run_pylint_fix_loop(mod)
 
-            assert cycle_count == 2
+            assert cycle_count == 5
             assert total_fixed >= 1
             assert any(v.rule_code == "E8103" for v in remaining)
 
@@ -798,8 +806,8 @@ class TestRunDockerFixLoop:
         """), encoding="utf-8")
 
         error_text = "Error: model hr.training uses oe_chatter but lacks mail.thread inheritance"
-        result = run_docker_fix_loop(module_dir, error_text)
-        assert result is True
+        any_fixed, remaining = run_docker_fix_loop(module_dir, error_text)
+        assert any_fixed is True
 
         content = (module_dir / "models" / "model.py").read_text(encoding="utf-8")
         assert "mail.thread" in content
@@ -823,8 +831,8 @@ class TestRunDockerFixLoop:
         """), encoding="utf-8")
 
         error_text = "W0611: Unused import ValidationError (unused-import)"
-        result = run_docker_fix_loop(module_dir, error_text)
-        assert result is True
+        any_fixed, remaining = run_docker_fix_loop(module_dir, error_text)
+        assert any_fixed is True
 
     def test_unrecognized_error_returns_false(self, tmp_path: Path):
         """run_docker_fix_loop with unrecognized error returns False."""
@@ -834,8 +842,8 @@ class TestRunDockerFixLoop:
         module_dir.mkdir(parents=True)
 
         error_text = "Something completely unknown with no matching pattern"
-        result = run_docker_fix_loop(module_dir, error_text)
-        assert result is False
+        any_fixed, remaining = run_docker_fix_loop(module_dir, error_text)
+        assert any_fixed is False
 
     def test_empty_error_returns_false(self, tmp_path: Path):
         """run_docker_fix_loop with empty error text returns False."""
@@ -844,8 +852,8 @@ class TestRunDockerFixLoop:
         module_dir = tmp_path / "test_module"
         module_dir.mkdir(parents=True)
 
-        result = run_docker_fix_loop(module_dir, "")
-        assert result is False
+        any_fixed, remaining = run_docker_fix_loop(module_dir, "")
+        assert any_fixed is False
 
 
 # ---------------------------------------------------------------------------
@@ -1150,8 +1158,8 @@ class TestRunDockerFixLoopNewDispatch:
             "lxml.etree.XMLSyntaxError: Opening and ending tag mismatch: "
             "form line 5 and fom, line 7 (views/model_views.xml, line 7)"
         )
-        result = run_docker_fix_loop(module_dir, error_text)
-        assert result is True
+        any_fixed, remaining = run_docker_fix_loop(module_dir, error_text)
+        assert any_fixed is True
 
     def test_dispatches_missing_acl(self, tmp_path: Path):
         """run_docker_fix_loop dispatches to fix_missing_acl for ACL errors."""
@@ -1180,8 +1188,8 @@ class TestRunDockerFixLoopNewDispatch:
         """), encoding="utf-8")
 
         error_text = "No access rule defined for model test.sale. ir.model.access entry required."
-        result = run_docker_fix_loop(module_dir, error_text)
-        assert result is True
+        any_fixed, remaining = run_docker_fix_loop(module_dir, error_text)
+        assert any_fixed is True
 
     def test_dispatches_manifest_load_order(self, tmp_path: Path):
         """run_docker_fix_loop dispatches to fix_manifest_load_order for action reference errors."""
@@ -1213,8 +1221,8 @@ class TestRunDockerFixLoopNewDispatch:
         """), encoding="utf-8")
 
         error_text = "External ID not found: action_test. ir.actions.act_window does not exist"
-        result = run_docker_fix_loop(module_dir, error_text)
-        assert result is True
+        any_fixed, remaining = run_docker_fix_loop(module_dir, error_text)
+        assert any_fixed is True
 
 
 # ---------------------------------------------------------------------------
@@ -1237,6 +1245,12 @@ class TestPylintFixLoopMaxIterations:
     def test_max_iterations_default_is_five(self):
         """Default max_iterations runs up to 5 cycles."""
         cycle_count = 0
+        src = (
+            'from odoo import fields, models\n\n'
+            'class M(models.Model):\n'
+            '    _name = "m"\n'
+            '    name = fields.Char(string="Name")\n'
+        )
         fixable_v = Violation(
             file="models/m.py", line=5, column=0,
             rule_code="W8113", symbol="redundant-string",
@@ -1251,19 +1265,15 @@ class TestPylintFixLoopMaxIterations:
         def mock_run_pylint(*args, **kwargs):
             nonlocal cycle_count
             cycle_count += 1
+            # Re-create file so fix always has work
+            model_file.write_text(src, encoding="utf-8")
             return (fixable_v, non_fixable_v)
 
         with tempfile.TemporaryDirectory() as d:
             mod = Path(d)
             model_file = mod / "models" / "m.py"
             model_file.parent.mkdir(parents=True)
-            model_file.write_text(
-                'from odoo import fields, models\n\n'
-                'class M(models.Model):\n'
-                '    _name = "m"\n'
-                '    name = fields.Char(string="Name")\n',
-                encoding="utf-8",
-            )
+            model_file.write_text(src, encoding="utf-8")
 
             with patch("odoo_gen_utils.auto_fix.run_pylint_odoo", side_effect=mock_run_pylint):
                 total_fixed, remaining = run_pylint_fix_loop(mod)
@@ -1273,6 +1283,12 @@ class TestPylintFixLoopMaxIterations:
     def test_max_iterations_one_runs_one_cycle(self):
         """max_iterations=1 runs exactly 1 cycle."""
         cycle_count = 0
+        src = (
+            'from odoo import fields, models\n\n'
+            'class M(models.Model):\n'
+            '    _name = "m"\n'
+            '    name = fields.Char(string="Name")\n'
+        )
         fixable_v = Violation(
             file="models/m.py", line=5, column=0,
             rule_code="W8113", symbol="redundant-string",
@@ -1282,19 +1298,14 @@ class TestPylintFixLoopMaxIterations:
         def mock_run_pylint(*args, **kwargs):
             nonlocal cycle_count
             cycle_count += 1
+            model_file.write_text(src, encoding="utf-8")
             return (fixable_v,)
 
         with tempfile.TemporaryDirectory() as d:
             mod = Path(d)
             model_file = mod / "models" / "m.py"
             model_file.parent.mkdir(parents=True)
-            model_file.write_text(
-                'from odoo import fields, models\n\n'
-                'class M(models.Model):\n'
-                '    _name = "m"\n'
-                '    name = fields.Char(string="Name")\n',
-                encoding="utf-8",
-            )
+            model_file.write_text(src, encoding="utf-8")
 
             with patch("odoo_gen_utils.auto_fix.run_pylint_odoo", side_effect=mock_run_pylint):
                 total_fixed, remaining = run_pylint_fix_loop(mod, max_iterations=1)
@@ -1304,6 +1315,12 @@ class TestPylintFixLoopMaxIterations:
     def test_max_iterations_five_explicit(self):
         """max_iterations=5 runs at most 5 cycles."""
         cycle_count = 0
+        src = (
+            'from odoo import fields, models\n\n'
+            'class M(models.Model):\n'
+            '    _name = "m"\n'
+            '    name = fields.Char(string="Name")\n'
+        )
         fixable_v = Violation(
             file="models/m.py", line=5, column=0,
             rule_code="W8113", symbol="redundant-string",
@@ -1313,19 +1330,14 @@ class TestPylintFixLoopMaxIterations:
         def mock_run_pylint(*args, **kwargs):
             nonlocal cycle_count
             cycle_count += 1
+            model_file.write_text(src, encoding="utf-8")
             return (fixable_v,)
 
         with tempfile.TemporaryDirectory() as d:
             mod = Path(d)
             model_file = mod / "models" / "m.py"
             model_file.parent.mkdir(parents=True)
-            model_file.write_text(
-                'from odoo import fields, models\n\n'
-                'class M(models.Model):\n'
-                '    _name = "m"\n'
-                '    name = fields.Char(string="Name")\n',
-                encoding="utf-8",
-            )
+            model_file.write_text(src, encoding="utf-8")
 
             with patch("odoo_gen_utils.auto_fix.run_pylint_odoo", side_effect=mock_run_pylint):
                 total_fixed, remaining = run_pylint_fix_loop(mod, max_iterations=5)

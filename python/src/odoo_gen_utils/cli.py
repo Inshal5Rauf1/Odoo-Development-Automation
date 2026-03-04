@@ -441,12 +441,18 @@ def validate(
 
             # Step 2b: Auto-fix Docker errors if --auto-fix enabled
             if auto_fix and not install_result.success and install_result.log_output:
-                fixed = run_docker_fix_loop(mod_path, install_result.log_output)
-                if fixed:
-                    click.echo("Auto-fix: applied Docker error fix, retrying validation...")
+                any_docker_fixed, remaining_errors = run_docker_fix_loop(
+                    mod_path,
+                    install_result.log_output,
+                    revalidate_fn=lambda: docker_install_module(mod_path),
+                )
+                if any_docker_fixed:
+                    click.echo("Auto-fix: applied Docker error fix(es), retrying validation...")
                     install_result = docker_install_module(mod_path)
                     if install_result.log_output:
                         error_logs.append(install_result.log_output)
+                    if remaining_errors and "iteration cap" in remaining_errors.lower():
+                        click.echo(remaining_errors)
 
             # Step 3: Run tests if install succeeded
             if install_result.success:
