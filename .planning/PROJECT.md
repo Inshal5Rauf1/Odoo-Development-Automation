@@ -18,9 +18,14 @@ A domain-specific extension of the GSD (Get Shit Done) framework that automates 
 - 444 tests passing, 15,700+ LOC Python (src + tests)
 - See: `.planning/MILESTONES.md` for full history
 
-## Next Milestone Goals
+## Current Milestone: v3.0 Intelligent Agent & Knowledge Layer
 
-No milestone currently planned. Ready for `/gsd:new-milestone` to define next direction.
+**Goal:** Research and integrate Agent Lightning (RL-based agent optimization) and Cognee (knowledge graph pipeline) to make the system's agents smarter over time and its knowledge retrieval richer and more connected.
+
+**Target features:**
+- Agent Lightning integration — RL optimization for agent behavior based on validation outcomes
+- Cognee integration — Knowledge graph pipeline replacing/augmenting static markdown KB
+- Research-first approach — deep feasibility analysis before committing scope
 
 ## Core Value
 
@@ -117,7 +122,7 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 
 ### Active
 
-No active requirements — ready for next milestone definition
+v3.0 — Intelligent Agent & Knowledge Layer (defining requirements)
 
 ### Out of Scope
 
@@ -198,4 +203,4 @@ No active requirements — ready for next milestone definition
 | **Context7** | INTEGRATE | Live documentation MCP for real-time Odoo API reference |
 
 ---
-*Last updated: 2026-03-04 — after v2.1 milestone shipped*
+*Last updated: 2026-03-04 — after v3.0 milestone started*
