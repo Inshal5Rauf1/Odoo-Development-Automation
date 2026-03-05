@@ -1451,3 +1451,127 @@ class TestRenderModuleReportIntegration:
         # Dashboard files
         assert (module_dir / "views" / "academy_student_graph.xml").exists()
         assert (module_dir / "views" / "academy_student_pivot.xml").exists()
+
+
+# ---------------------------------------------------------------------------
+# Phase 32: render_controllers tests
+# ---------------------------------------------------------------------------
+
+
+def _make_controller_spec(controllers=None, **overrides):
+    """Build a spec with controllers entries for testing."""
+    spec = _make_spec(models=[_make_model("academy.student")])
+    if controllers is not None:
+        spec["controllers"] = controllers
+    spec.update(overrides)
+    return spec
+
+
+def _sample_controller():
+    """Return a sample controller entry with routes."""
+    return {
+        "name": "Main Controller",
+        "class_name": "AcademyController",
+        "routes": [
+            {
+                "path": "courses",
+                "method_name": "get_courses",
+                "type": "json",
+                "auth": "user",
+                "csrf": True,
+                "methods": ["GET"],
+                "description": "List all courses",
+            },
+            {
+                "path": "page",
+                "method_name": "index_page",
+                "type": "http",
+                "auth": "public",
+                "csrf": True,
+                "methods": ["GET"],
+                "description": "Main page",
+            },
+        ],
+    }
+
+
+class TestRenderControllers:
+    def test_no_controllers_noop(self, env, tmp_module):
+        """Spec with no controllers -> render_controllers returns Result.ok([])."""
+        spec = _make_controller_spec(controllers=[])
+        ctx = _make_module_context(spec)
+        result = render_controllers(env, spec, tmp_module, ctx)
+        assert result.success is True
+        assert result.data == []
+
+    def test_no_controllers_key_noop(self, env, tmp_module):
+        """Spec without controllers key -> render_controllers returns Result.ok([])."""
+        spec = _make_spec(models=[_make_model()])
+        ctx = _make_module_context(spec)
+        result = render_controllers(env, spec, tmp_module, ctx)
+        assert result.success is True
+        assert result.data == []
+
+    def test_controller_generates_main_py(self, env, tmp_module):
+        """Spec with controllers -> creates controllers/main.py with @http.route."""
+        spec = _make_controller_spec(controllers=[_sample_controller()])
+        ctx = _make_module_context(spec)
+        result = render_controllers(env, spec, tmp_module, ctx)
+        assert result.success is True
+        main_py = tmp_module / "controllers" / "main.py"
+        assert main_py.exists()
+        content = main_py.read_text()
+        assert "@http.route" in content
+        assert "http.Controller" in content
+
+    def test_controller_secure_defaults(self, env, tmp_module):
+        """Routes without explicit auth/csrf -> auth='user', csrf=True in output."""
+        controller = {
+            "name": "Default Controller",
+            "routes": [
+                {
+                    "path": "api/data",
+                    "method_name": "get_data",
+                    "description": "Get data",
+                },
+            ],
+        }
+        spec = _make_controller_spec(controllers=[controller])
+        ctx = _make_module_context(spec)
+        render_controllers(env, spec, tmp_module, ctx)
+        content = (tmp_module / "controllers" / "main.py").read_text()
+        assert "auth='user'" in content or 'auth="user"' in content
+        assert "csrf=True" in content
+
+    def test_json_route_error_handling(self, env, tmp_module):
+        """Route with type='json' -> try/except block with error response."""
+        spec = _make_controller_spec(controllers=[_sample_controller()])
+        ctx = _make_module_context(spec)
+        render_controllers(env, spec, tmp_module, ctx)
+        content = (tmp_module / "controllers" / "main.py").read_text()
+        assert "try:" in content
+        assert "except" in content
+        assert "'status'" in content or '"status"' in content
+        assert "'error'" in content or '"error"' in content
+
+    def test_controllers_init(self, env, tmp_module):
+        """Generates controllers/__init__.py with 'from . import main'."""
+        spec = _make_controller_spec(controllers=[_sample_controller()])
+        ctx = _make_module_context(spec)
+        render_controllers(env, spec, tmp_module, ctx)
+        init_file = tmp_module / "controllers" / "__init__.py"
+        assert init_file.exists()
+        content = init_file.read_text()
+        assert "from . import main" in content
+
+    def test_root_init_imports_controllers(self, env):
+        """init_root.py.j2 renders 'from . import controllers' when has_controllers=True."""
+        tmpl = env.get_template("init_root.py.j2")
+        rendered = tmpl.render(has_wizards=False, has_controllers=True)
+        assert "from . import controllers" in rendered
+
+    def test_root_init_no_controllers(self, env):
+        """init_root.py.j2 does NOT render controllers import when has_controllers=False."""
+        tmpl = env.get_template("init_root.py.j2")
+        rendered = tmpl.render(has_wizards=False, has_controllers=False)
+        assert "controllers" not in rendered

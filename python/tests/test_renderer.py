@@ -3090,3 +3090,42 @@ class TestBuildModelContextReports:
         spec = _make_spec(models=[model])
         ctx = _build_model_context(spec, model)
         assert ctx["has_dashboard"] is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 32: _build_module_context controller flag
+# ---------------------------------------------------------------------------
+
+
+class TestBuildModuleContextControllers:
+    def test_has_controllers_true(self):
+        """_build_module_context with non-empty controllers sets has_controllers=True."""
+        spec = _make_spec(models=[{
+            "name": "academy.student",
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        spec["controllers"] = [{
+            "name": "Main",
+            "routes": [{"path": "api", "method_name": "get_api"}],
+        }]
+        ctx = _build_module_context(spec, "test_module")
+        assert ctx["has_controllers"] is True
+
+    def test_has_controllers_false_empty(self):
+        """_build_module_context with empty controllers sets has_controllers=False."""
+        spec = _make_spec(models=[{
+            "name": "academy.student",
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        spec["controllers"] = []
+        ctx = _build_module_context(spec, "test_module")
+        assert ctx["has_controllers"] is False
+
+    def test_has_controllers_false_missing(self):
+        """_build_module_context without controllers key sets has_controllers=False."""
+        spec = _make_spec(models=[{
+            "name": "academy.student",
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        ctx = _build_module_context(spec, "test_module")
+        assert ctx["has_controllers"] is False
