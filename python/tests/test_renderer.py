@@ -11,7 +11,9 @@ from pathlib import Path
 import pytest
 
 from odoo_gen_utils.renderer import (
+    MONETARY_FIELD_PATTERNS,
     _build_model_context,
+    _is_monetary_field,
     get_template_dir,
     render_module,
 )
@@ -1660,3 +1662,98 @@ class TestDisplayNameVersionGate:
         assert "test_display_name" not in test_content
         assert "test_name_get" not in test_content
         assert "name_get" not in test_content
+
+
+# ---------------------------------------------------------------------------
+# Phase 26: Monetary field detection
+# ---------------------------------------------------------------------------
+
+
+class TestMonetaryPatternDetection:
+    """Tests for _is_monetary_field() helper."""
+
+    def test_float_amount_is_monetary(self):
+        assert _is_monetary_field({"name": "amount", "type": "Float"}) is True
+
+    def test_float_total_price_is_monetary(self):
+        assert _is_monetary_field({"name": "total_price", "type": "Float"}) is True
+
+    def test_float_tuition_fee_is_monetary(self):
+        assert _is_monetary_field({"name": "tuition_fee", "type": "Float"}) is True
+
+    def test_integer_amount_not_monetary(self):
+        assert _is_monetary_field({"name": "amount", "type": "Integer"}) is False
+
+    def test_char_amount_label_not_monetary(self):
+        assert _is_monetary_field({"name": "amount_label", "type": "Char"}) is False
+
+    def test_float_amount_opt_out(self):
+        assert _is_monetary_field({"name": "amount", "type": "Float", "monetary": False}) is False
+
+    def test_already_typed_monetary(self):
+        assert _is_monetary_field({"name": "whatever", "type": "Monetary"}) is True
+
+    def test_float_non_monetary_name(self):
+        assert _is_monetary_field({"name": "weight", "type": "Float"}) is False
+
+    @pytest.mark.parametrize("pattern", sorted(MONETARY_FIELD_PATTERNS))
+    def test_all_20_patterns_match(self, pattern):
+        assert _is_monetary_field({"name": pattern, "type": "Float"}) is True
+
+    @pytest.mark.parametrize("pattern", sorted(MONETARY_FIELD_PATTERNS))
+    def test_all_20_patterns_match_as_substring(self, pattern):
+        assert _is_monetary_field({"name": f"total_{pattern}_value", "type": "Float"}) is True
+
+
+class TestBuildModelContextMonetary:
+    """Tests for monetary detection in _build_model_context()."""
+
+    def test_float_amount_rewritten_to_monetary(self):
+        model = {"name": "test.model", "fields": [{"name": "amount", "type": "Float"}]}
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["fields"][0]["type"] == "Monetary"
+
+    def test_needs_currency_id_true_when_monetary_detected(self):
+        model = {"name": "test.model", "fields": [{"name": "amount", "type": "Float"}]}
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["needs_currency_id"] is True
+
+    def test_needs_currency_id_false_when_currency_id_exists(self):
+        model = {
+            "name": "test.model",
+            "fields": [
+                {"name": "amount", "type": "Float"},
+                {"name": "currency_id", "type": "Many2one", "comodel_name": "res.currency"},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["needs_currency_id"] is False
+
+    def test_needs_currency_id_false_when_no_monetary(self):
+        model = {"name": "test.model", "fields": [{"name": "weight", "type": "Float"}]}
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["needs_currency_id"] is False
+
+    def test_immutability_original_fields_unchanged(self):
+        original_fields = [{"name": "amount", "type": "Float"}]
+        model = {"name": "test.model", "fields": original_fields}
+        spec = _make_spec(models=[model])
+        _build_model_context(spec, model)
+        assert original_fields[0]["type"] == "Float"
+
+    def test_computed_monetary_field_retains_compute(self):
+        model = {
+            "name": "test.model",
+            "fields": [
+                {"name": "total_amount", "type": "Float", "compute": "_compute_total_amount", "depends": ["qty"]},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        field = ctx["fields"][0]
+        assert field["type"] == "Monetary"
+        assert field["compute"] == "_compute_total_amount"

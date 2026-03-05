@@ -17,6 +17,37 @@ if TYPE_CHECKING:
 # Sequence field names that trigger ir.sequence generation.
 SEQUENCE_FIELD_NAMES: frozenset[str] = frozenset({"reference", "ref", "number", "code", "sequence"})
 
+# Phase 26: Monetary field name patterns that trigger Float -> Monetary rewrite.
+MONETARY_FIELD_PATTERNS: frozenset[str] = frozenset({
+    "amount", "fee", "salary", "price", "cost", "balance",
+    "total", "subtotal", "tax", "discount", "payment",
+    "revenue", "expense", "budget", "wage", "rate",
+    "charge", "premium", "debit", "credit",
+})
+
+
+def _is_monetary_field(field: dict[str, Any]) -> bool:
+    """Check whether a field should be rendered as fields.Monetary.
+
+    Returns True when:
+    - field type is already "Monetary", OR
+    - field type is "Float" AND the field name contains a monetary pattern keyword.
+
+    Returns False when:
+    - field has explicit ``"monetary": False`` opt-out
+    - field type is not Float/Monetary
+    - field name does not contain any monetary pattern
+    """
+    if field.get("monetary") is False:
+        return False
+    field_type = field.get("type", "")
+    if field_type == "Monetary":
+        return True
+    if field_type != "Float":
+        return False
+    name = field.get("name", "")
+    return any(pattern in name for pattern in MONETARY_FIELD_PATTERNS)
+
 
 def _model_ref(name: str) -> str:
     """Convert Odoo dot-notation model name to external ID format.
@@ -208,6 +239,16 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     )
     wizards = spec.get("wizards", [])
 
+    # Phase 26: monetary field detection (immutable rewrite)
+    has_monetary = any(_is_monetary_field(f) for f in fields)
+    if has_monetary:
+        fields = [
+            {**f, "type": "Monetary"} if _is_monetary_field(f) and f.get("type") == "Float" else f
+            for f in fields
+        ]
+    has_currency_id = any(f.get("name") == "currency_id" for f in fields)
+    needs_currency_id = has_monetary and not has_currency_id
+
     # Phase 6: multi-company field detection
     has_company_field = any(
         f.get("name") == "company_id" and f.get("type") == "Many2one"
@@ -284,6 +325,8 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         # Phase 12 keys
         "inherit_list": inherit_list,
         "needs_api": needs_api,
+        # Phase 26 keys
+        "needs_currency_id": needs_currency_id,
     }
 
 
