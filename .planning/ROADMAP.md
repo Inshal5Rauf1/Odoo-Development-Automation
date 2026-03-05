@@ -70,7 +70,7 @@
 
 **Milestone Goal:** Fix all confirmed bugs and pay down technical debt identified in codebase audit. 13 requirements across auto-fix, templates, validation, search, and code quality.
 
-- [ ] **Phase 20: Auto-Fix AST Migration** - Replace regex-based fixers with AST-based source modification and full-body import scanning
+- [x] **Phase 20: Auto-Fix AST Migration** - Replace regex-based fixers with AST-based source modification and full-body import scanning (completed 2026-03-05)
 - [ ] **Phase 21: Template Correctness** - Fix mail.thread injection, wizard imports, wizard ACLs, and deprecated name_get
 - [ ] **Phase 22: Validation & Search Fixes** - Docker exec race condition, GitHub rate limiting, and AST _inherit-only detection
 - [ ] **Phase 23: Unified Result Type** - Cross-cutting Result[T] type across validation pipeline modules
@@ -87,7 +87,7 @@
   2. Multi-line string= expressions (e.g., spanning parentheses) are correctly fixed without corrupting surrounding code
   3. Unused import detection scans the full AST body for name references and removes any import with zero references, not just a hardcoded whitelist
   4. Existing auto-fix test suite passes with AST implementation (no regressions)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 20-01-PLAN.md — Migrate 5 pylint fixers to AST-based splice with shared utilities
 - [ ] 20-02-PLAN.md — Rewrite unused import detection with full AST body scan
@@ -146,7 +146,7 @@ Phases 20-22 can execute in parallel (independent). Phase 23 before Phase 24 (de
 | 12-14 | v1.2 | 4/4 | Complete | 2026-03-04 |
 | 15-17 | v2.0 | 6/6 | Complete | 2026-03-04 |
 | 18-19 | v2.1 | 5/5 | Complete | 2026-03-04 |
-| 20. Auto-Fix AST Migration | 1/2 | In Progress|  | - |
+| 20. Auto-Fix AST Migration | 2/2 | Complete   | 2026-03-05 | - |
 | 21. Template Correctness | v3.0 | 0/? | Not started | - |
 | 22. Validation & Search Fixes | v3.0 | 0/? | Not started | - |
 | 23. Unified Result Type | v3.0 | 0/? | Not started | - |

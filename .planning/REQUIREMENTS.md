@@ -8,7 +8,7 @@
 ### Auto-Fix Pipeline (AST Migration)
 
 - [x] **AFIX-01**: Auto-fix functions use AST-based source modification instead of regex for all 5 pylint fixers (_fix_w8113, _fix_w8111, _fix_c8116, _fix_w8150, _fix_c8107), handling multi-line expressions correctly
-- [ ] **AFIX-02**: Unused import detection scans full AST body for name references instead of 4-name whitelist, removing any import with zero references in file body
+- [x] **AFIX-02**: Unused import detection scans full AST body for name references instead of 4-name whitelist, removing any import with zero references in file body
 
 ### Template Correctness
 
@@ -75,7 +75,7 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | AFIX-01 | Phase 20 | Complete |
-| AFIX-02 | Phase 20 | Pending |
+| AFIX-02 | Phase 20 | Complete |
 | TMPL-01 | Phase 21 | Pending |
 | TMPL-02 | Phase 21 | Pending |
 | TMPL-03 | Phase 21 | Pending |
