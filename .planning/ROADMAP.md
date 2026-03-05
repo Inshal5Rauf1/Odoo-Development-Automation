@@ -141,7 +141,10 @@ Plans:
   2. render_module is decomposed into independently testable stage functions (render_manifest, render_models, render_views, render_security, render_wizards, render_tests, render_static) each under 80 lines
   3. Docker compose file path is resolved via importlib.resources or configuration instead of 5-level parent directory traversal
   4. All decomposed render functions return Result types from Phase 23
-**Plans**: TBD
+**Plans:** 2/2 plans
+Plans:
+- [ ] 24-01-PLAN.md — CLI lazy imports + Docker compose path via importlib.resources
+- [ ] 24-02-PLAN.md — render_module decomposition into 7 stage functions with Result[T]
 
 ## Progress
 
