@@ -741,6 +741,176 @@ class TestFixUnusedImports:
 
 
 # ---------------------------------------------------------------------------
+# Arbitrary unused import detection (full AST body scan)
+# ---------------------------------------------------------------------------
+
+
+class TestUnusedImportsArbitraryNames:
+    """Full AST scan detects ANY unused import, not just whitelisted names."""
+
+    def test_removes_arbitrary_unused_import(self, tmp_path: Path):
+        """Import `fields` unused while `api` used -> fields removed, api kept."""
+        src = textwrap.dedent("""\
+            from odoo import fields, api
+
+            class TestModel:
+                @api.constrains("name")
+                def _check(self):
+                    pass
+        """)
+        py_file = tmp_path / "model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is True
+
+        content = py_file.read_text(encoding="utf-8")
+        assert "fields" not in content
+        assert "api" in content
+
+    def test_removes_unknown_unused_import(self, tmp_path: Path):
+        """Import `Command` with no usage anywhere -> entire import line removed."""
+        src = textwrap.dedent("""\
+            from odoo import Command
+
+            class TestModel:
+                pass
+        """)
+        py_file = tmp_path / "model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is True
+
+        content = py_file.read_text(encoding="utf-8")
+        assert "Command" not in content
+        assert "import" not in content
+
+    def test_keeps_import_used_in_attribute_access(self, tmp_path: Path):
+        """Import `fields` used as `fields.Char(...)` -> kept."""
+        src = textwrap.dedent("""\
+            from odoo import fields, models
+
+            class TestModel(models.Model):
+                _name = "test.model"
+                name = fields.Char(string="Name")
+        """)
+        py_file = tmp_path / "model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is False
+
+    def test_removes_multiple_arbitrary_unused(self, tmp_path: Path):
+        """Multiple unused from same import -> only used name kept."""
+        src = textwrap.dedent("""\
+            from odoo.exceptions import ValidationError, UserError, AccessError
+
+            class TestModel:
+                def check(self):
+                    raise ValidationError("fail")
+        """)
+        py_file = tmp_path / "model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is True
+
+        content = py_file.read_text(encoding="utf-8")
+        assert "ValidationError" in content
+        assert "UserError" not in content
+        assert "AccessError" not in content
+
+
+class TestUnusedImportsStarImport:
+    """Star imports are never removed."""
+
+    def test_preserves_star_import(self, tmp_path: Path):
+        """from odoo import * is never removed even without explicit references."""
+        src = textwrap.dedent("""\
+            from odoo import *
+
+            class TestModel:
+                pass
+        """)
+        py_file = tmp_path / "model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is False
+
+        content = py_file.read_text(encoding="utf-8")
+        assert "from odoo import *" in content
+
+
+class TestUnusedImportsAllExport:
+    """Names in __all__ are treated as used."""
+
+    def test_preserves_import_in_all(self, tmp_path: Path):
+        """Import referenced only via __all__ -> kept."""
+        src = textwrap.dedent("""\
+            from odoo import api
+
+            __all__ = ["api"]
+
+            class TestModel:
+                pass
+        """)
+        py_file = tmp_path / "model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is False
+
+        content = py_file.read_text(encoding="utf-8")
+        assert "from odoo import api" in content
+
+
+class TestFormattingPreserved:
+    """Comments and whitespace preserved after import removal."""
+
+    def test_preserves_comments_between_imports(self, tmp_path: Path):
+        """Comment lines between import blocks remain intact after removal."""
+        src = textwrap.dedent("""\
+            from odoo import fields, models
+            # This is an important comment
+            from odoo import Command
+
+            class TestModel(models.Model):
+                _name = "test.model"
+                name = fields.Char(string="Name")
+        """)
+        py_file = tmp_path / "model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is True
+
+        content = py_file.read_text(encoding="utf-8")
+        assert "# This is an important comment" in content
+        assert "Command" not in content
+
+    def test_no_triple_blank_lines(self, tmp_path: Path):
+        """After removing imports, no 3+ consecutive blank lines appear."""
+        src = textwrap.dedent("""\
+            from odoo import fields, models
+            from odoo import Command
+
+            class TestModel(models.Model):
+                _name = "test.model"
+                name = fields.Char(string="Name")
+        """)
+        py_file = tmp_path / "model.py"
+        py_file.write_text(src, encoding="utf-8")
+
+        result = fix_unused_imports(py_file)
+        assert result is True
+
+        content = py_file.read_text(encoding="utf-8")
+        assert "\n\n\n" not in content
+
+
+# ---------------------------------------------------------------------------
 # Updated constants -- missing_mail_thread in Docker patterns
 # ---------------------------------------------------------------------------
 
