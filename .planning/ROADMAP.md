@@ -61,7 +61,7 @@
 - [x] **Phase 32: Controllers & Import/Export** - HTTP controllers and bulk import/export wizards (completed 2026-03-05)
 - [x] **Phase 33: Database Performance** - Index auto-detection, store=True selectivity, transient model config (completed 2026-03-05)
 - [x] **Phase 34: Production Patterns** - Bulk operations, reference caching, and archival strategies (completed 2026-03-05)
-- [ ] **Phase 35: Template Bug Fixes & Tech Debt** - Fix archival+state template crash and cron doall hardcoding
+- [x] **Phase 35: Template Bug Fixes & Tech Debt** - Fix archival+state template crash and cron doall hardcoding (completed 2026-03-05)
 
 ## Phase Details
 
@@ -225,7 +225,7 @@ Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32 -> 33 ->
 | 32. Controllers & Import/Export | 2/2 | Complete    | 2026-03-05 | - |
 | 33. Database Performance | 1/1 | Complete    | 2026-03-05 | - |
 | 34. Production Patterns | 2/2 | Complete    | 2026-03-05 | - |
-| 35. Template Bug Fixes & Tech Debt | v3.1 | 0/1 | Not started | - |
+| 35. Template Bug Fixes & Tech Debt | 1/1 | Complete   | 2026-03-05 | - |
 
 ---
 *Roadmap created: 2026-03-01*
