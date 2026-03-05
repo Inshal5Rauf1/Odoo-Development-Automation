@@ -12,7 +12,7 @@ from odoo_gen_utils.validation.docker_runner import (
     docker_run_tests,
     get_compose_file,
 )
-from odoo_gen_utils.validation.types import InstallResult, TestResult
+from odoo_gen_utils.validation.types import InstallResult, Result, TestResult
 
 
 # --- check_docker_available tests ---
@@ -84,9 +84,11 @@ class TestDockerInstallModuleSuccess:
         module_path = Path("/tmp/test_mod")
         result = docker_install_module(module_path, compose_file=Path("/tmp/compose.yml"))
 
-        assert isinstance(result, InstallResult)
+        assert isinstance(result, Result)
         assert result.success is True
-        assert result.error_message == ""
+        assert isinstance(result.data, InstallResult)
+        assert result.data.success is True
+        assert result.data.error_message == ""
 
 
 class TestDockerInstallUsesRunNotExec:
@@ -180,9 +182,11 @@ class TestDockerInstallModuleFailure:
         module_path = Path("/tmp/test_mod")
         result = docker_install_module(module_path, compose_file=Path("/tmp/compose.yml"))
 
-        assert isinstance(result, InstallResult)
-        assert result.success is False
-        assert result.error_message != ""
+        assert isinstance(result, Result)
+        assert result.success is True  # Result wraps InstallResult; install failure is in .data
+        assert isinstance(result.data, InstallResult)
+        assert result.data.success is False
+        assert result.data.error_message != ""
 
 
 class TestDockerInstallTeardown:
@@ -205,6 +209,7 @@ class TestDockerInstallTeardown:
 
         # Teardown must be called even though run raised
         mock_teardown.assert_called_once()
+        assert isinstance(result, Result)
         assert result.success is False
 
 
@@ -238,11 +243,13 @@ class TestDockerRunTestsSuccess:
         ]
 
         module_path = Path("/tmp/test_mod")
-        results = docker_run_tests(module_path, compose_file=Path("/tmp/compose.yml"))
+        result = docker_run_tests(module_path, compose_file=Path("/tmp/compose.yml"))
 
-        assert len(results) == 2
-        assert all(isinstance(r, TestResult) for r in results)
-        assert all(r.passed is True for r in results)
+        assert isinstance(result, Result)
+        assert result.success is True
+        assert len(result.data) == 2
+        assert all(isinstance(r, TestResult) for r in result.data)
+        assert all(r.passed is True for r in result.data)
 
 
 class TestDockerRunTestsFailure:
@@ -273,10 +280,12 @@ class TestDockerRunTestsFailure:
         ]
 
         module_path = Path("/tmp/test_mod")
-        results = docker_run_tests(module_path, compose_file=Path("/tmp/compose.yml"))
+        result = docker_run_tests(module_path, compose_file=Path("/tmp/compose.yml"))
 
-        passed = [r for r in results if r.passed]
-        failed = [r for r in results if not r.passed]
+        assert isinstance(result, Result)
+        assert result.success is True
+        passed = [r for r in result.data if r.passed]
+        failed = [r for r in result.data if not r.passed]
         assert len(passed) == 1
         assert len(failed) == 1
 
@@ -297,9 +306,11 @@ class TestDockerRunTestsTeardown:
         mock_run.side_effect = Exception("Test exec failed")
 
         module_path = Path("/tmp/test_mod")
-        results = docker_run_tests(module_path, compose_file=Path("/tmp/compose.yml"))
+        result = docker_run_tests(module_path, compose_file=Path("/tmp/compose.yml"))
 
         mock_teardown.assert_called_once()
+        assert isinstance(result, Result)
+        assert result.success is False
 
 
 # --- Docker not available tests ---
@@ -314,9 +325,9 @@ class TestDockerNotAvailableInstall:
 
         result = docker_install_module(Path("/tmp/test_mod"))
 
-        assert isinstance(result, InstallResult)
+        assert isinstance(result, Result)
         assert result.success is False
-        assert "Docker not available" in result.error_message
+        assert "Docker not available" in result.errors
 
 
 class TestDockerNotAvailableTests:
@@ -326,9 +337,11 @@ class TestDockerNotAvailableTests:
     def test_docker_not_available_tests(self, mock_available: MagicMock) -> None:
         mock_available.return_value = False
 
-        results = docker_run_tests(Path("/tmp/test_mod"))
+        result = docker_run_tests(Path("/tmp/test_mod"))
 
-        assert results == ()
+        assert isinstance(result, Result)
+        assert result.success is False
+        assert "Docker not available" in result.errors
 
 
 # --- Timeout test ---
@@ -352,7 +365,7 @@ class TestDockerTimeout:
         module_path = Path("/tmp/test_mod")
         result = docker_install_module(module_path, compose_file=Path("/tmp/compose.yml"))
 
-        assert isinstance(result, InstallResult)
+        assert isinstance(result, Result)
         assert result.success is False
-        assert "Timeout" in result.error_message or "timeout" in result.error_message.lower()
+        assert any("timeout" in e.lower() for e in result.errors)
         mock_teardown.assert_called_once()

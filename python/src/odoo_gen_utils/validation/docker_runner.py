@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 
 from odoo_gen_utils.validation.log_parser import parse_install_log, parse_test_log
-from odoo_gen_utils.validation.types import InstallResult, TestResult
+from odoo_gen_utils.validation.types import InstallResult, Result, TestResult
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ def docker_install_module(
     module_path: Path,
     compose_file: Path | None = None,
     timeout: int = 300,
-) -> InstallResult:
+) -> Result[InstallResult]:
     """Install an Odoo module in an ephemeral Docker environment.
 
     Starts Odoo 17 + PostgreSQL 16 containers, runs module installation,
@@ -122,14 +122,11 @@ def docker_install_module(
         timeout: Timeout in seconds for the install command.
 
     Returns:
-        InstallResult with success status, log output, and error message.
+        Result.ok(InstallResult) on successful execution,
+        Result.fail(message) on infrastructure errors.
     """
     if not check_docker_available():
-        return InstallResult(
-            success=False,
-            log_output="",
-            error_message="Docker not available",
-        )
+        return Result.fail("Docker not available")
 
     if compose_file is None:
         compose_file = get_compose_file()
@@ -169,23 +166,17 @@ def docker_install_module(
         combined_output = result.stdout + result.stderr
         success, error_msg = parse_install_log(combined_output)
 
-        return InstallResult(
-            success=success,
-            log_output=combined_output,
-            error_message=error_msg,
+        return Result.ok(
+            InstallResult(
+                success=success,
+                log_output=combined_output,
+                error_message=error_msg,
+            )
         )
     except subprocess.TimeoutExpired:
-        return InstallResult(
-            success=False,
-            log_output="",
-            error_message=f"Timeout after {timeout}s waiting for module install",
-        )
+        return Result.fail(f"Timeout after {timeout}s waiting for module install")
     except Exception as exc:
-        return InstallResult(
-            success=False,
-            log_output="",
-            error_message=str(exc),
-        )
+        return Result.fail(str(exc))
     finally:
         _teardown(compose_file, env)
 
@@ -194,7 +185,7 @@ def docker_run_tests(
     module_path: Path,
     compose_file: Path | None = None,
     timeout: int = 600,
-) -> tuple[TestResult, ...]:
+) -> Result[tuple[TestResult, ...]]:
     """Run Odoo module tests in an ephemeral Docker environment.
 
     Starts Odoo 17 + PostgreSQL 16 containers, runs module tests with
@@ -207,11 +198,11 @@ def docker_run_tests(
         timeout: Timeout in seconds for the test command.
 
     Returns:
-        Tuple of TestResult, one per test found. Empty tuple if Docker
-        is not available or no tests found.
+        Result.ok(test_results) on successful execution,
+        Result.fail(message) on infrastructure errors.
     """
     if not check_docker_available():
-        return ()
+        return Result.fail("Docker not available")
 
     if compose_file is None:
         compose_file = get_compose_file()
@@ -253,12 +244,12 @@ def docker_run_tests(
         )
 
         combined_output = result.stdout + result.stderr
-        return parse_test_log(combined_output)
+        return Result.ok(parse_test_log(combined_output))
     except subprocess.TimeoutExpired:
         logger.warning("Docker test run timed out after %ds", timeout)
-        return ()
-    except Exception:
+        return Result.fail(f"Docker test run timed out after {timeout}s")
+    except Exception as exc:
         logger.warning("Docker test run failed", exc_info=True)
-        return ()
+        return Result.fail(f"Docker test run failed: {exc}")
     finally:
         _teardown(compose_file, env)

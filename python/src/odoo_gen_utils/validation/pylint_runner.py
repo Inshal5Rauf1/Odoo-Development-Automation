@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from odoo_gen_utils.validation.types import Violation
+from odoo_gen_utils.validation.types import Result, Violation
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def run_pylint_odoo(
     *,
     pylintrc_path: Path | None = None,
     timeout: int = 120,
-) -> tuple[Violation, ...]:
+) -> Result[tuple[Violation, ...]]:
     """Run pylint-odoo on a module path and return parsed violations.
 
     Args:
@@ -72,7 +72,7 @@ def run_pylint_odoo(
         timeout: Subprocess timeout in seconds (default 120).
 
     Returns:
-        Tuple of Violation instances. Empty tuple on error or timeout.
+        Result.ok(violations) on success, Result.fail(message) on error/timeout.
     """
     cmd = [
         sys.executable,
@@ -95,10 +95,10 @@ def run_pylint_odoo(
             timeout=timeout,
         )
         # pylint returns non-zero on findings (not errors), so we don't check returncode
-        return parse_pylint_output(result.stdout)
+        return Result.ok(parse_pylint_output(result.stdout))
     except subprocess.TimeoutExpired:
         logger.warning("pylint-odoo timed out after %d seconds for %s", timeout, module_path)
-        return ()
-    except Exception:
+        return Result.fail(f"pylint-odoo timed out after {timeout}s for {module_path}")
+    except Exception as exc:
         logger.warning("pylint-odoo failed for %s", module_path, exc_info=True)
-        return ()
+        return Result.fail(f"pylint-odoo failed for {module_path}: {exc}")
