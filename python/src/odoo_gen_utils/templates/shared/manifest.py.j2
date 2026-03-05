@@ -22,4 +22,15 @@
     ],
     "development_status": "Alpha",
     "application": {{ application | default(True) }},
+{% if external_dependencies is defined and external_dependencies %}
+    "external_dependencies": {
+{% for dep_type, dep_list in external_dependencies.items() %}
+        "{{ dep_type }}": [
+{% for dep in dep_list %}
+            "{{ dep }}",
+{% endfor %}
+        ],
+{% endfor %}
+    },
+{% endif %}
 }

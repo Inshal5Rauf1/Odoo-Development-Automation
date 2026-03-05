@@ -114,7 +114,14 @@ def _make_module_context(spec: dict) -> dict:
         spec, data_files, wizard_view_files, has_company_modules=has_company_modules
     )
 
-    return {
+    # Phase 32: import/export wizard detection
+    import_export_models = [m for m in models if m.get("import_export")]
+    has_import_export = bool(import_export_models)
+    import_export_wizards = [
+        {"name": f"{m['name']}.import.wizard"} for m in import_export_models
+    ]
+
+    ctx = {
         "module_name": module_name,
         "module_title": spec.get("module_title", module_name.replace("_", " ").title()),
         "module_technical_name": module_name,
@@ -129,10 +136,15 @@ def _make_module_context(spec: dict) -> dict:
         "models": models,
         "view_files": _compute_view_files(spec),
         "manifest_files": all_manifest_files,
-        "has_wizards": has_wizards,
+        "has_wizards": has_wizards or has_import_export,
         "spec_wizards": spec_wizards,
         "has_controllers": bool(spec.get("controllers")),
+        "has_import_export": has_import_export,
+        "import_export_wizards": import_export_wizards,
     }
+    if has_import_export:
+        ctx["external_dependencies"] = {"python": ["openpyxl"]}
+    return ctx
 
 
 @pytest.fixture

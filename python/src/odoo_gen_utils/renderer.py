@@ -1304,38 +1304,98 @@ def render_controllers(
     module_dir: Path,
     module_context: dict[str, Any],
 ) -> "Result[list[Path]]":
-    """Render HTTP controller files from spec controllers entries.
+    """Render HTTP controller files and import/export wizard files.
 
     Generates controllers/main.py with @http.route decorators and
     controllers/__init__.py for each controller definition.
+    Also generates import wizard .py and form XML for models with import_export:true.
     """
-    controllers = spec.get("controllers")
-    if not controllers:
-        return Result.ok([])
     try:
         created: list[Path] = []
         module_name = module_context["module_name"]
-        for controller in controllers:
-            class_name = controller.get("class_name") or (
-                _to_class(module_name) + "Controller"
-            )
-            routes = controller.get("routes", [])
-            ctrl_ctx = {
-                **module_context,
-                "controller_class": class_name,
-                "routes": routes,
-                "module_name": module_name,
-            }
-            created.append(render_template(
-                env, "init_controllers.py.j2",
-                module_dir / "controllers" / "__init__.py",
-                ctrl_ctx,
-            ))
-            created.append(render_template(
-                env, "controller.py.j2",
-                module_dir / "controllers" / "main.py",
-                ctrl_ctx,
-            ))
+
+        # --- HTTP controllers ---
+        controllers = spec.get("controllers")
+        if controllers:
+            for controller in controllers:
+                class_name = controller.get("class_name") or (
+                    _to_class(module_name) + "Controller"
+                )
+                routes = controller.get("routes", [])
+                ctrl_ctx = {
+                    **module_context,
+                    "controller_class": class_name,
+                    "routes": routes,
+                    "module_name": module_name,
+                }
+                created.append(render_template(
+                    env, "init_controllers.py.j2",
+                    module_dir / "controllers" / "__init__.py",
+                    ctrl_ctx,
+                ))
+                created.append(render_template(
+                    env, "controller.py.j2",
+                    module_dir / "controllers" / "main.py",
+                    ctrl_ctx,
+                ))
+
+        # --- Import/export wizards ---
+        import_export_models = [
+            m for m in spec.get("models", []) if m.get("import_export")
+        ]
+        if import_export_models:
+            import_wizard_modules: list[str] = []
+            for model in import_export_models:
+                model_name = model["name"]
+                model_var = _to_python_var(model_name)
+                model_xml_id = _to_xml_id(model_name)
+                model_class = _to_class(model_name) + "ImportWizard"
+                model_description = model.get(
+                    "description", model_name.replace(".", " ").title()
+                )
+                # Non-relational, non-internal fields for export headers
+                export_fields = [
+                    f for f in model.get("fields", [])
+                    if f.get("type") not in (
+                        "Many2one", "One2many", "Many2many", "Binary",
+                    )
+                ]
+                wiz_ctx = {
+                    **module_context,
+                    "model_name": model_name,
+                    "model_var": model_var,
+                    "model_xml_id": model_xml_id,
+                    "wizard_class": model_class,
+                    "model_description": model_description,
+                    "export_fields": export_fields,
+                }
+                wizard_filename = f"{model_var}_import_wizard"
+                import_wizard_modules.append(wizard_filename)
+                created.append(render_template(
+                    env, "import_wizard.py.j2",
+                    module_dir / "wizards" / f"{wizard_filename}.py",
+                    wiz_ctx,
+                ))
+                created.append(render_template(
+                    env, "import_wizard_form.xml.j2",
+                    module_dir / "views" / f"{model_xml_id}_import_wizard_form.xml",
+                    wiz_ctx,
+                ))
+            # Render or update wizards/__init__.py with import wizard imports
+            # Combine existing spec_wizards with import wizard modules
+            existing_wizard_imports = [
+                _to_python_var(w["name"])
+                for w in module_context.get("spec_wizards", [])
+            ]
+            all_wizard_imports = existing_wizard_imports + import_wizard_modules
+            init_content = "\n".join(
+                f"from . import {name}" for name in all_wizard_imports
+            ) + "\n"
+            init_path = module_dir / "wizards" / "__init__.py"
+            init_path.parent.mkdir(parents=True, exist_ok=True)
+            init_path.write_text(init_content)
+            created.append(init_path)
+
         return Result.ok(created)
     except Exception as exc:
         return Result.fail(f"render_controllers failed: {exc}")
@@ -1366,8 +1426,18 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         data_files.append(f"data/report_{report['xml_id']}.xml")
         data_files.append(f"data/report_{report['xml_id']}_template.xml")
     wiz_files = [f"views/{_to_xml_id(w['name'])}_wizard_form.xml" for w in spec_wizards]
+    # Phase 32: import/export wizard detection
+    import_export_models = [m for m in models if m.get("import_export")]
+    has_import_export = bool(import_export_models)
+    # Add import wizard form view files to manifest
+    for m in import_export_models:
+        wiz_files.append(f"views/{_to_xml_id(m['name'])}_import_wizard_form.xml")
+    # Build import_export_wizards list for ACL generation
+    import_export_wizards = [
+        {"name": f"{m['name']}.import.wizard"} for m in import_export_models
+    ]
     manifest_files = _compute_manifest_data(spec, data_files, wiz_files, has_company_modules=has_company)
-    return {
+    ctx: dict[str, Any] = {
         "module_name": module_name,
         "module_title": spec.get("module_title", module_name.replace("_", " ").title()),
         "module_technical_name": module_name,
@@ -1382,10 +1452,15 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         "models": models,
         "view_files": _compute_view_files(spec),
         "manifest_files": manifest_files,
-        "has_wizards": bool(spec_wizards),
+        "has_wizards": bool(spec_wizards) or has_import_export,
         "spec_wizards": spec_wizards,
         "has_controllers": bool(spec.get("controllers")),
+        "has_import_export": has_import_export,
+        "import_export_wizards": import_export_wizards,
     }
+    if has_import_export:
+        ctx["external_dependencies"] = {"python": ["openpyxl"]}
+    return ctx
 
 
 def _track_artifacts(state: Any, spec: dict[str, Any], module_dir: Path) -> Any:
