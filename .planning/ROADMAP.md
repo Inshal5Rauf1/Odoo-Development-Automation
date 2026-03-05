@@ -72,7 +72,7 @@
 
 - [x] **Phase 20: Auto-Fix AST Migration** - Replace regex-based fixers with AST-based source modification and full-body import scanning (completed 2026-03-05)
 - [x] **Phase 21: Template Correctness** - Fix mail.thread injection, wizard imports, wizard ACLs, and deprecated name_get (completed 2026-03-05)
-- [ ] **Phase 22: Validation & Search Fixes** - Docker exec race condition, GitHub rate limiting, and AST _inherit-only detection
+- [x] **Phase 22: Validation & Search Fixes** - Docker exec race condition, GitHub rate limiting, and AST _inherit-only detection (completed 2026-03-05)
 - [ ] **Phase 23: Unified Result Type** - Cross-cutting Result[T] type across validation pipeline modules
 - [ ] **Phase 24: Code Quality & Decomposition** - Lazy CLI imports, render_module decomposition, Docker path resolution
 
@@ -114,7 +114,7 @@ Plans:
   1. docker_install_module uses `docker compose run --rm` instead of `docker compose exec`, eliminating serialization race conditions from concurrent Odoo processes
   2. GitHub API calls check X-RateLimit-Remaining header, sleep until reset when exhausted, and retry with exponential backoff on 403/429 responses
   3. AST analyzer detects models with _inherit but no _name and records them in ModuleAnalysis.inherited_models as model extensions
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 22-01-PLAN.md — Fix docker_install_module to use run --rm pattern (VALD-01)
 - [ ] 22-02-PLAN.md — GitHub rate limit handling + _inherit-only AST detection (SRCH-01, SRCH-02)
@@ -154,7 +154,7 @@ Phases 20-22 can execute in parallel (independent). Phase 23 before Phase 24 (de
 | 18-19 | v2.1 | 5/5 | Complete | 2026-03-04 |
 | 20. Auto-Fix AST Migration | 2/2 | Complete    | 2026-03-05 | - |
 | 21. Template Correctness | 2/2 | Complete   | 2026-03-05 | - |
-| 22. Validation & Search Fixes | v3.0 | 1/2 | In Progress | - |
+| 22. Validation & Search Fixes | 2/2 | Complete   | 2026-03-05 | - |
 | 23. Unified Result Type | v3.0 | 0/? | Not started | - |
 | 24. Code Quality & Decomposition | v3.0 | 0/? | Not started | - |
 

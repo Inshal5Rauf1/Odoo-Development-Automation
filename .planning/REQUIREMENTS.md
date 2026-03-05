@@ -24,8 +24,8 @@
 
 ### Search Infrastructure
 
-- [ ] **SRCH-01**: GitHub API calls in index builder check X-RateLimit-Remaining header, sleep until reset when low, and retry with exponential backoff on 403/429 responses
-- [ ] **SRCH-02**: AST analyzer detects _inherit-only model extensions (models with _inherit but no _name) and records them in ModuleAnalysis.inherited_models
+- [x] **SRCH-01**: GitHub API calls in index builder check X-RateLimit-Remaining header, sleep until reset when low, and retry with exponential backoff on 403/429 responses
+- [x] **SRCH-02**: AST analyzer detects _inherit-only model extensions (models with _inherit but no _name) and records them in ModuleAnalysis.inherited_models
 
 ### Code Quality
 
@@ -82,8 +82,8 @@
 | TMPL-04 | Phase 21 | Complete |
 | VALD-01 | Phase 22 | Complete |
 | VALD-02 | Phase 23 | Pending |
-| SRCH-01 | Phase 22 | Pending |
-| SRCH-02 | Phase 22 | Pending |
+| SRCH-01 | Phase 22 | Complete |
+| SRCH-02 | Phase 22 | Complete |
 | QUAL-01 | Phase 24 | Pending |
 | QUAL-02 | Phase 24 | Pending |
 | QUAL-03 | Phase 24 | Pending |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Bug Fixes & Tech Debt
-status: in-progress
-stopped_at: Completed 22-01-PLAN.md (docker run --rm fix)
-last_updated: "2026-03-05T08:12:49Z"
+status: completed
+stopped_at: Completed 22-02-PLAN.md (rate limit handling + inherit detection)
+last_updated: "2026-03-05T08:15:53.679Z"
 last_activity: 2026-03-05 — Completed 22-01-PLAN.md (docker run --rm fix for VALD-01)
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 3
+  total_plans: 6
+  completed_plans: 6
   percent: 98
 ---
 
@@ -63,6 +63,8 @@ Progress: [███████████████████████
 - Phase 21 Plan 02: Version gate uses string comparison odoo_version >= "18.0" for display_name vs name_get
 
 - Phase 22 Plan 01: Matched docker_run_tests pattern exactly: up -d --wait db then run --rm -T odoo
+- [Phase 22]: Used gh.get_rate_limit().core for PyGithub rate limit API
+- [Phase 22]: Separate _extract_inherit_only function to avoid breaking _extract_models_from_file callers
 
 ### Pending Todos
 
@@ -85,7 +87,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T08:12:49Z
-Stopped at: Completed 22-01-PLAN.md
+Last session: 2026-03-05T08:15:53.677Z
+Stopped at: Completed 22-02-PLAN.md (rate limit handling + inherit detection)
 Resume file: None
 Next step: Continue Phase 22 remaining plans or Phase 23 (Unified Result Type)
