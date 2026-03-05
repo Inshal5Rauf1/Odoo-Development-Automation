@@ -71,7 +71,7 @@
 **Milestone Goal:** Fix all confirmed bugs and pay down technical debt identified in codebase audit. 13 requirements across auto-fix, templates, validation, search, and code quality.
 
 - [x] **Phase 20: Auto-Fix AST Migration** - Replace regex-based fixers with AST-based source modification and full-body import scanning (completed 2026-03-05)
-- [ ] **Phase 21: Template Correctness** - Fix mail.thread injection, wizard imports, wizard ACLs, and deprecated name_get
+- [x] **Phase 21: Template Correctness** - Fix mail.thread injection, wizard imports, wizard ACLs, and deprecated name_get (completed 2026-03-05)
 - [ ] **Phase 22: Validation & Search Fixes** - Docker exec race condition, GitHub rate limiting, and AST _inherit-only detection
 - [ ] **Phase 23: Unified Result Type** - Cross-cutting Result[T] type across validation pipeline modules
 - [ ] **Phase 24: Code Quality & Decomposition** - Lazy CLI imports, render_module decomposition, Docker path resolution
@@ -101,7 +101,7 @@ Plans:
   2. Wizard template imports `api` only when the generated wizard methods use @api decorators
   3. Generated ir.model.access.csv includes ACL entries for TransientModel wizards alongside regular models
   4. Test template asserts on display_name instead of calling deprecated name_get(), with version gate for Odoo 18.0
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 21-01-PLAN.md — Smart mail.thread injection with line item detection and chatter flag
 - [ ] 21-02-PLAN.md — Wizard conditional api import, wizard ACLs, display_name test assertion
@@ -150,7 +150,7 @@ Phases 20-22 can execute in parallel (independent). Phase 23 before Phase 24 (de
 | 15-17 | v2.0 | 6/6 | Complete | 2026-03-04 |
 | 18-19 | v2.1 | 5/5 | Complete | 2026-03-04 |
 | 20. Auto-Fix AST Migration | 2/2 | Complete    | 2026-03-05 | - |
-| 21. Template Correctness | 1/2 | In Progress|  | - |
+| 21. Template Correctness | 2/2 | Complete   | 2026-03-05 | - |
 | 22. Validation & Search Fixes | v3.0 | 0/? | Not started | - |
 | 23. Unified Result Type | v3.0 | 0/? | Not started | - |
 | 24. Code Quality & Decomposition | v3.0 | 0/? | Not started | - |

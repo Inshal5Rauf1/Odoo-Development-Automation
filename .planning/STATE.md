@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Bug Fixes & Tech Debt
 status: executing
-stopped_at: Completed 21-01-PLAN.md
-last_updated: "2026-03-05T07:35:36.463Z"
-last_activity: 2026-03-05 — Completed 21-01-PLAN.md (smart mail.thread injection)
+stopped_at: Completed 21-02-PLAN.md
+last_updated: "2026-03-05T07:45:25Z"
+last_activity: 2026-03-05 — Completed 21-02-PLAN.md (wizard api, ACL, display_name fixes)
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
-  percent: 93
+  completed_plans: 4
+  percent: 97
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 21 of 24 (Template Correctness)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-03-05 — Completed 21-01-PLAN.md (smart mail.thread injection)
+Plan: 2 of 2 in current phase (PHASE COMPLETE)
+Status: Phase 21 complete
+Last activity: 2026-03-05 — Completed 21-02-PLAN.md (wizard api, ACL, display_name fixes)
 
-Progress: [████████████████████████░░░░░░] 93% (v3.0)
+Progress: [█████████████████████████████░] 97% (v3.0)
 
 ## Performance Metrics
 
@@ -58,6 +58,10 @@ Progress: [███████████████████████
 - Phase 21 Plan 01: Tri-state chatter flag (None=auto, True=force, False=skip)
 - Phase 21 Plan 01: In-module parent detection prevents double mail.thread injection
 
+- Phase 21 Plan 02: needs_api=True always for wizards (default_get uses @api.model)
+- Phase 21 Plan 02: Wizard ACL: single user line with 1,1,1,1 (no manager line for TransientModels)
+- Phase 21 Plan 02: Version gate uses string comparison odoo_version >= "18.0" for display_name vs name_get
+
 ### Pending Todos
 
 None yet.
@@ -79,7 +83,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T07:35:36.462Z
-Stopped at: Completed 21-01-PLAN.md
+Last session: 2026-03-05T07:45:25Z
+Stopped at: Completed 21-02-PLAN.md
 Resume file: None
-Next step: Execute 21-02-PLAN.md (remaining template correctness fixes)
+Next step: Execute Phase 22 (Validation Infrastructure fixes)
