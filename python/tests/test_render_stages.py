@@ -1960,6 +1960,125 @@ class TestRenderModelsArchival:
         assert 'name="action_archive"' in form_xml
         assert "days_threshold" in form_xml
 
+    def test_archival_with_state_field_no_crash(self, tmp_path):
+        """Render spec with archival:true AND state Selection field -> no StrictUndefined error."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "description": "Academy Course",
+            "archival": True,
+            "fields": [
+                {"name": "name", "type": "Char", "required": True},
+                {
+                    "name": "state",
+                    "type": "Selection",
+                    "selection": [["draft", "Draft"], ["active", "Active"]],
+                },
+            ],
+        }])
+        files, _ = render_module(spec, None, tmp_path)
+        form_xml = (tmp_path / "test_module" / "views" / "academy_course_view.xml").read_text()
+        # Archival wizard button should exist
+        assert "action_open_academy_course_archive_wizard" in form_xml
+        # Archival wizard button should NOT have invisible (no trigger_state)
+        # Find the button block for archival wizard and check it has no invisible attr
+        lines = form_xml.split("\n")
+        for i, line in enumerate(lines):
+            if "action_open_academy_course_archive_wizard" in line:
+                # Gather surrounding lines for this button element
+                button_block = "\n".join(lines[max(0, i - 1):i + 5])
+                assert "invisible" not in button_block, (
+                    f"Archival wizard button should not have invisible attr:\n{button_block}"
+                )
+                break
+
+    def test_archival_with_state_and_regular_wizard(self, tmp_path):
+        """Archival + state field + regular wizard -> both buttons render, only regular has invisible."""
+        spec = _make_spec(
+            models=[{
+                "name": "academy.course",
+                "description": "Academy Course",
+                "archival": True,
+                "fields": [
+                    {"name": "name", "type": "Char", "required": True},
+                    {
+                        "name": "state",
+                        "type": "Selection",
+                        "selection": [["draft", "Draft"], ["active", "Active"]],
+                    },
+                ],
+            }],
+            wizards=[{
+                "name": "confirm.wizard",
+                "target_model": "academy.course",
+                "trigger_state": "draft",
+                "fields": [{"name": "reason", "type": "Char"}],
+            }],
+        )
+        files, _ = render_module(spec, None, tmp_path)
+        form_xml = (tmp_path / "test_module" / "views" / "academy_course_view.xml").read_text()
+        # Both buttons should exist
+        assert "action_open_academy_course_archive_wizard" in form_xml
+        assert "action_open_confirm_wizard" in form_xml
+        # Regular wizard button should have invisible with trigger_state
+        assert "invisible=\"state != 'draft'\"" in form_xml
+        # Archival wizard button should NOT have invisible
+        lines = form_xml.split("\n")
+        for i, line in enumerate(lines):
+            if "action_open_academy_course_archive_wizard" in line:
+                button_block = "\n".join(lines[max(0, i - 1):i + 5])
+                assert "invisible" not in button_block, (
+                    f"Archival wizard button should not have invisible attr:\n{button_block}"
+                )
+                break
+
+    def test_cron_doall_from_spec_true(self, tmp_path):
+        """Cron with doall:true in spec -> doall field in rendered XML contains eval='True'."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "description": "Academy Course",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        spec["cron_jobs"] = [{
+            "name": "Test Cron",
+            "model_name": "academy.course",
+            "method": "_cron_test",
+            "interval_number": 1,
+            "interval_type": "days",
+            "doall": True,
+        }]
+        files, _ = render_module(spec, None, tmp_path)
+        cron_xml = (tmp_path / "test_module" / "data" / "cron_data.xml").read_text()
+        # Must specifically check the doall field line, not just any eval="True"
+        for line in cron_xml.split("\n"):
+            if '"doall"' in line:
+                assert 'eval="True"' in line, f"doall field should have eval='True', got: {line}"
+                break
+        else:
+            raise AssertionError("doall field not found in cron XML")
+
+    def test_cron_doall_default_false(self, tmp_path):
+        """Cron without doall key in spec -> doall field in rendered XML contains eval='False'."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "description": "Academy Course",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        spec["cron_jobs"] = [{
+            "name": "Test Cron",
+            "model_name": "academy.course",
+            "method": "_cron_test",
+            "interval_number": 1,
+            "interval_type": "days",
+        }]
+        files, _ = render_module(spec, None, tmp_path)
+        cron_xml = (tmp_path / "test_module" / "data" / "cron_data.xml").read_text()
+        for line in cron_xml.split("\n"):
+            if '"doall"' in line:
+                assert 'eval="False"' in line, f"doall field should have eval='False', got: {line}"
+                break
+        else:
+            raise AssertionError("doall field not found in cron XML")
+
     def test_full_production_patterns_combined(self, tmp_path):
         """Spec with bulk+cacheable+archival -> module renders without errors, has all patterns."""
         spec = _make_spec(models=[{
