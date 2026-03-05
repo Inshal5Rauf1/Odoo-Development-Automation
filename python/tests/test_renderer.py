@@ -3129,3 +3129,81 @@ class TestBuildModuleContextControllers:
         }])
         ctx = _build_module_context(spec, "test_module")
         assert ctx["has_controllers"] is False
+
+
+# ---------------------------------------------------------------------------
+# _build_module_context: import/export (Phase 32 Plan 02)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildModuleContextImportExport:
+    def test_has_import_export_true(self):
+        """_build_module_context sets has_import_export=True when a model has import_export."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "import_export": True,
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        ctx = _build_module_context(spec, "test_module")
+        assert ctx["has_import_export"] is True
+
+    def test_has_import_export_false(self):
+        """_build_module_context sets has_import_export=False when no model has import_export."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        ctx = _build_module_context(spec, "test_module")
+        assert ctx["has_import_export"] is False
+
+    def test_external_dependencies_openpyxl(self):
+        """_build_module_context includes external_dependencies with openpyxl when has_import_export."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "import_export": True,
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        ctx = _build_module_context(spec, "test_module")
+        assert "external_dependencies" in ctx
+        assert "openpyxl" in ctx["external_dependencies"]["python"]
+
+    def test_no_external_dependencies_without_import_export(self):
+        """_build_module_context has no external_dependencies when no import_export."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        ctx = _build_module_context(spec, "test_module")
+        assert ctx.get("external_dependencies") is None or ctx.get("external_dependencies") == {}
+
+    def test_has_wizards_true_with_import_export(self):
+        """has_wizards is True when import_export models exist (even without spec wizards)."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "import_export": True,
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        ctx = _build_module_context(spec, "test_module")
+        assert ctx["has_wizards"] is True
+
+    def test_import_wizard_form_in_manifest(self):
+        """Manifest files include import wizard form view files."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "import_export": True,
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        ctx = _build_module_context(spec, "test_module")
+        assert "views/academy_course_import_wizard_form.xml" in ctx["manifest_files"]
+
+    def test_import_export_wizards_context(self):
+        """_build_module_context includes import_export_wizards list for ACL generation."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "import_export": True,
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        ctx = _build_module_context(spec, "test_module")
+        assert "import_export_wizards" in ctx
+        assert len(ctx["import_export_wizards"]) == 1
+        assert ctx["import_export_wizards"][0]["name"] == "academy.course.import.wizard"

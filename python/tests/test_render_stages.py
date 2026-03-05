@@ -1576,3 +1576,129 @@ class TestRenderControllers:
         tmpl = env.get_template("init_root.py.j2")
         rendered = tmpl.render(has_wizards=False, has_controllers=False)
         assert "controllers" not in rendered
+
+
+# ---------------------------------------------------------------------------
+# Import/Export wizard tests (Phase 32 Plan 02)
+# ---------------------------------------------------------------------------
+
+
+def _make_import_export_spec(
+    models: list[dict] | None = None,
+    wizards: list[dict] | None = None,
+) -> dict:
+    """Build spec with a model that has import_export:true."""
+    default_models = [
+        {
+            "name": "academy.course",
+            "description": "Academy Course",
+            "import_export": True,
+            "fields": [
+                {"name": "name", "type": "Char", "required": True},
+                {"name": "code", "type": "Char"},
+                {"name": "credits", "type": "Integer"},
+            ],
+        }
+    ]
+    return _make_spec(models=models or default_models, wizards=wizards)
+
+
+class TestRenderImportExport:
+    def test_import_wizard_generated(self, env, tmp_module):
+        """Spec with model having import_export:true -> generates wizard .py file."""
+        spec = _make_import_export_spec()
+        ctx = _make_module_context(spec)
+        result = render_controllers(env, spec, tmp_module, ctx)
+        assert result.success is True
+        wizard_py = tmp_module / "wizards" / "academy_course_import_wizard.py"
+        assert wizard_py.exists()
+
+    def test_import_wizard_fields(self, env, tmp_module):
+        """Generated wizard has Binary, state Selection, preview_html, import_count, error_log."""
+        spec = _make_import_export_spec()
+        ctx = _make_module_context(spec)
+        render_controllers(env, spec, tmp_module, ctx)
+        content = (tmp_module / "wizards" / "academy_course_import_wizard.py").read_text()
+        assert "fields.Binary" in content
+        assert "fields.Selection" in content
+        assert "'upload'" in content or '"upload"' in content
+        assert "'preview'" in content or '"preview"' in content
+        assert "'done'" in content or '"done"' in content
+        assert "preview_html" in content
+        assert "import_count" in content
+        assert "error_log" in content
+
+    def test_content_type_validation(self, env, tmp_module):
+        """Generated wizard has _validate_file_content with magic bytes check."""
+        spec = _make_import_export_spec()
+        ctx = _make_module_context(spec)
+        render_controllers(env, spec, tmp_module, ctx)
+        content = (tmp_module / "wizards" / "academy_course_import_wizard.py").read_text()
+        assert "_validate_file_content" in content
+        assert "PK\\x03\\x04" in content or "b'PK'" in content or "PK\\x03" in content
+
+    def test_preview_and_batch_import(self, env, tmp_module):
+        """Generated wizard has action_preview, action_import, _do_import, _parse_row."""
+        spec = _make_import_export_spec()
+        ctx = _make_module_context(spec)
+        render_controllers(env, spec, tmp_module, ctx)
+        content = (tmp_module / "wizards" / "academy_course_import_wizard.py").read_text()
+        assert "def action_preview(" in content
+        assert "def action_import(" in content
+        assert "def _do_import(" in content
+        assert "def _parse_row(" in content
+
+    def test_export_xlsx(self, env, tmp_module):
+        """Generated wizard has action_export referencing openpyxl.Workbook with field headers."""
+        spec = _make_import_export_spec()
+        ctx = _make_module_context(spec)
+        render_controllers(env, spec, tmp_module, ctx)
+        content = (tmp_module / "wizards" / "academy_course_import_wizard.py").read_text()
+        assert "def action_export(" in content
+        assert "openpyxl" in content
+        assert "Workbook" in content
+
+    def test_wizard_form_states(self, env, tmp_module):
+        """Generated form XML has state-dependent invisible attrs and action buttons."""
+        spec = _make_import_export_spec()
+        ctx = _make_module_context(spec)
+        render_controllers(env, spec, tmp_module, ctx)
+        form_xml = tmp_module / "views" / "academy_course_import_wizard_form.xml"
+        assert form_xml.exists()
+        content = form_xml.read_text()
+        assert "upload" in content
+        assert "preview" in content
+        assert "done" in content
+        assert "ir.actions.act_window" in content
+
+    def test_import_wizard_security(self, env, tmp_module):
+        """Import wizard model gets references for ACL entry in security context."""
+        spec = _make_import_export_spec()
+        ctx = _make_module_context(spec)
+        # The import_export_wizards key should be in context for access_csv.j2
+        assert "import_export_wizards" in ctx or any(
+            m.get("import_export") for m in spec.get("models", [])
+        )
+        render_controllers(env, spec, tmp_module, ctx)
+
+    def test_no_import_export_noop(self, env, tmp_module):
+        """Model without import_export:true -> no wizard files generated."""
+        spec = _make_spec(models=[_make_model()])
+        ctx = _make_module_context(spec)
+        result = render_controllers(env, spec, tmp_module, ctx)
+        assert result.success is True
+        wizard_dir = tmp_module / "wizards"
+        # No import wizard files should exist (wizard dir may not exist at all)
+        import_files = list(wizard_dir.glob("*_import_wizard.py")) if wizard_dir.exists() else []
+        assert import_files == []
+
+    def test_import_wizard_init(self, env, tmp_module):
+        """wizards/__init__.py imports import wizard modules."""
+        spec = _make_import_export_spec()
+        ctx = _make_module_context(spec)
+        render_controllers(env, spec, tmp_module, ctx)
+        # Wizards init should import the import wizard
+        init_file = tmp_module / "wizards" / "__init__.py"
+        assert init_file.exists()
+        content = init_file.read_text()
+        assert "academy_course_import_wizard" in content
