@@ -68,8 +68,8 @@ class TestDockerInstallModuleSuccess:
         mock_teardown: MagicMock,
     ) -> None:
         mock_available.return_value = True
-        # First call: docker compose up
-        # Second call: docker compose exec (install)
+        # First call: start db only (not full stack)
+        # Second call: run --rm (not exec) for install
         success_log = (
             "2026-03-02 10:00:00,000 1 INFO test_db "
             "odoo.modules.loading: 1 modules loaded, 0 modules updated, 0 tests\n"
@@ -77,8 +77,8 @@ class TestDockerInstallModuleSuccess:
             "odoo.modules.loading: Modules loaded.\n"
         )
         mock_run.side_effect = [
-            MagicMock(stdout="", stderr="", returncode=0),  # up
-            MagicMock(stdout=success_log, stderr="", returncode=0),  # exec
+            MagicMock(stdout="", stderr="", returncode=0),  # up -d --wait db
+            MagicMock(stdout=success_log, stderr="", returncode=0),  # run --rm
         ]
 
         module_path = Path("/tmp/test_mod")
@@ -87,6 +87,72 @@ class TestDockerInstallModuleSuccess:
         assert isinstance(result, InstallResult)
         assert result.success is True
         assert result.error_message == ""
+
+
+class TestDockerInstallUsesRunNotExec:
+    """docker_install_module uses 'run --rm' pattern, not 'exec'."""
+
+    @patch("odoo_gen_utils.validation.docker_runner._teardown")
+    @patch("odoo_gen_utils.validation.docker_runner._run_compose")
+    @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
+    def test_first_call_starts_db_only(
+        self,
+        mock_available: MagicMock,
+        mock_run: MagicMock,
+        mock_teardown: MagicMock,
+    ) -> None:
+        mock_available.return_value = True
+        success_log = (
+            "2026-03-02 10:00:00,000 1 INFO test_db "
+            "odoo.modules.loading: Modules loaded.\n"
+        )
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="", returncode=0),
+            MagicMock(stdout=success_log, stderr="", returncode=0),
+        ]
+
+        docker_install_module(Path("/tmp/test_mod"), compose_file=Path("/tmp/compose.yml"))
+
+        # First call must start only db service
+        first_call_args = mock_run.call_args_list[0]
+        assert "db" in first_call_args[0][1], (
+            f"First _run_compose call should include 'db' for db-only startup, "
+            f"got args: {first_call_args[0][1]}"
+        )
+
+    @patch("odoo_gen_utils.validation.docker_runner._teardown")
+    @patch("odoo_gen_utils.validation.docker_runner._run_compose")
+    @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
+    def test_second_call_uses_run_rm_not_exec(
+        self,
+        mock_available: MagicMock,
+        mock_run: MagicMock,
+        mock_teardown: MagicMock,
+    ) -> None:
+        mock_available.return_value = True
+        success_log = (
+            "2026-03-02 10:00:00,000 1 INFO test_db "
+            "odoo.modules.loading: Modules loaded.\n"
+        )
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="", returncode=0),
+            MagicMock(stdout=success_log, stderr="", returncode=0),
+        ]
+
+        docker_install_module(Path("/tmp/test_mod"), compose_file=Path("/tmp/compose.yml"))
+
+        # Second call must use 'run --rm', not 'exec'
+        second_call_args = mock_run.call_args_list[1]
+        install_args = second_call_args[0][1]
+        assert "run" in install_args, (
+            f"Second _run_compose call should use 'run', got args: {install_args}"
+        )
+        assert "--rm" in install_args, (
+            f"Second _run_compose call should include '--rm', got args: {install_args}"
+        )
+        assert "exec" not in install_args, (
+            f"Second _run_compose call should NOT use 'exec', got args: {install_args}"
+        )
 
 
 class TestDockerInstallModuleFailure:

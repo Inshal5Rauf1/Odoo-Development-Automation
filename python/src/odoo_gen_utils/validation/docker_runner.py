@@ -141,14 +141,16 @@ def docker_install_module(
     }
 
     try:
-        # Start services and wait for health checks
-        _run_compose(compose_file, ["up", "-d", "--wait"], env, timeout=120)
+        # Start only the database service to avoid a second Odoo process
+        # conflicting with the install runner on the same database.
+        _run_compose(compose_file, ["up", "-d", "--wait", "db"], env, timeout=120)
 
-        # Install the module
+        # Install in a fresh container (no entrypoint server conflict).
         result = _run_compose(
             compose_file,
             [
-                "exec",
+                "run",
+                "--rm",
                 "-T",
                 "odoo",
                 "odoo",
