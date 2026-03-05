@@ -73,6 +73,234 @@ _DOCKER_PATTERN_KEYWORDS: dict[str, tuple[str, ...]] = {
 
 
 # -------------------------------------------------------------------------
+# AST splice utilities (shared by all fixers)
+# -------------------------------------------------------------------------
+
+
+def _find_call_at_line(tree: ast.Module, target_line: int) -> ast.Call | None:
+    """Walk AST to find a Call node whose line range includes target_line.
+
+    Args:
+        tree: Parsed AST module.
+        target_line: 1-based line number to search for.
+
+    Returns:
+        The ast.Call node covering that line, or None.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if (
+                hasattr(node, "lineno")
+                and hasattr(node, "end_lineno")
+                and node.lineno <= target_line <= (node.end_lineno or node.lineno)
+            ):
+                return node
+    return None
+
+
+def _splice_remove_keyword(source: str, call_node: ast.Call, kw_idx: int) -> str:
+    """Remove a keyword argument from a Call node using AST positions.
+
+    Handles comma cleanup and blank line removal. Works correctly for
+    multi-line function calls where keyword is on its own line.
+
+    Args:
+        source: Full source code string.
+        call_node: The ast.Call node containing the keyword.
+        kw_idx: Index of the keyword to remove in call_node.keywords.
+
+    Returns:
+        New source string with keyword removed.
+    """
+    lines = source.split("\n")
+    kw = call_node.keywords[kw_idx]
+
+    # AST positions: lineno is 1-based, col_offset is 0-based
+    kw_start_line = kw.lineno - 1
+    kw_end_line = (kw.end_lineno or kw.lineno) - 1
+    kw_start_col = kw.col_offset
+    kw_end_col = kw.end_col_offset or (len(lines[kw_end_line]) if kw_end_line < len(lines) else 0)
+
+    # Determine if keyword spans the entire line (whitespace + keyword + optional comma)
+    is_only_on_line = lines[kw_start_line][:kw_start_col].strip() == ""
+
+    if kw_start_line == kw_end_line and is_only_on_line:
+        # Keyword is on its own line -- remove entire line(s)
+        line_text = lines[kw_start_line]
+        # Check if there's a trailing comma after the keyword end
+        rest_after = line_text[kw_end_col:].strip()
+        if rest_after == "," or rest_after == "":
+            # Remove entire line
+            new_lines = lines[:kw_start_line] + lines[kw_start_line + 1:]
+        else:
+            # There's more content after -- just remove the keyword portion
+            before = line_text[:kw_start_col]
+            after = line_text[kw_end_col:]
+            # Clean trailing comma
+            after = after.lstrip()
+            if after.startswith(","):
+                after = after[1:].lstrip()
+            new_lines = list(lines)
+            new_lines[kw_start_line] = before + after
+    elif kw_start_line != kw_end_line:
+        # Multi-line keyword value -- remove all lines from start to end
+        # Check if line after kw_end has only a comma
+        end_line_text = lines[kw_end_line]
+        rest_after_end = end_line_text[kw_end_col:].strip()
+
+        lines_to_remove = list(range(kw_start_line, kw_end_line + 1))
+
+        # Check if we need to also consume a trailing comma on the end line
+        if rest_after_end == ",":
+            pass  # Already included, the whole line goes
+        elif rest_after_end.startswith(","):
+            # Trim the comma from remaining text
+            remaining = end_line_text[kw_end_col:].lstrip()
+            if remaining.startswith(","):
+                remaining = remaining[1:]
+            if remaining.strip() == "":
+                pass  # Whole line goes
+            else:
+                lines[kw_end_line] = end_line_text[:kw_start_col] + remaining.lstrip()
+                lines_to_remove = list(range(kw_start_line, kw_end_line))
+
+        new_lines = [l for i, l in enumerate(lines) if i not in lines_to_remove]
+    else:
+        # Same line, not the only content -- inline removal
+        line_text = lines[kw_start_line]
+        before = line_text[:kw_start_col]
+        after = line_text[kw_end_col:]
+
+        # Clean up commas
+        after_stripped = after.lstrip()
+        if after_stripped.startswith(","):
+            after = after_stripped[1:]
+        elif before.rstrip().endswith(","):
+            before = before.rstrip()[:-1]
+
+        new_line = before.rstrip() + after.lstrip()
+        # Clean up ", )" -> ")"
+        new_line = re.sub(r",\s*\)", ")", new_line)
+        new_lines = list(lines)
+        new_lines[kw_start_line] = new_line
+
+    # Handle preceding comma if keyword was the last one
+    if kw_idx == len(call_node.keywords) - 1 and kw_idx > 0:
+        prev_kw = call_node.keywords[kw_idx - 1]
+        prev_end_line = (prev_kw.end_lineno or prev_kw.lineno) - 1
+        if prev_end_line < len(new_lines):
+            prev_line = new_lines[prev_end_line]
+            # Remove trailing comma from previous keyword's line if present
+            stripped = prev_line.rstrip()
+            if stripped.endswith(","):
+                new_lines[prev_end_line] = stripped[:-1] + prev_line[len(stripped):]
+
+    # Also check: if this was the last keyword and there are positional args,
+    # the last positional arg may now have a trailing comma that needs cleanup
+    if kw_idx == 0 and len(call_node.keywords) == 1 and call_node.args:
+        last_arg = call_node.args[-1]
+        arg_end_line = (last_arg.end_lineno or last_arg.lineno) - 1
+        if arg_end_line < len(new_lines):
+            arg_line = new_lines[arg_end_line]
+            stripped = arg_line.rstrip()
+            if stripped.endswith(","):
+                new_lines[arg_end_line] = stripped[:-1] + arg_line[len(stripped):]
+
+    result = "\n".join(new_lines)
+    # Clean up double blank lines
+    while "\n\n\n" in result:
+        result = result.replace("\n\n\n", "\n\n")
+    return result
+
+
+def _splice_rename_keyword(source: str, kw: ast.keyword, new_name: str) -> str:
+    """Rename a keyword argument at its precise AST position.
+
+    Only replaces the keyword name (e.g., 'track_visibility' -> 'tracking'),
+    leaving the value and everything else untouched.
+
+    Args:
+        source: Full source code string.
+        kw: The ast.keyword node to rename.
+        new_name: The new keyword argument name.
+
+    Returns:
+        New source string with keyword renamed.
+    """
+    lines = source.split("\n")
+    line_idx = kw.lineno - 1
+    col = kw.col_offset
+    old_name = kw.arg
+
+    if old_name is None:
+        return source
+
+    line = lines[line_idx]
+    # The keyword name starts at col_offset and spans len(old_name) characters
+    before = line[:col]
+    after = line[col + len(old_name):]
+    new_lines = list(lines)
+    new_lines[line_idx] = before + new_name + after
+    return "\n".join(new_lines)
+
+
+def _splice_remove_dict_entry(source: str, key_node: ast.expr, val_node: ast.expr) -> str:
+    """Remove a key-value pair from a dict literal using AST positions.
+
+    Handles multi-line values (lists, strings spanning multiple lines).
+
+    Args:
+        source: Full source code string.
+        key_node: The AST node for the dict key.
+        val_node: The AST node for the dict value.
+
+    Returns:
+        New source string with the dict entry removed.
+    """
+    lines = source.split("\n")
+
+    key_start_line = key_node.lineno - 1
+    val_end_line = (val_node.end_lineno or val_node.lineno) - 1
+    val_end_col = val_node.end_col_offset or len(lines[val_end_line])
+
+    # Check what's after the value on its end line
+    rest_after = lines[val_end_line][val_end_col:].strip()
+
+    # Consume trailing comma if present
+    if rest_after.startswith(","):
+        # Check if there's anything after the comma on the same line
+        after_comma = rest_after[1:].strip()
+        if after_comma == "":
+            # Nothing else on line -- remove entire lines from key_start to val_end
+            end_remove = val_end_line + 1
+        else:
+            # Something after comma -- only remove up to and including comma
+            end_remove = val_end_line  # Don't remove this line entirely
+            comma_pos = lines[val_end_line].index(",", val_end_col)
+            lines[val_end_line] = lines[val_end_line][comma_pos + 1:].lstrip()
+            # Preserve indentation
+            if lines[val_end_line].strip():
+                indent = lines[key_start_line][:len(lines[key_start_line]) - len(lines[key_start_line].lstrip())]
+                lines[val_end_line] = indent + lines[val_end_line].lstrip()
+    elif rest_after == "":
+        end_remove = val_end_line + 1
+    else:
+        end_remove = val_end_line + 1
+
+    # Remove the lines
+    if end_remove > val_end_line:
+        new_lines = lines[:key_start_line] + lines[end_remove:]
+    else:
+        new_lines = lines[:key_start_line] + lines[end_remove:]
+
+    result = "\n".join(new_lines)
+    # Clean up double blank lines
+    while "\n\n\n" in result:
+        result = result.replace("\n\n\n", "\n\n")
+    return result
+
+
+# -------------------------------------------------------------------------
 # Pylint auto-fix
 # -------------------------------------------------------------------------
 
@@ -119,39 +347,48 @@ def fix_pylint_violation(violation: Violation, module_path: Path) -> bool:
 
 
 def _fix_w8113_redundant_string(violation: Violation, file_path: Path) -> bool:
-    """W8113: Remove redundant string= parameter from field definition."""
+    """W8113: Remove redundant string= parameter from field definition.
+
+    Uses AST to locate the Call node and its 'string' keyword argument,
+    then splices it out using precise AST positions. Handles multi-line
+    field definitions correctly.
+    """
     content = file_path.read_text(encoding="utf-8")
-    lines = content.split("\n")
-    line_idx = violation.line - 1
 
-    if line_idx < 0 or line_idx >= len(lines):
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
         return False
 
-    original_line = lines[line_idx]
-    # Remove string="..." or string='...' with optional trailing comma and space
-    new_line = re.sub(
-        r"""\s*string\s*=\s*(?:"[^"]*"|'[^']*')\s*,?\s*""",
-        "",
-        original_line,
-    )
-
-    # If we removed the string= at the end but there's a trailing comma before ), clean up
-    new_line = re.sub(r",\s*\)", ")", new_line)
-    # If we removed string= but left (,  other_param), clean up leading comma after (
-    new_line = re.sub(r"\(\s*,\s*", "(", new_line)
-
-    if new_line == original_line:
+    call_node = _find_call_at_line(tree, violation.line)
+    if call_node is None:
         return False
 
-    new_lines = list(lines)
-    new_lines[line_idx] = new_line
-    new_content = "\n".join(new_lines)
+    # Find the 'string' keyword
+    kw_idx = None
+    for idx, kw in enumerate(call_node.keywords):
+        if kw.arg == "string":
+            kw_idx = idx
+            break
+
+    if kw_idx is None:
+        return False
+
+    new_content = _splice_remove_keyword(content, call_node, kw_idx)
+    if new_content == content:
+        return False
+
     file_path.write_text(new_content, encoding="utf-8")
     return True
 
 
 def _fix_w8111_renamed_parameter(violation: Violation, file_path: Path) -> bool:
-    """W8111: Rename deprecated field parameter to its replacement."""
+    """W8111: Rename deprecated field parameter to its replacement.
+
+    Uses AST to locate the exact keyword argument and either rename it
+    (via _splice_rename_keyword) or remove it (via _splice_remove_keyword).
+    Only modifies the precise keyword location, not global string replace.
+    """
     content = file_path.read_text(encoding="utf-8")
 
     # Extract old parameter name from the violation message
@@ -163,17 +400,34 @@ def _fix_w8111_renamed_parameter(violation: Violation, file_path: Path) -> bool:
     old_param = match.group(1)
     new_param = _RENAMED_PARAMS.get(old_param)
 
-    if new_param is None and old_param in _RENAMED_PARAMS:
-        # Parameter removed entirely -- remove the param=value segment
-        new_content = re.sub(
-            rf"""\s*{re.escape(old_param)}\s*=\s*(?:"[^"]*"|'[^']*'|\w+)\s*,?\s*""",
-            "",
-            content,
-        )
-    elif new_param is not None:
-        new_content = content.replace(old_param, new_param)
-    else:
+    if old_param not in _RENAMED_PARAMS:
         return False
+
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return False
+
+    call_node = _find_call_at_line(tree, violation.line)
+    if call_node is None:
+        return False
+
+    # Find the keyword with arg == old_param
+    kw_idx = None
+    for idx, kw in enumerate(call_node.keywords):
+        if kw.arg == old_param:
+            kw_idx = idx
+            break
+
+    if kw_idx is None:
+        return False
+
+    if new_param is None:
+        # Parameter removed entirely
+        new_content = _splice_remove_keyword(content, call_node, kw_idx)
+    else:
+        # Rename the parameter
+        new_content = _splice_rename_keyword(content, call_node.keywords[kw_idx], new_param)
 
     if new_content == content:
         return False
@@ -183,7 +437,12 @@ def _fix_w8111_renamed_parameter(violation: Violation, file_path: Path) -> bool:
 
 
 def _fix_c8116_superfluous_manifest_key(violation: Violation, file_path: Path) -> bool:
-    """C8116: Remove a superfluous/deprecated key from __manifest__.py."""
+    """C8116: Remove a superfluous/deprecated key from __manifest__.py.
+
+    Uses AST to locate the Dict node and find the key-value pair,
+    then uses _splice_remove_dict_entry to remove it. Handles multi-line
+    values (lists, strings) correctly.
+    """
     content = file_path.read_text(encoding="utf-8")
 
     # Extract key name from message: 'Deprecated key "description" in manifest file'
@@ -193,43 +452,109 @@ def _fix_c8116_superfluous_manifest_key(violation: Violation, file_path: Path) -
 
     key_name = match.group(1)
 
-    # Remove the key-value line from the manifest dict literal
-    # Handles: "key": "value", or "key": value,
-    new_content = re.sub(
-        rf"""^\s*"{re.escape(key_name)}"\s*:.*,?\n""",
-        "",
-        content,
-        flags=re.MULTILINE,
-    )
-
-    if new_content == content:
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
         return False
 
-    file_path.write_text(new_content, encoding="utf-8")
-    return True
+    # Walk to find the Dict node and the matching key
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            for key_node, val_node in zip(node.keys, node.values):
+                if (
+                    isinstance(key_node, ast.Constant)
+                    and key_node.value == key_name
+                ):
+                    new_content = _splice_remove_dict_entry(content, key_node, val_node)
+                    if new_content == content:
+                        return False
+                    file_path.write_text(new_content, encoding="utf-8")
+                    return True
+
+    return False
 
 
 def _fix_w8150_absolute_import(violation: Violation, file_path: Path) -> bool:
-    """W8150: Convert absolute odoo.addons import to relative import."""
+    """W8150: Convert absolute odoo.addons import to relative import.
+
+    Uses AST to find ImportFrom nodes with 'odoo.addons.' prefix and
+    rewrites the module path using precise AST positions.
+    """
     content = file_path.read_text(encoding="utf-8")
 
-    # Replace "from odoo.addons.module_name import X" with "from . import X"
-    # and "from odoo.addons.module_name.sub import X" with "from .sub import X"
-    new_content = re.sub(
-        r"from\s+odoo\.addons\.\w+(\.\w+)*\s+import\s+",
-        lambda m: "from . import " if not m.group(1) else f"from .{m.group(1)[1:]} import ",
-        content,
-    )
-
-    if new_content == content:
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
         return False
 
+    lines = content.split("\n")
+    changed = False
+
+    # Collect import nodes to process (process in reverse to avoid line shifts)
+    import_nodes: list[ast.ImportFrom] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("odoo.addons."):
+            import_nodes.append(node)
+
+    # Sort by line number descending for safe modification
+    import_nodes.sort(key=lambda n: n.lineno, reverse=True)
+
+    for node in import_nodes:
+        line_idx = node.lineno - 1
+        if line_idx >= len(lines):
+            continue
+
+        old_module = node.module
+        if old_module is None:
+            continue
+
+        # Strip "odoo.addons.module_name" prefix
+        # odoo.addons.my_module -> "."
+        # odoo.addons.my_module.sub -> ".sub"
+        parts = old_module.split(".")
+        # parts[0] = "odoo", parts[1] = "addons", parts[2] = module_name
+        if len(parts) < 3:
+            continue
+
+        if len(parts) == 3:
+            new_module = "."
+        else:
+            new_module = "." + ".".join(parts[3:])
+
+        # Replace the module path in the line using AST col_offset
+        line = lines[line_idx]
+        # Find "from <module>" pattern in the line
+        # The import statement starts at col_offset
+        # Find the old module string in the line after "from "
+        from_idx = line.find("from ", node.col_offset)
+        if from_idx == -1:
+            continue
+
+        module_start = from_idx + 5  # len("from ")
+        # Skip whitespace
+        while module_start < len(line) and line[module_start] == " ":
+            module_start += 1
+
+        module_end = module_start + len(old_module)
+        if line[module_start:module_end] == old_module:
+            new_line = line[:module_start] + new_module + line[module_end:]
+            lines[line_idx] = new_line
+            changed = True
+
+    if not changed:
+        return False
+
+    new_content = "\n".join(lines)
     file_path.write_text(new_content, encoding="utf-8")
     return True
 
 
 def _fix_c8107_missing_manifest_key(violation: Violation, file_path: Path) -> bool:
-    """C8107: Add a missing required key to __manifest__.py."""
+    """C8107: Add a missing required key to __manifest__.py.
+
+    Uses AST to locate the Dict node and validate the key doesn't already
+    exist, then inserts the new key-value pair after the opening brace.
+    """
     content = file_path.read_text(encoding="utf-8")
 
     # Extract missing key name: 'Missing required key "license" in manifest file'
@@ -240,24 +565,36 @@ def _fix_c8107_missing_manifest_key(violation: Violation, file_path: Path) -> bo
     key_name = match.group(1)
     default_value = _MANIFEST_KEY_DEFAULTS.get(key_name, "")
 
-    # Check if key already exists
-    if re.search(rf'"{re.escape(key_name)}"\s*:', content):
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
         return False
 
-    # Add the key after the opening brace of the dict
-    # Find the first line with a key-value pair and insert before it
-    if default_value in ("True", "False"):
-        insert_line = f'    "{key_name}": {default_value},\n'
-    else:
-        insert_line = f'    "{key_name}": "{default_value}",\n'
+    # Walk to find the Dict node and check if key already exists
+    dict_node = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            # Check if key already exists
+            for key_nd in node.keys:
+                if isinstance(key_nd, ast.Constant) and key_nd.value == key_name:
+                    return False  # Key already exists
+            dict_node = node
+            break
 
-    # Insert after the opening { line
-    new_content = re.sub(
-        r"(\{\s*\n)",
-        rf"\1{insert_line}",
-        content,
-        count=1,
-    )
+    if dict_node is None:
+        return False
+
+    # Build the insertion line
+    if default_value in ("True", "False"):
+        insert_line = f'    "{key_name}": {default_value},'
+    else:
+        insert_line = f'    "{key_name}": "{default_value}",'
+
+    # Insert after the dict's opening brace line (dict_node.lineno is 1-based)
+    lines = content.split("\n")
+    insert_idx = dict_node.lineno  # Insert after the { line (0-based: lineno is already the line after)
+    new_lines = lines[:insert_idx] + [insert_line] + lines[insert_idx:]
+    new_content = "\n".join(new_lines)
 
     if new_content == content:
         return False
