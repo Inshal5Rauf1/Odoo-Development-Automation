@@ -1439,3 +1439,224 @@ class TestPhase12FullRenderIntegration:
         content = self._read("tests/test_hr_training_session.py")
         assert "ValidationError" not in content
         assert "AccessError" in content
+
+
+# ---------------------------------------------------------------------------
+# TMPL-02: Wizard conditional api import
+# ---------------------------------------------------------------------------
+
+
+class TestWizardApiConditionalImport:
+    """TMPL-02: Wizard .py should use conditional api import."""
+
+    def test_wizard_api_conditional_import_with_default_get(self, tmp_path):
+        """Wizard with default_get (always present) should import api."""
+        spec = {
+            "module_name": "test_module",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.model",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                },
+            ],
+            "wizards": [
+                {
+                    "name": "test.wizard",
+                    "target_model": "test.model",
+                    "fields": [{"name": "reason", "type": "Text"}],
+                },
+            ],
+        }
+        files, _ = render_module(spec, get_template_dir(), tmp_path)
+        wizard_py = (tmp_path / "test_module" / "wizards" / "test_wizard.py").read_text()
+        # default_get uses @api.model, so api should be imported
+        assert "from odoo import api, fields, models" in wizard_py
+
+    def test_wizard_api_conditional_import_needs_api_in_context(self, tmp_path):
+        """Wizard template receives needs_api=True in context (for default_get)."""
+        # Render a module with a wizard and verify the rendered .py file has api import
+        # This confirms needs_api is being passed through to wizard_ctx
+        spec = {
+            "module_name": "test_module",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.model",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                },
+            ],
+            "wizards": [
+                {
+                    "name": "test.confirm",
+                    "target_model": "test.model",
+                    "fields": [{"name": "note", "type": "Char"}],
+                },
+            ],
+        }
+        files, _ = render_module(spec, get_template_dir(), tmp_path)
+        wizard_py = (tmp_path / "test_module" / "wizards" / "test_confirm.py").read_text()
+        # The import should be conditional — using the pattern from model.py.j2
+        assert "from odoo import api, fields, models" in wizard_py
+        assert "@api.model" in wizard_py
+
+
+# ---------------------------------------------------------------------------
+# TMPL-03: Wizard ACL entries in access CSV
+# ---------------------------------------------------------------------------
+
+
+class TestWizardAclEntries:
+    """TMPL-03: ir.model.access.csv should include wizard ACL entries."""
+
+    def test_wizard_acl_entries_in_csv(self, tmp_path):
+        """Rendered CSV should have a line for each wizard with 1,1,1,1."""
+        spec = {
+            "module_name": "test_module",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.model",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                },
+            ],
+            "wizards": [
+                {
+                    "name": "test.wizard",
+                    "target_model": "test.model",
+                    "fields": [{"name": "reason", "type": "Text"}],
+                },
+            ],
+        }
+        files, _ = render_module(spec, get_template_dir(), tmp_path)
+        csv_content = (tmp_path / "test_module" / "security" / "ir.model.access.csv").read_text()
+        # Should have a wizard ACL line with full CRUD
+        assert "access_test_wizard_user" in csv_content
+        assert "test.wizard.user" in csv_content
+        assert "model_test_wizard" in csv_content
+        assert "1,1,1,1" in csv_content
+
+    def test_wizard_acl_no_manager_line(self, tmp_path):
+        """Wizard ACL should have only ONE line per wizard (user with 1,1,1,1), no manager."""
+        spec = {
+            "module_name": "test_module",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.model",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                },
+            ],
+            "wizards": [
+                {
+                    "name": "test.wizard",
+                    "target_model": "test.model",
+                    "fields": [{"name": "reason", "type": "Text"}],
+                },
+            ],
+        }
+        files, _ = render_module(spec, get_template_dir(), tmp_path)
+        csv_content = (tmp_path / "test_module" / "security" / "ir.model.access.csv").read_text()
+        # Count wizard lines -- should be exactly 1
+        wizard_lines = [line for line in csv_content.splitlines() if "test_wizard" in line]
+        assert len(wizard_lines) == 1, f"Expected 1 wizard ACL line, got {len(wizard_lines)}: {wizard_lines}"
+        # That one line should have 1,1,1,1
+        assert wizard_lines[0].endswith("1,1,1,1")
+
+    def test_wizard_acl_multiple_wizards(self, tmp_path):
+        """Multiple wizards each get their own ACL line."""
+        spec = {
+            "module_name": "test_module",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.model",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                },
+            ],
+            "wizards": [
+                {
+                    "name": "test.wizard.a",
+                    "target_model": "test.model",
+                    "fields": [{"name": "reason", "type": "Text"}],
+                },
+                {
+                    "name": "test.wizard.b",
+                    "target_model": "test.model",
+                    "fields": [{"name": "note", "type": "Char"}],
+                },
+            ],
+        }
+        files, _ = render_module(spec, get_template_dir(), tmp_path)
+        csv_content = (tmp_path / "test_module" / "security" / "ir.model.access.csv").read_text()
+        assert "access_test_wizard_a_user" in csv_content
+        assert "access_test_wizard_b_user" in csv_content
+
+
+# ---------------------------------------------------------------------------
+# TMPL-04: display_name instead of deprecated name_get
+# ---------------------------------------------------------------------------
+
+
+class TestDisplayNameVersionGate:
+    """TMPL-04: Test template should use display_name with version gate."""
+
+    def test_display_name_v18(self, tmp_path):
+        """Odoo 18.0: test should assert display_name, NOT name_get()."""
+        spec = {
+            "module_name": "test_module",
+            "odoo_version": "18.0",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.model",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                },
+            ],
+            "wizards": [],
+        }
+        files, _ = render_module(spec, get_template_dir(), tmp_path)
+        test_content = (tmp_path / "test_module" / "tests" / "test_test_model.py").read_text()
+        assert "test_display_name" in test_content
+        assert "display_name" in test_content
+        assert "name_get" not in test_content
+
+    def test_display_name_v17(self, tmp_path):
+        """Odoo 17.0: test should assert BOTH display_name and name_get()."""
+        spec = {
+            "module_name": "test_module",
+            "odoo_version": "17.0",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.model",
+                    "fields": [{"name": "name", "type": "Char", "required": True}],
+                },
+            ],
+            "wizards": [],
+        }
+        files, _ = render_module(spec, get_template_dir(), tmp_path)
+        test_content = (tmp_path / "test_module" / "tests" / "test_test_model.py").read_text()
+        assert "test_display_name" in test_content
+        assert "display_name" in test_content
+        assert "name_get" in test_content
+
+    def test_no_name_field_no_display_test(self, tmp_path):
+        """Model without 'name' field should NOT generate test_display_name."""
+        spec = {
+            "module_name": "test_module",
+            "odoo_version": "18.0",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.model",
+                    "fields": [{"name": "title", "type": "Char", "required": True}],
+                },
+            ],
+            "wizards": [],
+        }
+        files, _ = render_module(spec, get_template_dir(), tmp_path)
+        test_content = (tmp_path / "test_module" / "tests" / "test_test_model.py").read_text()
+        assert "test_display_name" not in test_content
+        assert "test_name_get" not in test_content
+        assert "name_get" not in test_content
