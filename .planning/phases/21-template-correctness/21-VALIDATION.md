@@ -2,8 +2,8 @@
 phase: 21
 slug: template-correctness
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-05
 ---
 
@@ -38,10 +38,10 @@ created: 2026-03-05
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 21-01-01 | 01 | 1 | TMPL-01 | unit | `cd python && uv run pytest tests/test_renderer.py -x -q -k "mail_thread"` | Partial | ⬜ pending |
-| 21-01-02 | 01 | 1 | TMPL-02 | unit | `cd python && uv run pytest tests/test_renderer.py -x -q -k "wizard_api"` | ❌ W0 | ⬜ pending |
-| 21-01-03 | 01 | 1 | TMPL-03 | unit | `cd python && uv run pytest tests/test_renderer.py -x -q -k "wizard_acl"` | ❌ W0 | ⬜ pending |
-| 21-01-04 | 01 | 1 | TMPL-04 | unit | `cd python && uv run pytest tests/test_renderer.py -x -q -k "display_name"` | ❌ W0 | ⬜ pending |
+| 21-01-T1 | 01 | 1 | TMPL-01 | unit (RED) | `cd python && uv run pytest tests/test_renderer.py -x -q -k "line_item or chatter_false or parent_already"` | ❌ W0 (TDD) | ⬜ pending |
+| 21-01-T2 | 01 | 1 | TMPL-01 | unit (GREEN) | `cd python && uv run pytest tests/test_renderer.py -x -q -k "inherit_list or mail_thread or mail_inherit"` | Partial | ⬜ pending |
+| 21-02-T1 | 02 | 2 | TMPL-02, TMPL-03, TMPL-04 | unit (RED+GREEN) | `cd python && uv run pytest tests/test_renderer.py -x -q -k "wizard_api or wizard_acl or display_name"` | ❌ W0 (TDD) | ⬜ pending |
+| 21-02-T2 | 02 | 2 | TMPL-02, TMPL-03, TMPL-04 | regression | `cd python && uv run pytest tests/ -x -q --ignore=tests/test_golden_path.py` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -49,10 +49,7 @@ created: 2026-03-05
 
 ## Wave 0 Requirements
 
-- [ ] `tests/test_renderer.py` — add tests for TMPL-01 skip cases (line items, config tables, already-inherited models)
-- [ ] `tests/test_renderer.py` — add tests for TMPL-02 wizard conditional api import
-- [ ] `tests/test_renderer.py` — add tests for TMPL-03 wizard ACL entries in csv
-- [ ] `tests/test_renderer.py` — add tests for TMPL-04 display_name assertion for 17.0 and 18.0
+*Existing infrastructure covers all phase requirements. Wave 0 gaps are addressed by TDD tasks in Plan 01 Task 1 and Plan 02 Task 1 (tests written first).*
 
 ---
 
@@ -69,6 +66,6 @@ created: 2026-03-05
 - [ ] Wave 0 covers all MISSING references
 - [ ] No watch-mode flags
 - [ ] Feedback latency < 15s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-03-05
