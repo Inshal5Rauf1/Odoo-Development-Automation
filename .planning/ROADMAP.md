@@ -118,7 +118,10 @@ Plans:
   4. Through-models get their own security ACL entries and are included in `__init__.py`
 **Plans**: 1 plan
 Plans:
-- [ ] 26-01-PLAN.md — Monetary detection in renderer + template Monetary branch + currency_id injection
+- [ ] 27-01-PLAN.md — Relationship preprocessor + template extensions for through-models, self-referential M2M, and hierarchical models
+
+
+
 
 ### Phase 28: Computed Chains & Cycle Detection
 **Goal**: Spec supports multi-model computed field dependency chains with correct topological ordering, and rejects circular dependencies before generation
@@ -225,7 +228,7 @@ Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32 -> 33 ->
 | 18-19 | v2.1 | 5/5 | Complete | 2026-03-04 |
 | 20-25 | v3.0 | 11/11 | Complete | 2026-03-05 |
 | 26. Monetary Field Detection | 1/1 | Complete    | 2026-03-05 | - |
-| 27. Relationship Patterns | v3.1 | 0/TBD | Not started | - |
+| 27. Relationship Patterns | v3.1 | 0/1 | Planning | - |
 | 28. Computed Chains & Cycle Detection | v3.1 | 0/TBD | Not started | - |
 | 29. Complex Constraints | v3.1 | 0/TBD | Not started | - |
 | 30. Scheduled Actions & Render Pipeline | v3.1 | 0/TBD | Not started | - |
