@@ -101,7 +101,10 @@ Plans:
   2. Wizard template imports `api` only when the generated wizard methods use @api decorators
   3. Generated ir.model.access.csv includes ACL entries for TransientModel wizards alongside regular models
   4. Test template asserts on display_name instead of calling deprecated name_get(), with version gate for Odoo 18.0
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 21-01-PLAN.md — Smart mail.thread injection with line item detection and chatter flag
+- [ ] 21-02-PLAN.md — Wizard conditional api import, wizard ACLs, display_name test assertion
 
 ### Phase 22: Validation & Search Fixes
 **Goal**: Docker validation avoids race conditions and search indexing handles rate limits and _inherit-only models
@@ -147,7 +150,7 @@ Phases 20-22 can execute in parallel (independent). Phase 23 before Phase 24 (de
 | 15-17 | v2.0 | 6/6 | Complete | 2026-03-04 |
 | 18-19 | v2.1 | 5/5 | Complete | 2026-03-04 |
 | 20. Auto-Fix AST Migration | 2/2 | Complete    | 2026-03-05 | - |
-| 21. Template Correctness | v3.0 | 0/? | Not started | - |
+| 21. Template Correctness | v3.0 | 0/2 | Planning complete | - |
 | 22. Validation & Search Fixes | v3.0 | 0/? | Not started | - |
 | 23. Unified Result Type | v3.0 | 0/? | Not started | - |
 | 24. Code Quality & Decomposition | v3.0 | 0/? | Not started | - |
