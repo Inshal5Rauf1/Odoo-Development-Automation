@@ -500,7 +500,9 @@ def render_module(
 
         # Inline environment verification (MCP-03): verify inherit and comodel targets.
         if verifier is not None:
-            all_warnings.extend(verifier.verify_model_spec(model))
+            model_result = verifier.verify_model_spec(model)
+            if model_result.success:
+                all_warnings.extend(model_result.data or [])
 
         # models/<model_var>.py
         created_files.append(
@@ -535,7 +537,9 @@ def render_module(
         # Inline environment verification (MCP-04): verify view field references.
         if verifier is not None:
             field_names = [f.get("name", "") for f in model.get("fields", [])]
-            all_warnings.extend(verifier.verify_view_spec(model.get("name", ""), field_names))
+            view_result = verifier.verify_view_spec(model.get("name", ""), field_names)
+            if view_result.success:
+                all_warnings.extend(view_result.data or [])
 
         # views/<model_var>_action.xml
         created_files.append(

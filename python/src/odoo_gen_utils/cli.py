@@ -417,13 +417,23 @@ def validate(
 
     # Step 1: Run pylint-odoo (with optional auto-fix loop)
     if auto_fix:
-        total_fixed, violations = run_pylint_fix_loop(mod_path, pylintrc_path=pylintrc_path)
+        fix_result = run_pylint_fix_loop(mod_path, pylintrc_path=pylintrc_path)
+        if fix_result.success:
+            total_fixed, violations = fix_result.data
+        else:
+            click.echo(f"Auto-fix error: {'; '.join(fix_result.errors)}", err=True)
+            total_fixed, violations = 0, ()
         if total_fixed > 0:
             click.echo(f"Auto-fix: fixed {total_fixed} pylint violations")
         if violations:
             click.echo(format_escalation(violations))
     else:
-        violations = run_pylint_odoo(mod_path, pylintrc_path=pylintrc_path)
+        pylint_result = run_pylint_odoo(mod_path, pylintrc_path=pylintrc_path)
+        if pylint_result.success:
+            violations = pylint_result.data or ()
+        else:
+            click.echo(f"Pylint error: {'; '.join(pylint_result.errors)}", err=True)
+            violations = ()
 
     install_result = None
     test_results: tuple = ()
@@ -435,28 +445,47 @@ def validate(
         # Step 2: Check Docker and run install
         docker_available = check_docker_available()
         if docker_available:
-            install_result = docker_install_module(mod_path)
-            if install_result.log_output:
+            docker_result = docker_install_module(mod_path)
+            if not docker_result.success:
+                click.echo(f"Docker error: {'; '.join(docker_result.errors)}", err=True)
+                install_result = None
+            else:
+                install_result = docker_result.data
+            if install_result and install_result.log_output:
                 error_logs.append(install_result.log_output)
 
             # Step 2b: Auto-fix Docker errors if --auto-fix enabled
-            if auto_fix and not install_result.success and install_result.log_output:
-                any_docker_fixed, remaining_errors = run_docker_fix_loop(
+            if auto_fix and install_result and not install_result.success and install_result.log_output:
+                docker_fix_result = run_docker_fix_loop(
                     mod_path,
                     install_result.log_output,
                     revalidate_fn=lambda: docker_install_module(mod_path),
                 )
+                if docker_fix_result.success:
+                    any_docker_fixed, remaining_errors = docker_fix_result.data
+                else:
+                    any_docker_fixed, remaining_errors = False, ""
                 if any_docker_fixed:
                     click.echo("Auto-fix: applied Docker error fix(es), retrying validation...")
-                    install_result = docker_install_module(mod_path)
-                    if install_result.log_output:
+                    retry_result = docker_install_module(mod_path)
+                    if retry_result.success:
+                        install_result = retry_result.data
+                    else:
+                        click.echo(f"Docker retry error: {'; '.join(retry_result.errors)}", err=True)
+                        install_result = None
+                    if install_result and install_result.log_output:
                         error_logs.append(install_result.log_output)
                     if remaining_errors and "iteration cap" in remaining_errors.lower():
                         click.echo(remaining_errors)
 
             # Step 3: Run tests if install succeeded
-            if install_result.success:
-                test_results = docker_run_tests(mod_path)
+            if install_result and install_result.success:
+                test_run_result = docker_run_tests(mod_path)
+                if test_run_result.success:
+                    test_results = test_run_result.data or ()
+                else:
+                    click.echo(f"Test run error: {'; '.join(test_run_result.errors)}", err=True)
+                    test_results = ()
 
             # Step 4: Diagnose any error logs
             combined_logs = "\n".join(error_logs)

@@ -23,7 +23,7 @@ from click.testing import CliRunner
 
 from odoo_gen_utils.auto_fix import fix_missing_mail_thread, fix_unused_imports
 from odoo_gen_utils.cli import main
-from odoo_gen_utils.validation.types import Violation
+from odoo_gen_utils.validation.types import Result, Violation
 
 # Path to the fixture module with known violations
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "auto_fix_module"
@@ -155,10 +155,10 @@ def _make_multi_cycle_mock():
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            return _build_initial_violations()
+            return Result.ok(_build_initial_violations())
         if call_count == 2:
-            return _build_post_import_fix_violations()
-        return _NON_FIXABLE
+            return Result.ok(_build_post_import_fix_violations())
+        return Result.ok(_NON_FIXABLE)
 
     return mock_run_pylint
 
