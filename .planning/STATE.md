@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Design Flaws & Feature Gaps
 status: completed
-stopped_at: Completed 30-01-PLAN.md
-last_updated: "2026-03-05T19:13:24.811Z"
-last_activity: 2026-03-06 — Phase 30 Plan 01 executed
+stopped_at: Completed 31-01-PLAN.md
+last_updated: "2026-03-05T19:33:37Z"
+last_activity: 2026-03-06 — Phase 31 Plan 01 executed
 progress:
   total_phases: 9
-  completed_phases: 5
-  total_plans: 5
-  completed_plans: 5
-  percent: 56
+  completed_phases: 6
+  total_plans: 6
+  completed_plans: 6
+  percent: 67
 ---
 
 # Project State
@@ -22,16 +22,16 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v3.1 Phase 30 — Scheduled Actions & Render Pipeline
+**Current focus:** v3.1 Phase 31 — Reports & Analytics
 
 ## Current Position
 
-Phase: 30 of 34 (Scheduled Actions & Render Pipeline)
+Phase: 31 of 34 (Reports & Analytics)
 Plan: 01 of 01 (complete)
 Status: Plan 01 complete
-Last activity: 2026-03-06 — Phase 30 Plan 01 executed
+Last activity: 2026-03-06 — Phase 31 Plan 01 executed
 
-Progress: [██████░░░░] 56%
+Progress: [██████▓░░░] 67%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [██████░░░░] 56%
 - [Phase 28]: graphlib.TopologicalSorter for cycle detection + field ordering; cycle validation runs first in render_module(); chain preprocessor is pure function (immutability); computation_chains enriches fields with depends/store/compute
 - [Phase 29]: Temporal constraints use @api.constrains (same-record); cross_model/capacity use create()/write() overrides (Odoo ignores dotted names in @api.constrains); single override per model with multiple _check_* calls; all messages in _() for i18n
 - [Phase 30]: Cron stages placed after render_static (8-10); method name validation via str.isidentifier(); render_reports/render_controllers are Result.ok([]) placeholders for Phase 31/32
+- [Phase 31]: 4 shared templates for reports/dashboards; dict.get() in Jinja2 for optional keys with StrictUndefined; report data in data/ dir; dashboard views in views/ dir; form header renders when state_field OR model_reports
 
 ### Pending Todos
 
@@ -85,7 +86,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T19:10:00Z
-Stopped at: Completed 30-01-PLAN.md
+Last session: 2026-03-05T19:33:37Z
+Stopped at: Completed 31-01-PLAN.md
 Resume file: None
-Next step: `/gsd:plan-phase 31`
+Next step: `/gsd:plan-phase 32`

@@ -17,8 +17,8 @@ Requirements for v3.1 Design Flaws & Feature Gaps. Each maps to roadmap phases.
 
 ### Template Generation
 
-- [ ] **TMPL-01**: Generator produces QWeb report templates (`ir.actions.report` XML + QWeb template) with form view button, paper format, and `t-foreach`/`t-field` syntax — FLAW-08
-- [ ] **TMPL-02**: Generator produces graph and pivot view XML with configurable measures, dimensions, chart types, and `ir.actions.act_window` with graph/pivot view_mode — FLAW-09
+- [x] **TMPL-01**: Generator produces QWeb report templates (`ir.actions.report` XML + QWeb template) with form view button, paper format, and `t-foreach`/`t-field` syntax — FLAW-08
+- [x] **TMPL-02**: Generator produces graph and pivot view XML with configurable measures, dimensions, chart types, and `ir.actions.act_window` with graph/pivot view_mode — FLAW-09
 - [ ] **TMPL-03**: Generator produces HTTP controllers (`controllers/main.py`) with `@http.route`, JSON/HTTP types, authentication modes, CSRF protection, and input validation — FLAW-10
 - [ ] **TMPL-04**: Generator produces import/export TransientModel wizards with `fields.Binary` upload, row validation, preview step, batch `_do_import()`, and xlsx export — FLAW-12
 - [x] **TMPL-05**: Generator produces `ir.cron` XML records in `data/data.xml` with interval, model reference, and `@api.model` stub method on the target model — FLAW-20
@@ -85,8 +85,8 @@ Requirements for v3.1 Design Flaws & Feature Gaps. Each maps to roadmap phases.
 | SPEC-03 | Phase 28 | Complete |
 | SPEC-04 | Phase 29 | Complete |
 | SPEC-05 | Phase 28 | Complete |
-| TMPL-01 | Phase 31 | Pending |
-| TMPL-02 | Phase 31 | Pending |
+| TMPL-01 | Phase 31 | Complete |
+| TMPL-02 | Phase 31 | Complete |
 | TMPL-03 | Phase 32 | Pending |
 | TMPL-04 | Phase 32 | Pending |
 | TMPL-05 | Phase 30 | Complete |
