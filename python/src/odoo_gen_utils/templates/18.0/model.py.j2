@@ -1,6 +1,6 @@
 {# model.py.j2 -- Odoo 18.0 Python model file with fields and constraints #}
 {# 18.0 differences: group_operator -> aggregator, states= parameter removed #}
-from odoo import {{ 'api, ' if needs_api }}fields, models
+from odoo import {{ 'api, ' if needs_api }}fields, models{{ ', tools' if needs_tools }}
 {% if has_constraints or constrained_fields %}
 from odoo.exceptions import ValidationError
 {% endif %}
@@ -201,19 +201,36 @@ class {{ model_name | to_class }}(models.Model):
             {{ constraint.check_body | indent(12) }}
 {% endif %}
 {% endfor %}
+{% if is_cacheable %}
+
+    @tools.ormcache('self.env.uid', '{{ cache_lookup_field }}')
+    def _get_by_{{ cache_lookup_field }}(self, {{ cache_lookup_field }}):
+        """Cached lookup by {{ cache_lookup_field }} for near-static reference data."""
+        return self.search([('{{ cache_lookup_field }}', '=', {{ cache_lookup_field }})], limit=1).id
+{% endif %}
 {% if has_create_override %}
 
     @api.model_create_multi
     def create(self, vals_list):
+{% if is_cacheable %}
+        self.clear_caches()
+{% endif %}
         records = super().create(vals_list)
 {% for c in create_constraints %}
         records._check_{{ c.name }}()
 {% endfor %}
+{% if is_bulk %}
+        for record in records:
+            record._post_create_processing()
+{% endif %}
         return records
 {% endif %}
 {% if has_write_override %}
 
     def write(self, vals):
+{% if is_cacheable %}
+        self.clear_caches()
+{% endif %}
         result = super().write(vals)
 {% for c in write_constraints %}
 {% if c.write_trigger_fields %}
@@ -222,6 +239,13 @@ class {{ model_name | to_class }}(models.Model):
             self._check_{{ c.name }}()
 {% endfor %}
         return result
+{% endif %}
+{% if is_bulk %}
+
+    def _post_create_processing(self):
+        """Post-creation logic executed for each record in batch."""
+        # TODO: implement post-create processing
+        pass
 {% endif %}
 {% if cron_methods is defined and cron_methods %}
 {% for cron in cron_methods %}

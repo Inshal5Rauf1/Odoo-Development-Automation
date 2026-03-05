@@ -1808,3 +1808,84 @@ class TestRenderModelsPerformance:
         wizard_py = (tmp_path / "test_module" / "wizards" / "academy_course_import_wizard.py").read_text()
         assert "_transient_max_hours = 1.0" in wizard_py
         assert "_transient_max_count = 0" in wizard_py
+
+
+class TestRenderModelsProductionPatterns:
+    """Integration tests for bulk and cache production patterns in generated models."""
+
+    def test_bulk_model_generates_create_multi(self, tmp_path):
+        """Spec with bulk:true -> generated .py contains @api.model_create_multi and _post_create_processing."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "description": "Academy Course",
+            "bulk": True,
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        files, _ = render_module(spec, None, tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "academy_course.py").read_text()
+        assert "@api.model_create_multi" in model_py
+        assert "_post_create_processing" in model_py
+        assert "for record in records:" in model_py
+
+    def test_cacheable_model_generates_ormcache(self, tmp_path):
+        """Spec with cacheable:true -> generated .py contains @tools.ormcache, clear_caches(), tools import."""
+        spec = _make_spec(models=[{
+            "name": "academy.category",
+            "description": "Academy Category",
+            "cacheable": True,
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        files, _ = render_module(spec, None, tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "academy_category.py").read_text()
+        assert "@tools.ormcache" in model_py
+        assert "clear_caches()" in model_py
+        assert "from odoo import" in model_py
+        assert "tools" in model_py
+
+    def test_bulk_with_constraints_single_create(self, tmp_path):
+        """Spec with bulk:true + constraints -> generated .py has exactly ONE 'def create(' occurrence."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "description": "Academy Course",
+            "bulk": True,
+            "constraints": [{
+                "name": "capacity",
+                "type": "cross_model",
+                "check_body": "pass  # capacity check",
+                "message": "Capacity exceeded",
+                "trigger": "create",
+            }],
+            "fields": [
+                {"name": "name", "type": "Char", "required": True},
+                {"name": "capacity", "type": "Integer"},
+            ],
+        }])
+        files, _ = render_module(spec, None, tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "academy_course.py").read_text()
+        assert model_py.count("def create(") == 1
+        assert "@api.model_create_multi" in model_py
+        assert "_post_create_processing" in model_py
+
+    def test_cacheable_with_constraints_single_write(self, tmp_path):
+        """Spec with cacheable:true + constraints -> generated .py has exactly ONE 'def write(' occurrence."""
+        spec = _make_spec(models=[{
+            "name": "academy.category",
+            "description": "Academy Category",
+            "cacheable": True,
+            "constraints": [{
+                "name": "check_dates",
+                "type": "cross_model",
+                "check_body": "pass  # date check",
+                "message": "Invalid dates",
+                "trigger": "write",
+                "write_trigger_fields": ["date_start"],
+            }],
+            "fields": [
+                {"name": "name", "type": "Char", "required": True},
+                {"name": "date_start", "type": "Date"},
+            ],
+        }])
+        files, _ = render_module(spec, None, tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "academy_category.py").read_text()
+        assert model_py.count("def write(") == 1
+        assert "clear_caches()" in model_py
