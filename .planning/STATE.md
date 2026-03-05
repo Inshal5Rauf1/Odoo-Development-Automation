@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Design Flaws & Feature Gaps
 status: in-progress
-stopped_at: Completed 34-01-PLAN.md
+stopped_at: Completed 34-02-PLAN.md
 last_updated: "2026-03-05T21:25:53Z"
-last_activity: 2026-03-06 — Phase 34 Plan 01 executed
+last_activity: 2026-03-06 — Phase 34 Plan 02 executed (v3.1 complete)
 progress:
   total_phases: 9
   completed_phases: 8
   total_plans: 9
-  completed_plans: 9
+  completed_plans: 10
   percent: 100
 ---
 
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 34 of 34 (Production Patterns)
-Plan: 01 of 02 (complete)
-Status: Phase 34 in progress
-Last activity: 2026-03-06 — Phase 34 Plan 01 executed
+Plan: 02 of 02 (complete)
+Status: Phase 34 complete -- v3.1 milestone complete
+Last activity: 2026-03-06 — Phase 34 Plan 02 executed
 
-Progress: [█████████░] 95%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [█████████░] 95%
 - [Phase 32]: Import wizard generated in render_controllers() stage; magic byte PK\x03\x04 validation for xlsx; state machine upload/preview/done; external_dependencies rendered in manifest; import_export_wizards ACL via access_csv.j2
 - [Phase 33]: _process_performance() auto-detects index=True for search/order/domain fields; store=True for view-referenced computed fields; _sql_constraints from unique_together; TransientModel cleanup defaults (1.0h, 0 count); INDEXABLE_TYPES excludes One2many/Many2many/Html/Text/Binary
 - [Phase 34]: _process_production_patterns() for bulk/cache; cache_lookup_field defaults to first unique Char or "name"; clear_caches() before super() in create/write; bulk _post_create_processing iterates per-record; merged create/write overrides with constraints into single methods
+- [Phase 34-02]: Archival pattern: active field injection, archival wizard TransientModel, batch cron with cr.commit(); model_name key (not model) for cron dict to match existing template; custom wizard template dispatch via wizard.get("template")
 
 ### Pending Todos
 
@@ -91,6 +92,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05T21:25:53Z
-Stopped at: Completed 34-01-PLAN.md
+Stopped at: Completed 34-02-PLAN.md
 Resume file: None
-Next step: `/gsd:execute-phase 34-02`
+Next step: v3.1 milestone complete
