@@ -74,7 +74,7 @@
   3. The generated module installs without `AssertionError: unknown currency_field None`
 **Plans**: 1 plan
 Plans:
-- [ ] 26-01-PLAN.md — Monetary detection in renderer + template Monetary branch + currency_id injection
+- [ ] 31-01-PLAN.md — QWeb report templates, graph/pivot dashboard views, render_reports() implementation
 
 ### Phase 27: Relationship Patterns
 **Goal**: Spec supports rich relationship declarations that generate through-models for M2M with extra fields, self-referential M2M with explicit relation/column params, and hierarchical parent_id with parent_path
@@ -143,7 +143,7 @@ Plans:
   4. Dashboard views are accessible via `ir.actions.act_window` with `view_mode` including `graph,pivot`
 **Plans**: 1 plan
 Plans:
-- [ ] 26-01-PLAN.md — Monetary detection in renderer + template Monetary branch + currency_id injection
+- [ ] 31-01-PLAN.md — QWeb report templates, graph/pivot dashboard views, render_reports() implementation
 
 ### Phase 32: Controllers & Import/Export
 **Goal**: Generator produces HTTP controllers with secure defaults and import/export TransientModel wizards with file upload, validation, and batch processing
@@ -156,7 +156,7 @@ Plans:
   4. The import wizard validates file content type (not just extension) and the export action produces xlsx output
 **Plans**: 1 plan
 Plans:
-- [ ] 26-01-PLAN.md — Monetary detection in renderer + template Monetary branch + currency_id injection
+- [ ] 31-01-PLAN.md — QWeb report templates, graph/pivot dashboard views, render_reports() implementation
 
 ### Phase 33: Database Performance
 **Goal**: Generated models automatically get index=True on filterable fields, store=True on computed fields used in views, and TransientModels get cleanup configuration
@@ -169,7 +169,7 @@ Plans:
   4. TransientModel classes get `_transient_max_hours` and `_transient_max_count` attributes
 **Plans**: 1 plan
 Plans:
-- [ ] 26-01-PLAN.md — Monetary detection in renderer + template Monetary branch + currency_id injection
+- [ ] 31-01-PLAN.md — QWeb report templates, graph/pivot dashboard views, render_reports() implementation
 
 ### Phase 34: Production Patterns
 **Goal**: Generated modules support bulk operations, reference data caching, and archival strategies for production-scale usage
@@ -182,7 +182,7 @@ Plans:
   4. Archival crons use batch processing with commit-per-batch to avoid long transactions
 **Plans**: 1 plan
 Plans:
-- [ ] 26-01-PLAN.md — Monetary detection in renderer + template Monetary branch + currency_id injection
+- [ ] 31-01-PLAN.md — QWeb report templates, graph/pivot dashboard views, render_reports() implementation
 
 ## Progress
 
