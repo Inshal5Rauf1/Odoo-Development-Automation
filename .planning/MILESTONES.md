@@ -1,5 +1,14 @@
 # Milestones
 
+## v3.1 Design Flaws & Feature Gaps (Shipped: 2026-03-05)
+
+**Phases completed:** 10 phases, 12 plans, 0 tasks
+
+**Key accomplishments:**
+- (none recorded)
+
+---
+
 ## v3.0 Bug Fixes & Tech Debt (Shipped: 2026-03-05)
 
 **Phases completed:** 11 phases, 21 plans, 2 tasks
