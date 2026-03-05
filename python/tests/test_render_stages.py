@@ -652,3 +652,195 @@ class TestRenderModelsHierarchical:
         files, _ = render_module(spec, None, tmp_path)
         views_xml = (tmp_path / "test_university" / "views" / "test_university_department_views.xml").read_text()
         assert "parent_path" not in views_xml
+
+
+# ---------------------------------------------------------------------------
+# Phase 28: Integration tests for computation chains in rendered output
+# ---------------------------------------------------------------------------
+
+
+def _make_chain_spec():
+    """Spec with computation_chains for integration tests."""
+    return {
+        "module_name": "test_university",
+        "module_title": "Test University",
+        "summary": "Test module",
+        "author": "Test",
+        "website": "https://test.example.com",
+        "license": "LGPL-3",
+        "category": "Education",
+        "odoo_version": "17.0",
+        "depends": ["base"],
+        "application": True,
+        "models": [
+            {
+                "name": "test_university.enrollment",
+                "description": "Enrollment",
+                "fields": [
+                    {"name": "student_id", "type": "Many2one",
+                     "comodel_name": "test_university.student", "required": True},
+                    {"name": "grade", "type": "Float"},
+                    {"name": "credit_hours", "type": "Integer"},
+                    {"name": "weighted_grade", "type": "Float"},
+                ],
+            },
+            {
+                "name": "test_university.student",
+                "description": "Student",
+                "fields": [
+                    {"name": "name", "type": "Char", "required": True},
+                    {"name": "enrollment_ids", "type": "One2many",
+                     "comodel_name": "test_university.enrollment",
+                     "inverse_name": "student_id"},
+                    {"name": "gpa", "type": "Float"},
+                ],
+            },
+        ],
+        "computation_chains": [
+            {
+                "field": "test_university.enrollment.weighted_grade",
+                "depends_on": ["grade", "credit_hours"],
+            },
+            {
+                "field": "test_university.student.gpa",
+                "depends_on": ["enrollment_ids.weighted_grade", "enrollment_ids.credit_hours"],
+            },
+        ],
+        "wizards": [],
+    }
+
+
+def _make_intra_model_chain_spec():
+    """Spec with two intra-model chain fields for topological ordering test."""
+    return {
+        "module_name": "test_order",
+        "module_title": "Test Order",
+        "summary": "Test module",
+        "author": "Test",
+        "website": "https://test.example.com",
+        "license": "LGPL-3",
+        "category": "Uncategorized",
+        "odoo_version": "17.0",
+        "depends": ["base"],
+        "application": True,
+        "models": [
+            {
+                "name": "test_order.line",
+                "description": "Order Line",
+                "fields": [
+                    {"name": "name", "type": "Char", "required": True},
+                    {"name": "qty", "type": "Integer"},
+                    {"name": "price", "type": "Float"},
+                    {"name": "subtotal", "type": "Float"},
+                    {"name": "total", "type": "Float"},
+                ],
+            },
+        ],
+        "computation_chains": [
+            {
+                "field": "test_order.line.subtotal",
+                "depends_on": ["qty", "price"],
+            },
+            {
+                "field": "test_order.line.total",
+                "depends_on": ["subtotal"],
+            },
+        ],
+        "wizards": [],
+    }
+
+
+def _make_circular_chain_spec():
+    """Spec with circular computation chain."""
+    return {
+        "module_name": "test_circular",
+        "module_title": "Test Circular",
+        "summary": "Test module",
+        "author": "Test",
+        "website": "https://test.example.com",
+        "license": "LGPL-3",
+        "category": "Uncategorized",
+        "odoo_version": "17.0",
+        "depends": ["base"],
+        "application": True,
+        "models": [
+            {
+                "name": "test_circular.student",
+                "description": "Student",
+                "fields": [
+                    {"name": "name", "type": "Char", "required": True},
+                    {"name": "enrollment_ids", "type": "One2many",
+                     "comodel_name": "test_circular.enrollment",
+                     "inverse_name": "student_id"},
+                    {"name": "gpa", "type": "Float"},
+                ],
+            },
+            {
+                "name": "test_circular.enrollment",
+                "description": "Enrollment",
+                "fields": [
+                    {"name": "student_id", "type": "Many2one",
+                     "comodel_name": "test_circular.student"},
+                    {"name": "weighted_grade", "type": "Float"},
+                ],
+            },
+        ],
+        "computation_chains": [
+            {
+                "field": "test_circular.student.gpa",
+                "depends_on": ["enrollment_ids.weighted_grade"],
+            },
+            {
+                "field": "test_circular.enrollment.weighted_grade",
+                "depends_on": ["student_id.gpa"],
+            },
+        ],
+        "wizards": [],
+    }
+
+
+class TestRenderModelsComputedChains:
+    """Integration tests for computation chains in rendered output."""
+
+    def test_cross_model_depends(self, tmp_path):
+        """render_models() with computation_chains produces @api.depends with dotted path and store=True."""
+        spec = _make_chain_spec()
+        files, _ = render_module(spec, None, tmp_path)
+        student_py = (tmp_path / "test_university" / "models" / "test_university_student.py").read_text()
+        assert '@api.depends("enrollment_ids.weighted_grade"' in student_py
+        assert "store=True" in student_py
+
+    def test_chain_field_has_compute_method(self, tmp_path):
+        """Generated model.py contains def _compute_gpa(self) method stub."""
+        spec = _make_chain_spec()
+        files, _ = render_module(spec, None, tmp_path)
+        student_py = (tmp_path / "test_university" / "models" / "test_university_student.py").read_text()
+        assert "def _compute_gpa(self):" in student_py
+
+    def test_topological_order_in_output(self, tmp_path):
+        """In model with 2 intra-model chain fields, upstream appears before downstream."""
+        spec = _make_intra_model_chain_spec()
+        files, _ = render_module(spec, None, tmp_path)
+        line_py = (tmp_path / "test_order" / "models" / "test_order_line.py").read_text()
+        # _compute_subtotal should appear before _compute_total
+        subtotal_pos = line_py.index("_compute_subtotal")
+        total_pos = line_py.index("_compute_total")
+        assert subtotal_pos < total_pos
+
+    def test_no_files_on_cycle(self, tmp_path):
+        """render_module() with circular chain raises ValueError; output dir has no generated files."""
+        spec = _make_circular_chain_spec()
+        with pytest.raises(ValueError, match="Circular dependency"):
+            render_module(spec, None, tmp_path)
+        # Output directory should not exist or be empty
+        module_dir = tmp_path / "test_circular"
+        assert not module_dir.exists() or not list(module_dir.iterdir())
+
+    def test_backward_compat_no_chains(self, tmp_path):
+        """render_module() with spec that has no computation_chains produces identical output."""
+        spec = _make_spec(models=[_make_model()])
+        files, warnings = render_module(spec, None, tmp_path)
+        # Basic sanity: files generated, no errors
+        assert len(files) > 0
+        model_py = (tmp_path / "test_module" / "models" / "test_model.py").read_text()
+        assert "class TestModel" in model_py
