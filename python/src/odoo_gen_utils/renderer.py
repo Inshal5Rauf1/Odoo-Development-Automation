@@ -1304,8 +1304,41 @@ def render_controllers(
     module_dir: Path,
     module_context: dict[str, Any],
 ) -> "Result[list[Path]]":
-    """Placeholder -- implemented in Phase 32."""
-    return Result.ok([])
+    """Render HTTP controller files from spec controllers entries.
+
+    Generates controllers/main.py with @http.route decorators and
+    controllers/__init__.py for each controller definition.
+    """
+    controllers = spec.get("controllers")
+    if not controllers:
+        return Result.ok([])
+    try:
+        created: list[Path] = []
+        module_name = module_context["module_name"]
+        for controller in controllers:
+            class_name = controller.get("class_name") or (
+                _to_class(module_name) + "Controller"
+            )
+            routes = controller.get("routes", [])
+            ctrl_ctx = {
+                **module_context,
+                "controller_class": class_name,
+                "routes": routes,
+                "module_name": module_name,
+            }
+            created.append(render_template(
+                env, "init_controllers.py.j2",
+                module_dir / "controllers" / "__init__.py",
+                ctrl_ctx,
+            ))
+            created.append(render_template(
+                env, "controller.py.j2",
+                module_dir / "controllers" / "main.py",
+                ctrl_ctx,
+            ))
+        return Result.ok(created)
+    except Exception as exc:
+        return Result.fail(f"render_controllers failed: {exc}")
 
 
 def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, Any]:
@@ -1351,6 +1384,7 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         "manifest_files": manifest_files,
         "has_wizards": bool(spec_wizards),
         "spec_wizards": spec_wizards,
+        "has_controllers": bool(spec.get("controllers")),
     }
 
 
