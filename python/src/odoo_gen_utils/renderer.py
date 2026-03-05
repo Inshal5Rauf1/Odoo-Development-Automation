@@ -645,6 +645,7 @@ def render_module(
                 "wizard_var": wizard_var,
                 "wizard_xml_id": wizard_xml_id,
                 "wizard_class": _to_class(wizard["name"]),
+                "needs_api": True,  # default_get uses @api.model
             }
 
             # wizards/<wizard_var>.py

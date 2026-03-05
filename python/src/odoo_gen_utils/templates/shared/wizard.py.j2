@@ -1,5 +1,5 @@
 {# wizard.py.j2 -- Odoo TransientModel wizard #}
-from odoo import api, fields, models
+from odoo import {{ 'api, ' if needs_api }}fields, models
 
 
 class {{ wizard_class }}(models.TransientModel):

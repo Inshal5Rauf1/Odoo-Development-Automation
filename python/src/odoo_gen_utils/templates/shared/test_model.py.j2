@@ -52,11 +52,22 @@ class Test{{ model_name | to_class }}(TransactionCase):
 
 {% for field in fields %}
 {% if field.name == 'name' %}
-    def test_name_get(self):
-        """Test that name_get returns the expected display name."""
+    def test_display_name(self):
+        """Test that display_name returns the expected value."""
+{% if odoo_version >= "18.0" %}
+        self.assertTrue(
+            self.test_record.display_name,
+            "display_name should return a truthy value",
+        )
+{% else %}
+        self.assertTrue(
+            self.test_record.display_name,
+            "display_name should return a truthy value",
+        )
         result = self.test_record.name_get()
         self.assertTrue(result, "name_get should return a result")
         self.assertEqual(result[0][0], self.test_record.id)
+{% endif %}
 {% endif %}
 {% endfor %}
 
