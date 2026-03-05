@@ -17,7 +17,11 @@
                             string="{{ wizard.button_label | default('Open ' + (wizard.name | replace('.', ' ') | title)) }}"
                             type="object"
                             class="btn-primary"
+{% if wizard.get('trigger_state') %}
                             invisible="{{ state_field.name }} != '{{ wizard.trigger_state }}'"/>
+{% else %}
+                            />
+{% endif %}
 {% endif %}
 {% endfor %}
 {% for report in model_reports %}

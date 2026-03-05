@@ -1976,7 +1976,7 @@ class TestRenderModelsArchival:
             ],
         }])
         files, _ = render_module(spec, None, tmp_path)
-        form_xml = (tmp_path / "test_module" / "views" / "academy_course_view.xml").read_text()
+        form_xml = (tmp_path / "test_module" / "views" / "academy_course_views.xml").read_text()
         # Archival wizard button should exist
         assert "action_open_academy_course_archive_wizard" in form_xml
         # Archival wizard button should NOT have invisible (no trigger_state)
@@ -2015,17 +2015,18 @@ class TestRenderModelsArchival:
             }],
         )
         files, _ = render_module(spec, None, tmp_path)
-        form_xml = (tmp_path / "test_module" / "views" / "academy_course_view.xml").read_text()
+        form_xml = (tmp_path / "test_module" / "views" / "academy_course_views.xml").read_text()
         # Both buttons should exist
         assert "action_open_academy_course_archive_wizard" in form_xml
         assert "action_open_confirm_wizard" in form_xml
         # Regular wizard button should have invisible with trigger_state
         assert "invisible=\"state != 'draft'\"" in form_xml
-        # Archival wizard button should NOT have invisible
+        # Archival wizard button should NOT have invisible -- check only lines AFTER its name
         lines = form_xml.split("\n")
         for i, line in enumerate(lines):
             if "action_open_academy_course_archive_wizard" in line:
-                button_block = "\n".join(lines[max(0, i - 1):i + 5])
+                # Check from this line until next closing tag or button end
+                button_block = "\n".join(lines[i:i + 6])
                 assert "invisible" not in button_block, (
                     f"Archival wizard button should not have invisible attr:\n{button_block}"
                 )
