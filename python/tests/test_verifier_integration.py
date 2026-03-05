@@ -55,8 +55,9 @@ def test_hr_employee_inherit_passes(live_verifier: EnvironmentVerifier) -> None:
             {"name": "department_id", "type": "Many2one", "comodel_name": "hr.department"},
         ],
     }
-    warnings = live_verifier.verify_model_spec(model)
-    assert warnings == [], f"Unexpected warnings for hr.employee inherit: {warnings}"
+    result = live_verifier.verify_model_spec(model)
+    assert result.success, f"Expected success; got errors: {result.errors}"
+    assert result.data == [], f"Unexpected warnings for hr.employee inherit: {result.data}"
 
 
 def test_missing_model_inherit_fires_warning(live_verifier: EnvironmentVerifier) -> None:
@@ -70,10 +71,11 @@ def test_missing_model_inherit_fires_warning(live_verifier: EnvironmentVerifier)
         "inherit": "definitely.nonexistent.model.xyz",
         "fields": [],
     }
-    warnings = live_verifier.verify_model_spec(model)
+    result = live_verifier.verify_model_spec(model)
+    assert result.success
     assert any(
-        w.check_type == "model_inherit" for w in warnings
-    ), f"Expected model_inherit warning; got: {warnings}"
+        w.check_type == "model_inherit" for w in result.data
+    ), f"Expected model_inherit warning; got: {result.data}"
 
 
 def test_view_nonexistent_field_fires_warning(live_verifier: EnvironmentVerifier) -> None:
@@ -83,13 +85,14 @@ def test_view_nonexistent_field_fires_warning(live_verifier: EnvironmentVerifier
     'totally_nonexistent_field_xyz_abc' is not a field on it, so verifier
     must return a view_field warning.
     """
-    warnings = live_verifier.verify_view_spec(
+    result = live_verifier.verify_view_spec(
         "hr.employee",
         ["name", "totally_nonexistent_field_xyz_abc"],
     )
+    assert result.success
     assert any(
-        w.check_type == "view_field" for w in warnings
-    ), f"Expected view_field warning; got: {warnings}"
+        w.check_type == "view_field" for w in result.data
+    ), f"Expected view_field warning; got: {result.data}"
 
 
 def test_view_existing_fields_pass(live_verifier: EnvironmentVerifier) -> None:
@@ -97,5 +100,6 @@ def test_view_existing_fields_pass(live_verifier: EnvironmentVerifier) -> None:
 
     'name' and 'job_id' are always present on hr.employee in Odoo 17 CE.
     """
-    warnings = live_verifier.verify_view_spec("hr.employee", ["name", "job_id"])
-    assert warnings == [], f"Unexpected warnings for hr.employee fields: {warnings}"
+    result = live_verifier.verify_view_spec("hr.employee", ["name", "job_id"])
+    assert result.success
+    assert result.data == [], f"Unexpected warnings for hr.employee fields: {result.data}"

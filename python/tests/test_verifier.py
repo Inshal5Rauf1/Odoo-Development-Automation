@@ -49,23 +49,27 @@ def verifier(mock_client):
 
 
 class TestVerifierNoClient:
-    """When client=None, all methods return [] (graceful no-op)."""
+    """When client=None, all methods return Result.ok([]) (graceful no-op)."""
 
     def test_no_client_verify_model_returns_empty(self):
         v = EnvironmentVerifier(client=None)
         result = v.verify_model_spec({"name": "my.model", "inherit": "hr.employee"})
-        assert result == []
+        assert result.success
+        assert result.data == []
 
     def test_no_client_verify_view_returns_empty(self):
         v = EnvironmentVerifier(client=None)
         result = v.verify_view_spec("my.model", ["name", "employee_id"])
-        assert result == []
+        assert result.success
+        assert result.data == []
 
     def test_default_constructor_is_no_op(self):
         """EnvironmentVerifier() with no args behaves like client=None."""
         v = EnvironmentVerifier()
-        assert v.verify_model_spec({"name": "test.model"}) == []
-        assert v.verify_view_spec("test.model", ["name"]) == []
+        result_m = v.verify_model_spec({"name": "test.model"})
+        result_v = v.verify_view_spec("test.model", ["name"])
+        assert result_m.success and result_m.data == []
+        assert result_v.success and result_v.data == []
 
 
 # ---------------------------------------------------------------------------
@@ -79,14 +83,16 @@ class TestModelInheritCheck:
     def test_inherit_exists_returns_no_warnings(self, verifier, mock_client):
         mock_client.search_read.return_value = [{"model": "hr.employee"}]
         result = verifier.verify_model_spec({"name": "my.model", "inherit": "hr.employee"})
-        assert result == []
+        assert result.success
+        assert result.data == []
 
     def test_inherit_missing_returns_warning(self, verifier, mock_client):
         mock_client.search_read.return_value = []
         result = verifier.verify_model_spec({"name": "my.model", "inherit": "missing.model"})
-        assert len(result) == 1
-        assert result[0].check_type == "model_inherit"
-        assert "missing.model" in result[0].message
+        assert result.success
+        assert len(result.data) == 1
+        assert result.data[0].check_type == "model_inherit"
+        assert "missing.model" in result.data[0].message
 
     def test_inherit_list_missing_returns_warning(self, verifier, mock_client):
         """_inherit as list: missing model in the list emits a warning."""
@@ -95,8 +101,9 @@ class TestModelInheritCheck:
             "name": "my.model",
             "inherit": ["missing.model"],
         })
-        assert len(result) == 1
-        assert result[0].check_type == "model_inherit"
+        assert result.success
+        assert len(result.data) == 1
+        assert result.data[0].check_type == "model_inherit"
 
     def test_mail_thread_always_skipped(self, verifier, mock_client):
         """mail.thread must be skipped without querying OdooClient."""
@@ -104,7 +111,8 @@ class TestModelInheritCheck:
             "name": "my.model",
             "inherit": "mail.thread",
         })
-        assert result == []
+        assert result.success
+        assert result.data == []
         mock_client.search_read.assert_not_called()
 
     def test_mail_activity_mixin_always_skipped(self, verifier, mock_client):
@@ -113,12 +121,14 @@ class TestModelInheritCheck:
             "name": "my.model",
             "inherit": "mail.activity.mixin",
         })
-        assert result == []
+        assert result.success
+        assert result.data == []
         mock_client.search_read.assert_not_called()
 
     def test_no_inherit_returns_empty(self, verifier, mock_client):
         result = verifier.verify_model_spec({"name": "my.model", "fields": []})
-        assert result == []
+        assert result.success
+        assert result.data == []
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +146,8 @@ class TestRelationalComodelCheck:
             "fields": [{"name": "partner_id", "type": "Many2one", "comodel_name": "res.partner"}],
         }
         result = verifier.verify_model_spec(model)
-        assert result == []
+        assert result.success
+        assert result.data == []
 
     def test_many2one_comodel_missing(self, verifier, mock_client):
         mock_client.search_read.return_value = []
@@ -145,8 +156,9 @@ class TestRelationalComodelCheck:
             "fields": [{"name": "ref_id", "type": "Many2one", "comodel_name": "missing.model"}],
         }
         result = verifier.verify_model_spec(model)
-        assert len(result) == 1
-        assert result[0].check_type == "field_comodel"
+        assert result.success
+        assert len(result.data) == 1
+        assert result.data[0].check_type == "field_comodel"
 
     def test_one2many_comodel_missing(self, verifier, mock_client):
         mock_client.search_read.return_value = []
@@ -155,8 +167,9 @@ class TestRelationalComodelCheck:
             "fields": [{"name": "line_ids", "type": "One2many", "comodel_name": "missing.line"}],
         }
         result = verifier.verify_model_spec(model)
-        assert len(result) == 1
-        assert result[0].check_type == "field_comodel"
+        assert result.success
+        assert len(result.data) == 1
+        assert result.data[0].check_type == "field_comodel"
 
     def test_many2many_comodel_missing(self, verifier, mock_client):
         mock_client.search_read.return_value = []
@@ -165,8 +178,9 @@ class TestRelationalComodelCheck:
             "fields": [{"name": "tag_ids", "type": "Many2many", "comodel_name": "missing.tag"}],
         }
         result = verifier.verify_model_spec(model)
-        assert len(result) == 1
-        assert result[0].check_type == "field_comodel"
+        assert result.success
+        assert len(result.data) == 1
+        assert result.data[0].check_type == "field_comodel"
 
     def test_duplicate_comodel_queried_once(self, verifier, mock_client):
         """Two fields with same comodel: OdooClient is queried only once."""
@@ -178,7 +192,8 @@ class TestRelationalComodelCheck:
                 {"name": "partner_id2", "type": "Many2one", "comodel_name": "res.partner"},
             ],
         }
-        verifier.verify_model_spec(model)
+        result = verifier.verify_model_spec(model)
+        assert result.success
         # search_read called only once for ir.model (de-duplicated)
         assert mock_client.search_read.call_count == 1
 
@@ -191,7 +206,8 @@ class TestRelationalComodelCheck:
                 {"name": "qty", "type": "Integer"},
             ],
         }
-        verifier.verify_model_spec(model)
+        result = verifier.verify_model_spec(model)
+        assert result.success
         mock_client.search_read.assert_not_called()
 
 
@@ -218,7 +234,8 @@ class TestFieldOverrideCheck:
             ],
         }
         result = verifier.verify_model_spec(model)
-        assert result == []
+        assert result.success
+        assert result.data == []
 
     def test_field_override_mismatched_ttype_warns(self, verifier, mock_client):
         """Override with type mismatch: Odoo has 'many2one', spec has 'Char'."""
@@ -230,9 +247,10 @@ class TestFieldOverrideCheck:
             ],
         }
         result = verifier.verify_model_spec(model)
-        assert len(result) == 1
-        assert result[0].check_type == "field_override"
-        assert "job_title" in result[0].subject
+        assert result.success
+        assert len(result.data) == 1
+        assert result.data[0].check_type == "field_override"
+        assert "job_title" in result.data[0].subject
 
     def test_field_override_nonexistent_field_warns(self, verifier, mock_client):
         """Override of a field that does not exist in Odoo emits a warning."""
@@ -244,9 +262,10 @@ class TestFieldOverrideCheck:
             ],
         }
         result = verifier.verify_model_spec(model)
-        assert len(result) == 1
-        assert result[0].check_type == "field_override"
-        assert "phantom_field" in result[0].subject
+        assert result.success
+        assert len(result.data) == 1
+        assert result.data[0].check_type == "field_override"
+        assert "phantom_field" in result.data[0].subject
 
 
 # ---------------------------------------------------------------------------
@@ -260,31 +279,36 @@ class TestViewFieldCheck:
     def test_all_fields_exist(self, verifier, mock_client):
         mock_client.search_read.return_value = [{"name": "name"}, {"name": "partner_id"}]
         result = verifier.verify_view_spec("sale.order", ["name", "partner_id"])
-        assert result == []
+        assert result.success
+        assert result.data == []
 
     def test_missing_field_returns_warning(self, verifier, mock_client):
         mock_client.search_read.return_value = [{"name": "name"}]
         result = verifier.verify_view_spec("sale.order", ["name", "nonexistent_field"])
-        assert len(result) == 1
-        assert result[0].check_type == "view_field"
-        assert "nonexistent_field" in result[0].message
+        assert result.success
+        assert len(result.data) == 1
+        assert result.data[0].check_type == "view_field"
+        assert "nonexistent_field" in result.data[0].message
 
     def test_model_not_in_odoo_skips_field_check(self, verifier, mock_client):
         """New model not yet in Odoo: ir.model.fields returns [] -- skip silently."""
         mock_client.search_read.return_value = []
         result = verifier.verify_view_spec("new.model", ["name", "description"])
-        assert result == []
+        assert result.success
+        assert result.data == []
 
     def test_odoo_error_degrades_gracefully(self, verifier, mock_client):
-        """Exception from OdooClient returns [] (never raises)."""
+        """Exception from OdooClient returns Result.fail (infrastructure error)."""
         mock_client.search_read.side_effect = ConnectionRefusedError("Odoo down")
         result = verifier.verify_view_spec("sale.order", ["name"])
-        assert result == []
+        assert not result.success
+        assert len(result.errors) > 0
 
     def test_empty_field_list_returns_empty(self, verifier, mock_client):
-        """No fields to check: return [] without querying Odoo."""
+        """No fields to check: return Result.ok([]) without querying Odoo."""
         result = verifier.verify_view_spec("sale.order", [])
-        assert result == []
+        assert result.success
+        assert result.data == []
         mock_client.search_read.assert_not_called()
 
 
@@ -306,21 +330,24 @@ class TestViewInheritTarget:
         result = verifier.verify_view_spec(
             "hr.employee", ["name"], inherited_view_target="hr.employee"
         )
-        assert result == []
+        assert result.success
+        assert result.data == []
 
     def test_missing_target_returns_warning(self, verifier, mock_client):
         mock_client.search_read.return_value = []
         result = verifier.verify_view_spec(
             "my.model", ["name"], inherited_view_target="missing.target"
         )
-        assert len(result) == 1
-        assert result[0].check_type == "view_inherit_target"
-        assert "missing.target" in result[0].subject
+        assert result.success
+        assert len(result.data) == 1
+        assert result.data[0].check_type == "view_inherit_target"
+        assert "missing.target" in result.data[0].subject
 
     def test_no_inherited_target_no_extra_query(self, verifier, mock_client):
         """Without inherited_view_target, _check_view_target is not called."""
         mock_client.search_read.return_value = [{"name": "name"}]
         result = verifier.verify_view_spec("sale.order", ["name"])
+        assert result.success
         # Only one call: for view fields (ir.model.fields)
         assert mock_client.search_read.call_count == 1
 
@@ -390,7 +417,8 @@ class TestBuildVerifierFromEnv:
         with patch.dict(os.environ, env, clear=True):
             v = build_verifier_from_env()
         assert isinstance(v, EnvironmentVerifier)
-        assert v.verify_model_spec({"name": "x", "inherit": "y"}) == []
+        result = v.verify_model_spec({"name": "x", "inherit": "y"})
+        assert result.success and result.data == []
 
     def test_odoo_url_set_but_client_raises_returns_no_op(self):
         """When ODOO_URL is set but OdooClient raises, return no-op verifier."""
@@ -409,4 +437,5 @@ class TestBuildVerifierFromEnv:
             ):
                 v = build_verifier_from_env()
         assert isinstance(v, EnvironmentVerifier)
-        assert v.verify_model_spec({"name": "x"}) == []
+        result = v.verify_model_spec({"name": "x"})
+        assert result.success and result.data == []

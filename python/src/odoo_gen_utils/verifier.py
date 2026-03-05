@@ -16,6 +16,8 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from odoo_gen_utils.validation.types import Result
+
 if TYPE_CHECKING:
     from odoo_gen_utils.mcp.odoo_client import OdooClient
 
@@ -66,33 +68,33 @@ class EnvironmentVerifier:
     def __init__(self, client: "OdooClient | None" = None) -> None:
         self._client = client
 
-    def verify_model_spec(self, model: dict) -> list[VerificationWarning]:
+    def verify_model_spec(self, model: dict) -> Result[list[VerificationWarning]]:
         """Verify _inherit base models, relational comodel targets, and field overrides.
 
         Args:
             model: Single model dict from spec['models'].
 
         Returns:
-            List of VerificationWarning (empty = all checks passed or client unavailable).
+            Result.ok(warnings) on success, Result.fail(message) on MCP client error.
         """
         if self._client is None:
-            return []
+            return Result.ok([])
         try:
             warnings: list[VerificationWarning] = []
             warnings.extend(self._check_inherit(model))
             warnings.extend(self._check_relational_comodels(model))
             warnings.extend(self._check_field_overrides(model))
-            return warnings
+            return Result.ok(warnings)
         except Exception as exc:
-            logger.warning("MCP-03 verification error (degrading gracefully): %s", exc)
-            return []
+            logger.warning("MCP-03 verification error: %s", exc)
+            return Result.fail(f"MCP-03 verification error: {exc}")
 
     def verify_view_spec(
         self,
         model_name: str,
         field_names: list[str],
         inherited_view_target: str | None = None,
-    ) -> list[VerificationWarning]:
+    ) -> Result[list[VerificationWarning]]:
         """Verify view field references against live model schema.
 
         Args:
@@ -101,19 +103,19 @@ class EnvironmentVerifier:
             inherited_view_target: Optional view model name to verify exists.
 
         Returns:
-            List of VerificationWarning (empty = all checks passed or client unavailable).
+            Result.ok(warnings) on success, Result.fail(message) on MCP client error.
         """
         if self._client is None:
-            return []
+            return Result.ok([])
         try:
             warnings: list[VerificationWarning] = []
             warnings.extend(self._check_view_fields(model_name, field_names))
             if inherited_view_target:
                 warnings.extend(self._check_view_target(inherited_view_target))
-            return warnings
+            return Result.ok(warnings)
         except Exception as exc:
-            logger.warning("MCP-04 verification error (degrading gracefully): %s", exc)
-            return []
+            logger.warning("MCP-04 verification error: %s", exc)
+            return Result.fail(f"MCP-04 verification error: {exc}")
 
     def _check_inherit(self, model: dict) -> list[VerificationWarning]:
         """Check that _inherit base models exist in the live Odoo instance."""

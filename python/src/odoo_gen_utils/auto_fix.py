@@ -19,7 +19,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from odoo_gen_utils.validation.pylint_runner import run_pylint_odoo
-from odoo_gen_utils.validation.types import Violation
+from odoo_gen_utils.validation.types import Result, Violation
 
 # -------------------------------------------------------------------------
 # Constants
@@ -636,7 +636,7 @@ def run_pylint_fix_loop(
     module_path: Path,
     pylintrc_path: Path | None = None,
     max_iterations: int = DEFAULT_MAX_FIX_ITERATIONS,
-) -> tuple[int, tuple[Violation, ...]]:
+) -> Result[tuple[int, tuple[Violation, ...]]]:
     """Run pylint-odoo with up to max_iterations auto-fix cycles.
 
     Each cycle: run pylint -> fix fixable violations -> count.
@@ -648,13 +648,16 @@ def run_pylint_fix_loop(
         max_iterations: Maximum number of fix cycles (default 5).
 
     Returns:
-        Tuple of (total_fixed, remaining_violations) after all cycles.
+        Result.ok((total_fixed, remaining_violations)) after all cycles.
     """
     total_fixed = 0
     remaining: tuple[Violation, ...] = ()
 
     for _cycle in range(max_iterations):
-        violations = run_pylint_odoo(module_path, pylintrc_path=pylintrc_path)
+        pylint_result = run_pylint_odoo(module_path, pylintrc_path=pylintrc_path)
+        if not pylint_result.success:
+            break
+        violations = pylint_result.data or ()
 
         if not violations:
             break
@@ -691,7 +694,7 @@ def run_pylint_fix_loop(
         if cycle_fixed == 0 and not w0611_applied:
             break
 
-    return total_fixed, remaining
+    return Result.ok((total_fixed, remaining))
 
 
 # -------------------------------------------------------------------------
@@ -1319,7 +1322,7 @@ def run_docker_fix_loop(
     error_output: str,
     max_iterations: int = DEFAULT_MAX_FIX_ITERATIONS,
     revalidate_fn: object | None = None,
-) -> tuple[bool, str]:
+) -> Result[tuple[bool, str]]:
     """Run Docker error fixes in a loop with configurable iteration cap.
 
     Each iteration: identify error pattern -> dispatch fix -> if fix applied
@@ -1330,11 +1333,11 @@ def run_docker_fix_loop(
         module_path: Root path of the Odoo module.
         error_output: The error text from Docker validation.
         max_iterations: Maximum fix iterations (default 5).
-        revalidate_fn: Optional callable returning InstallResult for re-validation.
+        revalidate_fn: Optional callable returning Result[InstallResult] for re-validation.
             When provided, enables multi-iteration fixing.
 
     Returns:
-        Tuple of (any_fix_applied, remaining_error_output).
+        Result.ok((any_fix_applied, remaining_error_output)).
         When iteration cap is reached, remaining output includes escalation message.
     """
     import logging
@@ -1359,14 +1362,20 @@ def run_docker_fix_loop(
             # Single-pass mode (no re-validation)
             break
 
-        # Re-validate to get new error output
+        # Re-validate to get new error output (revalidate_fn returns Result[InstallResult])
         revalidation_result = revalidate_fn()  # type: ignore[operator]
-        if revalidation_result.success:
+        if revalidation_result.success and revalidation_result.data and revalidation_result.data.success:
             logger.info("run_docker_fix_loop: re-validation succeeded after iteration %d", iteration + 1)
             current_error = ""
             break
 
-        current_error = revalidation_result.log_output or revalidation_result.error_message
+        # Extract error output from the InstallResult inside the Result wrapper
+        if revalidation_result.success and revalidation_result.data:
+            install_data = revalidation_result.data
+            current_error = install_data.log_output or install_data.error_message
+        else:
+            # Infrastructure error from docker_install_module
+            current_error = "; ".join(revalidation_result.errors) if revalidation_result.errors else ""
         if not current_error or not current_error.strip():
             break
     else:
@@ -1379,7 +1388,7 @@ def run_docker_fix_loop(
             current_error = f"{current_error}\n{cap_msg}" if current_error else cap_msg
             logger.warning("run_docker_fix_loop: %s", cap_msg)
 
-    return any_fix_applied, current_error
+    return Result.ok((any_fix_applied, current_error))
 
 
 # -------------------------------------------------------------------------
