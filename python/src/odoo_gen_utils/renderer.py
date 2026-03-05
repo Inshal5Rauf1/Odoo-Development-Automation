@@ -212,10 +212,32 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         for f in fields
     )
 
-    # Phase 12: mail.thread auto-inheritance (TMPL-01)
+    # Phase 12 + 21: mail.thread auto-inheritance (TMPL-01)
+    # Smart injection: skip line items, honor chatter flag, avoid duplicates on in-module parents
     explicit_inherit = model.get("inherit")
     inherit_list = [explicit_inherit] if explicit_inherit else []
-    if "mail" in spec.get("depends", []):
+
+    # Collect all model names in this module for line item & parent detection
+    module_model_names = {m["name"] for m in spec.get("models", [])}
+
+    # Detect if this model is a line item (has required Many2one _id to in-module model)
+    is_line_item = any(
+        f.get("type") == "Many2one"
+        and f.get("required")
+        and f.get("comodel_name") in module_model_names
+        and f.get("name", "").endswith("_id")
+        for f in fields
+    )
+
+    # Read explicit chatter flag: None=auto, True=force, False=skip
+    chatter = model.get("chatter")
+    if chatter is None:
+        chatter = not is_line_item
+
+    # Detect if parent (explicit_inherit) is another model in the same module
+    parent_is_in_module = explicit_inherit in module_model_names if explicit_inherit else False
+
+    if chatter and "mail" in spec.get("depends", []) and not parent_is_in_module:
         for mixin in ("mail.thread", "mail.activity.mixin"):
             if mixin not in inherit_list:
                 inherit_list.append(mixin)
