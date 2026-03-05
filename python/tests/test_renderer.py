@@ -13,6 +13,7 @@ import pytest
 from odoo_gen_utils.renderer import (
     MONETARY_FIELD_PATTERNS,
     _build_model_context,
+    _build_module_context,
     _is_monetary_field,
     _process_computation_chains,
     _process_constraints,
@@ -2874,3 +2875,95 @@ class TestProcessConstraints:
         result = _process_constraints(spec)
         # The course model should remain unchanged
         assert "complex_constraints" not in result["models"][0]
+
+
+# ---------------------------------------------------------------------------
+# Phase 30: _build_model_context cron tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildModelContextCron:
+    def test_cron_methods_populated(self):
+        """_build_model_context with cron_jobs for this model includes cron_methods."""
+        model = {
+            "name": "academy.course",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        spec = _make_spec(models=[model])
+        spec["cron_jobs"] = [{
+            "name": "Archive Expired",
+            "model_name": "academy.course",
+            "method": "_cron_archive_expired",
+            "interval_number": 1,
+            "interval_type": "days",
+        }]
+        ctx = _build_model_context(spec, model)
+        assert "cron_methods" in ctx
+        assert len(ctx["cron_methods"]) == 1
+        assert ctx["cron_methods"][0]["method"] == "_cron_archive_expired"
+
+    def test_cron_methods_empty_different_model(self):
+        """_build_model_context with cron_jobs targeting other model returns empty cron_methods."""
+        model = {
+            "name": "academy.student",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        spec = _make_spec(models=[model])
+        spec["cron_jobs"] = [{
+            "name": "Archive Expired",
+            "model_name": "academy.course",
+            "method": "_cron_archive_expired",
+            "interval_number": 1,
+            "interval_type": "days",
+        }]
+        ctx = _build_model_context(spec, model)
+        assert ctx["cron_methods"] == []
+
+    def test_needs_api_true_with_cron(self):
+        """Model with only cron methods has needs_api=True."""
+        model = {
+            "name": "academy.course",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        spec = _make_spec(models=[model])
+        spec["cron_jobs"] = [{
+            "name": "Archive Expired",
+            "model_name": "academy.course",
+            "method": "_cron_archive_expired",
+            "interval_number": 1,
+            "interval_type": "days",
+        }]
+        ctx = _build_model_context(spec, model)
+        assert ctx["needs_api"] is True
+
+
+# ---------------------------------------------------------------------------
+# Phase 30: _build_module_context cron tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildModuleContextCron:
+    def test_manifest_includes_cron_data(self):
+        """_build_module_context with cron_jobs includes data/cron_data.xml in manifest_files."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        spec["cron_jobs"] = [{
+            "name": "Archive Expired",
+            "model_name": "academy.course",
+            "method": "_cron_archive_expired",
+            "interval_number": 1,
+            "interval_type": "days",
+        }]
+        ctx = _build_module_context(spec, "test_module")
+        assert "data/cron_data.xml" in ctx["manifest_files"]
+
+    def test_manifest_excludes_cron_data_no_jobs(self):
+        """_build_module_context without cron_jobs does NOT include data/cron_data.xml."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "fields": [{"name": "name", "type": "Char"}],
+        }])
+        ctx = _build_module_context(spec, "test_module")
+        assert "data/cron_data.xml" not in ctx["manifest_files"]

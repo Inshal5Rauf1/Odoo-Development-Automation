@@ -14,9 +14,12 @@ import pytest
 
 from odoo_gen_utils.renderer import (
     create_versioned_renderer,
+    render_controllers,
+    render_cron,
     render_manifest,
     render_models,
     render_module,
+    render_reports,
     render_security,
     render_static,
     render_tests,
@@ -1025,3 +1028,176 @@ class TestRenderModelsComplexConstraints:
         ).read_text()
         assert "from odoo.exceptions import ValidationError" in course_py
         assert "from odoo.tools.translate import _" in course_py
+
+
+# ---------------------------------------------------------------------------
+# Phase 30: render_cron tests
+# ---------------------------------------------------------------------------
+
+
+def _make_cron_spec(cron_jobs=None, models=None):
+    """Helper to construct a spec with cron_jobs."""
+    return {
+        "module_name": "test_module",
+        "module_title": "Test Module",
+        "summary": "A test module",
+        "author": "Test Author",
+        "website": "https://test.example.com",
+        "license": "LGPL-3",
+        "category": "Uncategorized",
+        "odoo_version": "17.0",
+        "depends": ["base"],
+        "application": True,
+        "models": models or [
+            {
+                "name": "academy.course",
+                "description": "Course",
+                "fields": [
+                    {"name": "name", "type": "Char", "required": True},
+                ],
+            },
+        ],
+        "wizards": [],
+        "cron_jobs": cron_jobs or [],
+    }
+
+
+class TestRenderCron:
+    def test_cron_no_jobs_noop(self, env, tmp_module):
+        """render_cron with no cron_jobs returns Result.ok([])."""
+        spec = _make_cron_spec(cron_jobs=[])
+        ctx = _make_module_context(spec)
+        result = render_cron(env, spec, tmp_module, ctx)
+        assert result.success is True
+        assert result.data == []
+
+    def test_cron_generates_xml(self, env, tmp_module):
+        """render_cron with 1 cron_job produces data/cron_data.xml with correct content."""
+        spec = _make_cron_spec(cron_jobs=[{
+            "name": "Archive Expired Courses",
+            "model_name": "academy.course",
+            "method": "_cron_archive_expired",
+            "interval_number": 1,
+            "interval_type": "days",
+        }])
+        ctx = _make_module_context(spec)
+        result = render_cron(env, spec, tmp_module, ctx)
+        assert result.success is True
+        assert len(result.data) == 1
+        xml_path = tmp_module / "data" / "cron_data.xml"
+        assert xml_path.exists()
+        content = xml_path.read_text()
+        assert "ir.cron" in content
+        assert 'noupdate="1"' in content
+        assert "doall" in content
+        assert "False" in content
+        assert "model_academy_course" in content
+        assert "state" in content
+        assert "code" in content
+        assert "_cron_archive_expired" in content
+
+    def test_cron_invalid_method_name(self, env, tmp_module):
+        """render_cron with invalid method name returns Result.fail()."""
+        spec = _make_cron_spec(cron_jobs=[{
+            "name": "Bad Cron",
+            "model_name": "academy.course",
+            "method": "123bad",
+            "interval_number": 1,
+            "interval_type": "days",
+        }])
+        ctx = _make_module_context(spec)
+        result = render_cron(env, spec, tmp_module, ctx)
+        assert result.success is False
+
+    def test_cron_multiple_jobs(self, env, tmp_module):
+        """render_cron with 2 cron jobs includes both in XML."""
+        spec = _make_cron_spec(cron_jobs=[
+            {
+                "name": "Archive Expired",
+                "model_name": "academy.course",
+                "method": "_cron_archive_expired",
+                "interval_number": 1,
+                "interval_type": "days",
+            },
+            {
+                "name": "Send Reminders",
+                "model_name": "academy.course",
+                "method": "_cron_send_reminders",
+                "interval_number": 4,
+                "interval_type": "hours",
+            },
+        ])
+        ctx = _make_module_context(spec)
+        result = render_cron(env, spec, tmp_module, ctx)
+        assert result.success is True
+        content = (tmp_module / "data" / "cron_data.xml").read_text()
+        assert "_cron_archive_expired" in content
+        assert "_cron_send_reminders" in content
+
+
+# ---------------------------------------------------------------------------
+# Phase 30: render_reports and render_controllers placeholder tests
+# ---------------------------------------------------------------------------
+
+
+class TestRenderReportsPlaceholder:
+    def test_returns_ok_empty(self, env, tmp_module):
+        """render_reports returns Result.ok([]) as a placeholder."""
+        spec = _make_spec(models=[_make_model()])
+        ctx = _make_module_context(spec)
+        result = render_reports(env, spec, tmp_module, ctx)
+        assert result.success is True
+        assert result.data == []
+
+
+class TestRenderControllersPlaceholder:
+    def test_returns_ok_empty(self, env, tmp_module):
+        """render_controllers returns Result.ok([]) as a placeholder."""
+        spec = _make_spec(models=[_make_model()])
+        ctx = _make_module_context(spec)
+        result = render_controllers(env, spec, tmp_module, ctx)
+        assert result.success is True
+        assert result.data == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 30: Pipeline stage count test
+# ---------------------------------------------------------------------------
+
+
+class TestRenderModulePipeline:
+    def test_pipeline_has_10_stages(self):
+        """render_module stages list should have 10 entries (was 7, +3 new)."""
+        source = inspect.getsource(render_module)
+        # Count lambda entries in the stages list
+        assert source.count("lambda:") >= 10
+
+
+# ---------------------------------------------------------------------------
+# Phase 30: Full integration with cron spec
+# ---------------------------------------------------------------------------
+
+
+class TestRenderModuleCronIntegration:
+    def test_full_render_with_cron(self, tmp_path):
+        """Full render_module with cron_jobs spec generates cron XML + model with stub."""
+        spec = _make_cron_spec(
+            cron_jobs=[{
+                "name": "Archive Expired Courses",
+                "model_name": "academy.course",
+                "method": "_cron_archive_expired",
+                "interval_number": 1,
+                "interval_type": "days",
+            }],
+        )
+        files, warnings = render_module(spec, None, tmp_path)
+        # cron XML file should be generated
+        cron_xml = tmp_path / "test_module" / "data" / "cron_data.xml"
+        assert cron_xml.exists()
+        cron_content = cron_xml.read_text()
+        assert "ir.cron" in cron_content
+        assert "_cron_archive_expired" in cron_content
+        # model file should contain the stub method
+        model_py = (tmp_path / "test_module" / "models" / "academy_course.py").read_text()
+        assert "_cron_archive_expired" in model_py
+        assert "@api.model" in model_py
