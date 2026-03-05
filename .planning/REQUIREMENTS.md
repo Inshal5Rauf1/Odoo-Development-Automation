@@ -35,7 +35,7 @@
 
 ### Tech Debt Cleanup
 
-- [ ] **DEBT-01**: All test files consuming docker_install_module and docker_run_tests correctly unwrap Result[T] objects (access .data before using InstallResult/TestResult fields)
+- [x] **DEBT-01**: All test files consuming docker_install_module and docker_run_tests correctly unwrap Result[T] objects (access .data before using InstallResult/TestResult fields)
 
 ## v3.1 Requirements (Deferred)
 
@@ -91,7 +91,7 @@
 | QUAL-01 | Phase 24 | Complete |
 | QUAL-02 | Phase 24 | Complete |
 | QUAL-03 | Phase 24 | Complete |
-| DEBT-01 | Phase 25 | Pending |
+| DEBT-01 | Phase 25 | Complete |
 
 **Coverage:**
 - v3.0 requirements: 14 total
