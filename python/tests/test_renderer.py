@@ -905,6 +905,158 @@ class TestBuildModelContextInheritList:
         assert ctx["inherit_list"].count("mail.thread") == 1
         assert "mail.activity.mixin" in ctx["inherit_list"]
 
+    # Phase 21: Smart mail.thread injection -- skip cases (TMPL-01)
+
+    def test_inherit_list_line_item_no_mail_thread(self):
+        """Line item model (required Many2one _id to in-module model) should NOT get mail.thread."""
+        parent_model = {
+            "name": "sale.order",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        line_model = {
+            "name": "sale.order.line",
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {
+                    "name": "order_id",
+                    "type": "Many2one",
+                    "comodel_name": "sale.order",
+                    "required": True,
+                },
+            ],
+        }
+        spec = _make_spec(models=[parent_model, line_model])
+        spec["depends"] = ["base", "mail"]
+        ctx = _build_model_context(spec, line_model)
+        assert ctx["inherit_list"] == [], (
+            f"Line item should NOT get mail.thread, got {ctx['inherit_list']}"
+        )
+
+    def test_inherit_list_line_item_with_chatter_override(self):
+        """Line item with explicit chatter=True should still get mail.thread."""
+        parent_model = {
+            "name": "sale.order",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        line_model = {
+            "name": "sale.order.line",
+            "chatter": True,
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {
+                    "name": "order_id",
+                    "type": "Many2one",
+                    "comodel_name": "sale.order",
+                    "required": True,
+                },
+            ],
+        }
+        spec = _make_spec(models=[parent_model, line_model])
+        spec["depends"] = ["base", "mail"]
+        ctx = _build_model_context(spec, line_model)
+        assert "mail.thread" in ctx["inherit_list"], (
+            "Line item with chatter=True should get mail.thread"
+        )
+        assert "mail.activity.mixin" in ctx["inherit_list"]
+
+    def test_inherit_list_chatter_false_skips_mail(self):
+        """Top-level model with chatter=False should NOT get mail.thread even with mail in depends."""
+        model = {
+            "name": "test.config",
+            "chatter": False,
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        spec = _make_spec(models=[model])
+        spec["depends"] = ["base", "mail"]
+        ctx = _build_model_context(spec, model)
+        assert ctx["inherit_list"] == [], (
+            f"chatter=False model should NOT get mail.thread, got {ctx['inherit_list']}"
+        )
+
+    def test_inherit_list_parent_already_has_mail(self):
+        """Model extending in-module parent that gets mail.thread should NOT duplicate mail.thread."""
+        parent_model = {
+            "name": "base.record",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        child_model = {
+            "name": "child.record",
+            "inherit": "base.record",
+            "fields": [{"name": "extra", "type": "Char"}],
+        }
+        spec = _make_spec(models=[parent_model, child_model])
+        spec["depends"] = ["base", "mail"]
+        # Parent gets mail.thread automatically. Child inherits from parent,
+        # so it should NOT inject mail.thread again.
+        ctx = _build_model_context(spec, child_model)
+        assert "mail.thread" not in ctx["inherit_list"], (
+            "Child of in-module parent should NOT duplicate mail.thread"
+        )
+        # But explicit inherit should still be there
+        assert "base.record" in ctx["inherit_list"]
+
+    def test_inherit_list_top_level_still_gets_mail(self):
+        """Top-level model with mail in depends still gets mail.thread (existing behavior preserved)."""
+        model = {
+            "name": "project.task",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        spec = _make_spec(models=[model])
+        spec["depends"] = ["base", "mail"]
+        ctx = _build_model_context(spec, model)
+        assert "mail.thread" in ctx["inherit_list"]
+        assert "mail.activity.mixin" in ctx["inherit_list"]
+
+    def test_inherit_list_line_item_detection_non_required_m2o(self):
+        """Many2one that is NOT required should not trigger line item detection."""
+        parent_model = {
+            "name": "sale.order",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        model = {
+            "name": "sale.order.line",
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {
+                    "name": "order_id",
+                    "type": "Many2one",
+                    "comodel_name": "sale.order",
+                    # required is missing/False -- not a line item
+                },
+            ],
+        }
+        spec = _make_spec(models=[parent_model, model])
+        spec["depends"] = ["base", "mail"]
+        ctx = _build_model_context(spec, model)
+        assert "mail.thread" in ctx["inherit_list"], (
+            "Non-required M2O should NOT trigger line item detection"
+        )
+
+    def test_inherit_list_line_item_detection_name_pattern(self):
+        """Only Many2one fields ending in _id with comodel in same module count as line item indicators."""
+        parent_model = {
+            "name": "sale.order",
+            "fields": [{"name": "name", "type": "Char"}],
+        }
+        model = {
+            "name": "sale.order.line",
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {
+                    "name": "related_order",  # Does NOT end in _id
+                    "type": "Many2one",
+                    "comodel_name": "sale.order",
+                    "required": True,
+                },
+            ],
+        }
+        spec = _make_spec(models=[parent_model, model])
+        spec["depends"] = ["base", "mail"]
+        ctx = _build_model_context(spec, model)
+        assert "mail.thread" in ctx["inherit_list"], (
+            "M2O not ending in _id should NOT trigger line item detection"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Phase 12: _build_model_context -- needs_api (TMPL-02)
