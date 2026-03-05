@@ -131,6 +131,7 @@ def _make_module_context(spec: dict) -> dict:
         "manifest_files": all_manifest_files,
         "has_wizards": has_wizards,
         "spec_wizards": spec_wizards,
+        "has_controllers": bool(spec.get("controllers")),
     }
 
 
