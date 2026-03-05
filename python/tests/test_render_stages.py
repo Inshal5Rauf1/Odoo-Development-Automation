@@ -1889,3 +1889,95 @@ class TestRenderModelsProductionPatterns:
         model_py = (tmp_path / "test_module" / "models" / "academy_category.py").read_text()
         assert model_py.count("def write(") == 1
         assert "clear_caches()" in model_py
+
+
+class TestRenderModelsArchival:
+    """Integration tests for archival production pattern in generated modules."""
+
+    def test_archival_model_has_active_field(self, tmp_path):
+        """Render spec with archival:true -> generated model .py contains active = fields.Boolean."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "description": "Academy Course",
+            "archival": True,
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        files, _ = render_module(spec, None, tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "academy_course.py").read_text()
+        assert "active = fields.Boolean" in model_py
+        assert 'default="True"' in model_py
+        assert "index=True" in model_py
+
+    def test_archival_generates_wizard_files(self, tmp_path):
+        """Render full module with archival:true -> wizards/ dir contains archival wizard."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "description": "Academy Course",
+            "archival": True,
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        files, _ = render_module(spec, None, tmp_path)
+        wizard_py = (tmp_path / "test_module" / "wizards" / "academy_course_archive_wizard.py").read_text()
+        assert "action_archive" in wizard_py
+        assert "relativedelta" in wizard_py
+
+    def test_archival_generates_cron_xml(self, tmp_path):
+        """Render full module with archival:true -> data/cron_data.xml references cron method."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "description": "Academy Course",
+            "archival": True,
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        files, _ = render_module(spec, None, tmp_path)
+        cron_xml = (tmp_path / "test_module" / "data" / "cron_data.xml").read_text()
+        assert "_cron_archive_old_records" in cron_xml
+        assert "ir.cron" in cron_xml
+
+    def test_archival_cron_has_batch_commit(self, tmp_path):
+        """Generated model .py contains cr.commit() and BATCH_SIZE in archival cron method."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "description": "Academy Course",
+            "archival": True,
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        files, _ = render_module(spec, None, tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "academy_course.py").read_text()
+        assert "cr.commit()" in model_py
+        assert "BATCH_SIZE" in model_py
+
+    def test_archival_wizard_form_has_button(self, tmp_path):
+        """Generated wizard form XML contains button with name='action_archive'."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "description": "Academy Course",
+            "archival": True,
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        files, _ = render_module(spec, None, tmp_path)
+        form_xml = (tmp_path / "test_module" / "views" / "academy_course_archive_wizard_wizard_form.xml").read_text()
+        assert 'name="action_archive"' in form_xml
+        assert "days_threshold" in form_xml
+
+    def test_full_production_patterns_combined(self, tmp_path):
+        """Spec with bulk+cacheable+archival -> module renders without errors, has all patterns."""
+        spec = _make_spec(models=[{
+            "name": "academy.course",
+            "description": "Academy Course",
+            "bulk": True,
+            "cacheable": True,
+            "archival": True,
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        files, _ = render_module(spec, None, tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "academy_course.py").read_text()
+        # Bulk
+        assert "_post_create_processing" in model_py
+        # Cache
+        assert "clear_caches()" in model_py
+        assert "@tools.ormcache" in model_py
+        # Archival
+        assert "_cron_archive_old_records" in model_py
+        assert "cr.commit()" in model_py
+        assert "active = fields.Boolean" in model_py
