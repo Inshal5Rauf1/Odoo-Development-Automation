@@ -15,6 +15,7 @@ from odoo_gen_utils.renderer import (
     _build_model_context,
     _is_monetary_field,
     _process_computation_chains,
+    _process_constraints,
     _topologically_sort_fields,
     _validate_no_cycles,
     get_template_dir,
@@ -2518,3 +2519,358 @@ class TestTopologicallySortFields:
         result = _topologically_sort_fields(fields)
         assert len(result) == 1
         assert result[0]["name"] == "total"
+
+
+# ---------------------------------------------------------------------------
+# Phase 29: _process_constraints()
+# ---------------------------------------------------------------------------
+
+
+def _make_constraint_spec(
+    models: list[dict] | None = None,
+    constraints: list[dict] | None = None,
+) -> dict:
+    """Helper to construct a spec with constraints section."""
+    return {
+        "module_name": "test_module",
+        "depends": ["base"],
+        "models": models or [],
+        "wizards": [],
+        "constraints": constraints or [],
+    }
+
+
+class TestProcessConstraints:
+    """Unit tests for _process_constraints()."""
+
+    def test_no_constraints_passthrough(self):
+        """Spec without constraints key returns unchanged spec."""
+        spec = {
+            "module_name": "test_module",
+            "depends": ["base"],
+            "models": [{"name": "test.model", "fields": []}],
+            "wizards": [],
+        }
+        result = _process_constraints(spec)
+        assert result == spec
+
+    def test_does_not_mutate_input(self):
+        """Original spec dict is not modified by _process_constraints()."""
+        import copy
+
+        spec = _make_constraint_spec(
+            models=[{
+                "name": "university.course",
+                "fields": [
+                    {"name": "start_date", "type": "Date"},
+                    {"name": "end_date", "type": "Date"},
+                ],
+            }],
+            constraints=[{
+                "type": "temporal",
+                "model": "university.course",
+                "name": "date_order",
+                "fields": ["start_date", "end_date"],
+                "condition": "end_date < start_date",
+                "message": "End date must be after start date.",
+            }],
+        )
+        original = copy.deepcopy(spec)
+        _process_constraints(spec)
+        assert spec == original
+
+    def test_temporal_classifies_correctly(self):
+        """Temporal constraint enriches model with complex_constraints entry of type temporal."""
+        spec = _make_constraint_spec(
+            models=[{
+                "name": "university.course",
+                "fields": [
+                    {"name": "start_date", "type": "Date"},
+                    {"name": "end_date", "type": "Date"},
+                ],
+            }],
+            constraints=[{
+                "type": "temporal",
+                "model": "university.course",
+                "name": "date_order",
+                "fields": ["start_date", "end_date"],
+                "condition": "end_date < start_date",
+                "message": "End date must be after start date.",
+            }],
+        )
+        result = _process_constraints(spec)
+        model = result["models"][0]
+        assert "complex_constraints" in model
+        assert len(model["complex_constraints"]) == 1
+        assert model["complex_constraints"][0]["type"] == "temporal"
+
+    def test_temporal_generates_check_expr(self):
+        """Temporal constraint produces check_expr with False guards."""
+        spec = _make_constraint_spec(
+            models=[{
+                "name": "university.course",
+                "fields": [
+                    {"name": "start_date", "type": "Date"},
+                    {"name": "end_date", "type": "Date"},
+                ],
+            }],
+            constraints=[{
+                "type": "temporal",
+                "model": "university.course",
+                "name": "date_order",
+                "fields": ["start_date", "end_date"],
+                "condition": "end_date < start_date",
+                "message": "End date must be after start date.",
+            }],
+        )
+        result = _process_constraints(spec)
+        constraint = result["models"][0]["complex_constraints"][0]
+        assert "check_expr" in constraint
+        # Must have False guards for each field
+        assert "rec.start_date" in constraint["check_expr"]
+        assert "rec.end_date" in constraint["check_expr"]
+        # Must have the condition
+        assert "rec.end_date < rec.start_date" in constraint["check_expr"]
+
+    def test_cross_model_generates_check_body(self):
+        """Cross-model constraint produces check_body with search_count and ValidationError."""
+        spec = _make_constraint_spec(
+            models=[
+                {
+                    "name": "university.course",
+                    "fields": [
+                        {"name": "max_students", "type": "Integer"},
+                    ],
+                },
+                {
+                    "name": "university.enrollment",
+                    "fields": [
+                        {"name": "course_id", "type": "Many2one", "comodel_name": "university.course"},
+                    ],
+                },
+            ],
+            constraints=[{
+                "type": "cross_model",
+                "model": "university.enrollment",
+                "name": "enrollment_capacity",
+                "trigger_fields": ["course_id"],
+                "related_model": "university.enrollment",
+                "count_domain_field": "course_id",
+                "capacity_model": "university.course",
+                "capacity_field": "max_students",
+                "message": "Enrollment count cannot exceed course capacity of %s.",
+            }],
+        )
+        result = _process_constraints(spec)
+        enrollment = next(m for m in result["models"] if m["name"] == "university.enrollment")
+        constraint = enrollment["complex_constraints"][0]
+        assert "check_body" in constraint
+        assert "search_count" in constraint["check_body"]
+        assert "ValidationError" in constraint["check_body"]
+
+    def test_cross_model_generates_create_override(self):
+        """Cross-model constraint sets has_create_override and populates create_constraints."""
+        spec = _make_constraint_spec(
+            models=[
+                {
+                    "name": "university.course",
+                    "fields": [{"name": "max_students", "type": "Integer"}],
+                },
+                {
+                    "name": "university.enrollment",
+                    "fields": [
+                        {"name": "course_id", "type": "Many2one", "comodel_name": "university.course"},
+                    ],
+                },
+            ],
+            constraints=[{
+                "type": "cross_model",
+                "model": "university.enrollment",
+                "name": "enrollment_capacity",
+                "trigger_fields": ["course_id"],
+                "related_model": "university.enrollment",
+                "count_domain_field": "course_id",
+                "capacity_model": "university.course",
+                "capacity_field": "max_students",
+                "message": "Enrollment count cannot exceed course capacity of %s.",
+            }],
+        )
+        result = _process_constraints(spec)
+        enrollment = next(m for m in result["models"] if m["name"] == "university.enrollment")
+        assert enrollment["has_create_override"] is True
+        assert len(enrollment["create_constraints"]) == 1
+        assert enrollment["create_constraints"][0]["name"] == "enrollment_capacity"
+
+    def test_cross_model_generates_write_override(self):
+        """Cross-model constraint sets has_write_override with correct trigger_fields."""
+        spec = _make_constraint_spec(
+            models=[
+                {
+                    "name": "university.course",
+                    "fields": [{"name": "max_students", "type": "Integer"}],
+                },
+                {
+                    "name": "university.enrollment",
+                    "fields": [
+                        {"name": "course_id", "type": "Many2one", "comodel_name": "university.course"},
+                    ],
+                },
+            ],
+            constraints=[{
+                "type": "cross_model",
+                "model": "university.enrollment",
+                "name": "enrollment_capacity",
+                "trigger_fields": ["course_id"],
+                "related_model": "university.enrollment",
+                "count_domain_field": "course_id",
+                "capacity_model": "university.course",
+                "capacity_field": "max_students",
+                "message": "Enrollment count cannot exceed course capacity of %s.",
+            }],
+        )
+        result = _process_constraints(spec)
+        enrollment = next(m for m in result["models"] if m["name"] == "university.enrollment")
+        assert enrollment["has_write_override"] is True
+        assert len(enrollment["write_constraints"]) == 1
+        assert enrollment["write_constraints"][0]["write_trigger_fields"] == ["course_id"]
+
+    def test_capacity_generates_count_check(self):
+        """Capacity constraint produces check_body with search_count and max comparison."""
+        spec = _make_constraint_spec(
+            models=[{
+                "name": "university.section",
+                "fields": [
+                    {"name": "student_ids", "type": "One2many"},
+                ],
+            }],
+            constraints=[{
+                "type": "capacity",
+                "model": "university.section",
+                "name": "section_capacity",
+                "count_field": "student_ids",
+                "max_value": 30,
+                "count_model": "university.section.enrollment",
+                "count_domain_field": "section_id",
+                "message": "A section cannot have more than %s students.",
+            }],
+        )
+        result = _process_constraints(spec)
+        section = result["models"][0]
+        constraint = section["complex_constraints"][0]
+        assert "check_body" in constraint
+        assert "search_count" in constraint["check_body"]
+        assert "30" in constraint["check_body"]
+
+    def test_messages_have_translation(self):
+        """All constraint check_body/message strings include _() wrapper."""
+        spec = _make_constraint_spec(
+            models=[
+                {
+                    "name": "university.course",
+                    "fields": [
+                        {"name": "start_date", "type": "Date"},
+                        {"name": "end_date", "type": "Date"},
+                    ],
+                },
+                {
+                    "name": "university.enrollment",
+                    "fields": [
+                        {"name": "course_id", "type": "Many2one", "comodel_name": "university.course"},
+                    ],
+                },
+            ],
+            constraints=[
+                {
+                    "type": "temporal",
+                    "model": "university.course",
+                    "name": "date_order",
+                    "fields": ["start_date", "end_date"],
+                    "condition": "end_date < start_date",
+                    "message": "End date must be after start date.",
+                },
+                {
+                    "type": "cross_model",
+                    "model": "university.enrollment",
+                    "name": "enrollment_capacity",
+                    "trigger_fields": ["course_id"],
+                    "related_model": "university.enrollment",
+                    "count_domain_field": "course_id",
+                    "capacity_model": "university.course",
+                    "capacity_field": "max_students",
+                    "message": "Enrollment count cannot exceed course capacity of %s.",
+                },
+            ],
+        )
+        result = _process_constraints(spec)
+        # Temporal: message is used directly in template with _() wrapper
+        course = next(m for m in result["models"] if m["name"] == "university.course")
+        assert course["complex_constraints"][0]["message"]
+
+        # Cross-model: check_body should contain _()
+        enrollment = next(m for m in result["models"] if m["name"] == "university.enrollment")
+        assert "_(" in enrollment["complex_constraints"][0]["check_body"]
+
+    def test_multiple_constraints_single_override(self):
+        """Two cross_model constraints on same model produce one create_constraints list with 2 entries."""
+        spec = _make_constraint_spec(
+            models=[{
+                "name": "university.enrollment",
+                "fields": [
+                    {"name": "course_id", "type": "Many2one", "comodel_name": "university.course"},
+                    {"name": "section_id", "type": "Many2one", "comodel_name": "university.section"},
+                ],
+            }],
+            constraints=[
+                {
+                    "type": "cross_model",
+                    "model": "university.enrollment",
+                    "name": "enrollment_capacity",
+                    "trigger_fields": ["course_id"],
+                    "related_model": "university.enrollment",
+                    "count_domain_field": "course_id",
+                    "capacity_model": "university.course",
+                    "capacity_field": "max_students",
+                    "message": "Too many enrollments for this course.",
+                },
+                {
+                    "type": "cross_model",
+                    "model": "university.enrollment",
+                    "name": "section_capacity",
+                    "trigger_fields": ["section_id"],
+                    "related_model": "university.enrollment",
+                    "count_domain_field": "section_id",
+                    "capacity_model": "university.section",
+                    "capacity_field": "max_students",
+                    "message": "Too many enrollments for this section.",
+                },
+            ],
+        )
+        result = _process_constraints(spec)
+        enrollment = result["models"][0]
+        # Single create_constraints list with 2 entries
+        assert len(enrollment["create_constraints"]) == 2
+        # Single write_constraints list with 2 entries
+        assert len(enrollment["write_constraints"]) == 2
+        # has_create_override and has_write_override are True (singular, not per-constraint)
+        assert enrollment["has_create_override"] is True
+        assert enrollment["has_write_override"] is True
+
+    def test_temporal_with_missing_model_ignored(self):
+        """Temporal constraint referencing non-existent model is silently skipped."""
+        spec = _make_constraint_spec(
+            models=[{
+                "name": "university.course",
+                "fields": [{"name": "name", "type": "Char"}],
+            }],
+            constraints=[{
+                "type": "temporal",
+                "model": "nonexistent.model",
+                "name": "date_order",
+                "fields": ["start_date", "end_date"],
+                "condition": "end_date < start_date",
+                "message": "End date must be after start date.",
+            }],
+        )
+        result = _process_constraints(spec)
+        # The course model should remain unchanged
+        assert "complex_constraints" not in result["models"][0]

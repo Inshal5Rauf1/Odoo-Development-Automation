@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -277,6 +278,126 @@ def _validate_no_cycles(spec: dict[str, Any]) -> None:
         raise ValueError(msg) from None
 
 
+def _process_constraints(spec: dict[str, Any]) -> dict[str, Any]:
+    """Enrich model specs with constraint method metadata from constraints section.
+
+    For each constraint:
+    1. Classify by type (temporal, cross_model, capacity)
+    2. Locate target model in spec
+    3. Inject constraint metadata into model dict
+
+    Returns a new spec dict with enriched models. Pure function.
+    """
+    constraints = spec.get("constraints", [])
+    if not constraints:
+        return spec
+
+    # Build model name set for validation
+    model_names = {m["name"] for m in spec.get("models", [])}
+
+    # Group constraints by model
+    model_constraints: dict[str, list[dict[str, Any]]] = {}
+    for constraint in constraints:
+        model_name = constraint["model"]
+        if model_name not in model_names:
+            continue  # silently skip constraints for non-existent models
+        model_constraints.setdefault(model_name, []).append(constraint)
+
+    if not model_constraints:
+        return spec
+
+    # Enrich each constraint with preprocessed metadata
+    def _enrich_constraint(c: dict[str, Any]) -> dict[str, Any]:
+        enriched = {**c}
+        ctype = c["type"]
+        if ctype == "temporal":
+            # Build check_expr with False guards
+            fields = c["fields"]
+            guards = " and ".join(f"rec.{f}" for f in fields)
+            condition = c["condition"]
+            # Prefix field references with rec.
+            check_condition = condition
+            for field in fields:
+                # Replace bare field names with rec.field (word boundary aware)
+                check_condition = re.sub(
+                    rf"\b{re.escape(field)}\b",
+                    f"rec.{field}",
+                    check_condition,
+                )
+            enriched["check_expr"] = f"{guards} and {check_condition}"
+        elif ctype == "cross_model":
+            # Generate check_body for cross-model validation
+            count_domain_field = c["count_domain_field"]
+            capacity_model = c["capacity_model"]
+            capacity_field = c["capacity_field"]
+            related_model = c["related_model"]
+            message = c["message"]
+            enriched["check_body"] = (
+                f"course = rec.{count_domain_field}\n"
+                f"count = self.env[\"{related_model}\"].search_count([\n"
+                f"    (\"{count_domain_field}\", \"=\", course.id),\n"
+                f"])\n"
+                f"if course.{capacity_field} and count > course.{capacity_field}:\n"
+                f"    raise ValidationError(\n"
+                f"        _(\"{message}\",\n"
+                f"          course.{capacity_field})\n"
+                f"    )"
+            )
+            enriched["write_trigger_fields"] = c.get("trigger_fields", [])
+        elif ctype == "capacity":
+            # Generate check_body for capacity validation
+            count_model = c.get("count_model", "")
+            count_domain_field = c.get("count_domain_field", "")
+            max_value = c.get("max_value")
+            max_field = c.get("max_field")
+            message = c["message"]
+            if max_field:
+                max_ref = f"rec.{max_field}"
+            else:
+                max_ref = str(max_value)
+            enriched["check_body"] = (
+                f"count = self.env[\"{count_model}\"].search_count([\n"
+                f"    (\"{count_domain_field}\", \"=\", rec.id),\n"
+                f"])\n"
+                f"if count > {max_ref}:\n"
+                f"    raise ValidationError(\n"
+                f"        _(\"{message}\",\n"
+                f"          {max_ref})\n"
+                f"    )"
+            )
+            enriched["write_trigger_fields"] = c.get("trigger_fields", [])
+        return enriched
+
+    # Deep-copy models and enrich with constraint metadata
+    new_models = []
+    for model in spec.get("models", []):
+        mc = model_constraints.get(model["name"])
+        if not mc:
+            new_models.append(model)
+            continue
+
+        enriched_constraints = [_enrich_constraint(c) for c in mc]
+        create_constraints = [
+            c for c in enriched_constraints
+            if c["type"] in ("cross_model", "capacity")
+        ]
+        write_constraints = [
+            c for c in enriched_constraints
+            if c["type"] in ("cross_model", "capacity")
+        ]
+
+        new_models.append({
+            **model,
+            "complex_constraints": enriched_constraints,
+            "create_constraints": create_constraints,
+            "write_constraints": write_constraints,
+            "has_create_override": bool(create_constraints),
+            "has_write_override": bool(write_constraints),
+        })
+
+    return {**spec, "models": new_models}
+
+
 def _process_computation_chains(spec: dict[str, Any]) -> dict[str, Any]:
     """Enrich computed field specs from computation_chains section.
 
@@ -527,9 +648,17 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
 
     fields = model.get("fields", [])
     required_fields = [f for f in fields if f.get("required")]
+    # Phase 29: complex constraints from preprocessor
+    complex_constraints = model.get("complex_constraints", [])
+    create_constraints = model.get("create_constraints", [])
+    write_constraints = model.get("write_constraints", [])
+    has_create_override = model.get("has_create_override", False)
+    has_write_override = model.get("has_write_override", False)
+    needs_translate = bool(complex_constraints)
+
     has_constraints = any(
         f.get("constraints") for f in fields
-    ) or bool(model.get("sql_constraints"))
+    ) or bool(model.get("sql_constraints")) or bool(complex_constraints)
 
     # Phase 5 extensions ---------------------------------------------------
     computed_fields = [f for f in fields if f.get("compute")]
@@ -635,7 +764,13 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     view_fields = [f for f in fields if not f.get("internal")]
 
     # Phase 12: conditional api import (TMPL-02)
-    needs_api = bool(computed_fields or onchange_fields or constrained_fields or sequence_fields)
+    # Phase 29: also need api when temporal constraints exist (@api.constrains)
+    # or create/write overrides exist (@api.model_create_multi)
+    has_temporal = any(c.get("type") == "temporal" for c in complex_constraints)
+    needs_api = bool(
+        computed_fields or onchange_fields or constrained_fields
+        or sequence_fields or has_temporal or has_create_override
+    )
 
     return {
         "module_name": spec["module_name"],
@@ -679,6 +814,13 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         # Phase 27 keys
         "is_hierarchical": is_hierarchical,
         "view_fields": view_fields,
+        # Phase 29 keys
+        "complex_constraints": complex_constraints,
+        "create_constraints": create_constraints,
+        "write_constraints": write_constraints,
+        "has_create_override": has_create_override,
+        "has_write_override": has_write_override,
+        "needs_translate": needs_translate,
     }
 
 
@@ -1134,6 +1276,8 @@ def render_module(
     spec = _process_relationships(spec)
     # Phase 28: process computation chains
     spec = _process_computation_chains(spec)
+    # Phase 29: process complex constraints
+    spec = _process_constraints(spec)
     module_name = spec["module_name"]
     module_dir = output_dir / module_name
     ctx = _build_module_context(spec, module_name)

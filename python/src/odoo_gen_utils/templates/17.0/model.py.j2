@@ -3,6 +3,9 @@ from odoo import {{ 'api, ' if needs_api }}fields, models
 {% if has_constraints or constrained_fields %}
 from odoo.exceptions import ValidationError
 {% endif %}
+{% if needs_translate %}
+from odoo.tools.translate import _
+{% endif %}
 
 
 class {{ model_name | to_class }}(models.Model):
@@ -164,3 +167,43 @@ class {{ model_name | to_class }}(models.Model):
         for rec in self:
             pass
 {% endfor %}
+{# Phase 29: Complex constraints #}
+{% for constraint in complex_constraints %}
+{% if constraint.type == 'temporal' %}
+
+    @api.constrains({% for f in constraint.fields %}"{{ f }}"{% if not loop.last %}, {% endif %}{% endfor %})
+    def _check_{{ constraint.name }}(self):
+        for rec in self:
+            if {{ constraint.check_expr }}:
+                raise ValidationError(
+                    _("{{ constraint.message }}")
+                )
+{% else %}
+
+    def _check_{{ constraint.name }}(self):
+        for rec in self:
+            {{ constraint.check_body | indent(12) }}
+{% endif %}
+{% endfor %}
+{% if has_create_override %}
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        records = super().create(vals_list)
+{% for c in create_constraints %}
+        records._check_{{ c.name }}()
+{% endfor %}
+        return records
+{% endif %}
+{% if has_write_override %}
+
+    def write(self, vals):
+        result = super().write(vals)
+{% for c in write_constraints %}
+{% if c.write_trigger_fields %}
+        if any(f in vals for f in {{ c.write_trigger_fields }}):
+{% endif %}
+            self._check_{{ c.name }}()
+{% endfor %}
+        return result
+{% endif %}
