@@ -162,7 +162,7 @@ Phases 20-22 can execute in parallel (independent). Phase 23 before Phase 24 (de
 | 21. Template Correctness | 2/2 | Complete   | 2026-03-05 | - |
 | 22. Validation & Search Fixes | 2/2 | Complete   | 2026-03-05 | - |
 | 23. Unified Result Type | 2/2 | Complete   | 2026-03-05 | - |
-| 24. Code Quality & Decomposition | 2/2 | Complete   | 2026-03-05 | - |
+| 24. Code Quality & Decomposition | 2/2 | Complete    | 2026-03-05 | - |
 
 ---
 *Roadmap created: 2026-03-01*
