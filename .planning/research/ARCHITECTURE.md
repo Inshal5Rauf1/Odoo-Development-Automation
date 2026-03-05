@@ -1,690 +1,763 @@
-# Architecture: Agent Lightning + Cognee Integration
+# Architecture: v3.1 Design Flaws & Feature Gaps Integration
 
-**Domain:** RL-based agent optimization + knowledge graph pipeline for Odoo module automation
-**Researched:** 2026-03-04
-**Confidence:** MEDIUM -- both tools are well-documented and actively maintained, but integrating them with our specific architecture (markdown-based agents inside AI coding assistants, not API-based agents) is a novel application that requires adaptation of standard patterns.
+**Domain:** Odoo module automation -- spec extensions, new templates, new renderer stages, performance patterns
+**Researched:** 2026-03-05
+**Confidence:** HIGH -- all changes extend proven patterns already established in v3.0 (stage functions, Result[T], Jinja2 templates, spec-driven context building)
 
-## The Fundamental Question
+## Existing Architecture (Baseline)
 
-**Can RL optimize LLM-prompt-based agents?**
-
-**YES, but not through traditional RL weight updates.** Our agents are markdown files (`agents/odoo-model-gen.md`, `agents/odoo-view-gen.md`, etc.) that run inside AI coding assistants (Claude Code, Gemini, Codex). We do not train the underlying LLMs. Instead, we optimize the **prompts themselves** using Agent Lightning's APO (Automatic Prompt Optimization) algorithm.
-
-APO works by: (1) running the agent with a current prompt template, (2) collecting execution traces and outcomes, (3) generating textual critiques of the prompt, (4) rewriting the prompt to address weaknesses, (5) repeating. This is exactly what we need -- our agents ARE prompts.
-
-**Critical distinction:**
-- RL fine-tuning (PPO/GRPO) = trains model weights. Requires GPU, open-source models. NOT applicable to us.
-- APO = optimizes prompt text iteratively. Requires only LLM API access. APPLICABLE to us.
-- Our 8 agent markdown files are the optimization targets.
-
-**Confidence:** MEDIUM -- APO is documented to work with API-based agents (LangChain, OpenAI SDK). Adapting it to optimize markdown agent files that run inside Claude Code/Gemini as system prompts is novel. The core algorithm (evaluate, critique, rewrite) should transfer, but the integration plumbing needs custom work.
-
-## Recommended Architecture
-
-### Current 4-Layer Architecture (Before Integration)
+### Current Pipeline: Spec -> Renderer -> Templates -> Module
 
 ```
-Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
-  Claude Code, Gemini, Codex, OpenCode
-  Reads: agents/*.md, knowledge/*.md, commands/*.md
+                    CURRENT RENDER PIPELINE (v3.0)
+                    ================================
 
-Layer 3: Python Utilities (BUILT BY US)
-  Jinja2 rendering, pylint-odoo, Docker validation
-  ChromaDB semantic search, auto-fix pipeline
-  context7.py, mcp/server.py
-
-Layer 2: Odoo Extension (BUILT BY US)
-  8 agents (markdown), 13 commands (markdown)
-  Jinja2 templates, 13 KB files (markdown)
-  workflows/*.md
-
-Layer 1: GSD Orchestration (INHERITED)
-  Context management, state, phases, checkpoints, git
+  spec.json (input)
+       |
+       v
+  render_module()  <-- orchestrator
+       |
+       |-- _build_module_context(spec)    <-- shared context
+       |
+       |-- stages[] (7 lambdas, each returns Result[list[Path]])
+       |     |
+       |     |-- render_manifest()        <-- manifest.py.j2, init_root.py.j2, init_models.py.j2
+       |     |-- render_models()          <-- model.py.j2, view_form.xml.j2, action.xml.j2 (per model)
+       |     |-- render_views()           <-- menu.xml.j2
+       |     |-- render_security()        <-- security_group.xml.j2, access_csv.j2, record_rules.xml.j2
+       |     |-- render_wizards()         <-- wizard.py.j2, wizard_form.xml.j2, init_wizards.py.j2
+       |     |-- render_tests()           <-- test_model.py.j2, init_tests.py.j2
+       |     |-- render_static()          <-- demo_data.xml.j2, sequences.xml.j2, readme.rst.j2
+       |
+       v
+  created_files[]   <-- list[Path] of all generated files
+  warnings[]        <-- VerificationWarning from MCP verifier
 ```
 
-### Proposed 5-Layer Architecture (After Integration)
+### Current Spec Shape (Relevant Fields)
 
-```
-Layer 5: Intelligence Layer (NEW)
-  ┌─────────────────────────────────────────────────────┐
-  │  Agent Lightning APO           Cognee KG Pipeline   │
-  │  ┌──────────────────┐        ┌───────────────────┐  │
-  │  │ Prompt Optimizer  │        │ Knowledge Engine  │  │
-  │  │ ┌──────────────┐ │        │ ┌───────────────┐ │  │
-  │  │ │ Rollout       │ │        │ │ cognee.add()  │ │  │
-  │  │ │ Runner        │ │        │ │ (ingest KB)   │ │  │
-  │  │ ├──────────────┤ │        │ ├───────────────┤ │  │
-  │  │ │ Grader /      │ │        │ │ cognee.       │ │  │
-  │  │ │ Reward Fn     │ │        │ │ cognify()     │ │  │
-  │  │ ├──────────────┤ │        │ │ (build graph) │ │  │
-  │  │ │ APO Trainer   │ │        │ ├───────────────┤ │  │
-  │  │ │ (critique +   │ │        │ │ cognee.       │ │  │
-  │  │ │  rewrite)     │ │        │ │ search()      │ │  │
-  │  │ └──────────────┘ │        │ │ (hybrid query)│ │  │
-  │  └──────────────────┘        │ └───────────────┘ │  │
-  │         │                    └───────────────────┘  │
-  │         │ writes optimized        │ serves enriched │
-  │         │ agents/*.md             │ context          │
-  │         ▼                         ▼                  │
-  └─────────────────────────────────────────────────────┘
-           │                          │
-Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
-  Claude Code, Gemini, Codex, OpenCode
-  Reads: agents/*.md (now APO-optimized)
-  Reads: knowledge from Cognee (graph-enriched context)
-
-Layer 3: Python Utilities (BUILT BY US)
-  Jinja2 rendering, pylint-odoo, Docker validation
-  ChromaDB search (AUGMENTED by Cognee, not replaced)
-  auto-fix pipeline, context7.py, mcp/server.py
-  NEW: outcome_collector.py (feeds Agent Lightning)
-  NEW: cognee_bridge.py (wraps Cognee API for KB)
-
-Layer 2: Odoo Extension (BUILT BY US)
-  8 agents (markdown) -- NOW targets for APO optimization
-  13 commands (markdown), Jinja2 templates
-  13 KB files (markdown) -- NOW also ingested by Cognee
-  workflows/*.md
-
-Layer 1: GSD Orchestration (INHERITED)
-  Context management, state, phases, checkpoints, git
+```json
+{
+  "module_name": "my_module",
+  "module_title": "My Module",
+  "odoo_version": "17.0",
+  "depends": ["base", "mail"],
+  "models": [
+    {
+      "name": "my.model",
+      "description": "My Model",
+      "inherit": null,
+      "chatter": null,
+      "fields": [
+        {"name": "name", "type": "Char", "required": true},
+        {"name": "amount", "type": "Float", "compute": "_compute_amount", "depends": ["qty", "price"], "store": true}
+      ],
+      "sql_constraints": [{"name": "name_uniq", "definition": "UNIQUE(name)", "message": "..."}]
+    }
+  ],
+  "wizards": [...]
+}
 ```
 
-### Component Boundaries
+### Current Template Inventory (21 files)
 
-| Component | Responsibility | Layer | New/Modified | Communicates With |
-|-----------|---------------|-------|-------------|-------------------|
-| **APO Trainer** | Runs prompt optimization cycles on agent markdown files | L5 (new) | NEW | Rollout Runner, Grader, Agent files (L2) |
-| **Rollout Runner** | Executes agents against test tasks, collects traces | L5 (new) | NEW | Docker validation (L3), Agent files (L2) |
-| **Grader / Reward Function** | Scores agent outputs (pylint pass rate, Docker install success, test pass count) | L5 (new) | NEW | Validation pipeline (L3) |
-| **Cognee Knowledge Engine** | Ingests KB markdown, builds knowledge graph, serves hybrid search | L5 (new) | NEW | KB files (L2), cognee_bridge (L3) |
-| **outcome_collector.py** | Captures validation results in Agent Lightning's span format | L3 | NEW | Docker runner, pylint runner, APO Trainer |
-| **cognee_bridge.py** | Wraps Cognee's Python API; provides `enrich_context()` for agents | L3 | NEW | Cognee Engine (L5), agents (L2) |
-| **ChromaDB search** | Continues module similarity search (Cognee does NOT replace this) | L3 | UNCHANGED | Search commands |
-| **Agent markdown files** | System prompts for AI coding assistants -- now APO optimization targets | L2 | MODIFIED (by APO) | AI Coding Assistant (L4) |
-| **KB markdown files** | Odoo conventions/patterns -- now also source data for Cognee | L2 | UNCHANGED (source) | Cognee Engine (L5) |
-| **Validation pipeline** | pylint-odoo + Docker install + test execution | L3 | MODIFIED (adds outcome reporting) | Grader (L5) |
-| **GSD Orchestration** | Phase execution, checkpoints, state | L1 | UNCHANGED | Everything above |
+| Template | Directory | Rendered By |
+|----------|-----------|-------------|
+| manifest.py.j2 | shared | render_manifest |
+| init_root.py.j2 | shared | render_manifest |
+| init_models.py.j2 | shared | render_manifest |
+| model.py.j2 | 17.0, 18.0 | render_models |
+| view_form.xml.j2 | 17.0, 18.0 | render_models |
+| action.xml.j2 | 17.0, 18.0 | render_models |
+| menu.xml.j2 | shared | render_views |
+| security_group.xml.j2 | shared | render_security |
+| access_csv.j2 | shared | render_security |
+| record_rules.xml.j2 | shared | render_security |
+| wizard.py.j2 | shared | render_wizards |
+| wizard_form.xml.j2 | shared | render_wizards |
+| init_wizards.py.j2 | shared | render_wizards |
+| test_model.py.j2 | shared | render_tests |
+| init_tests.py.j2 | shared | render_tests |
+| demo_data.xml.j2 | shared | render_static |
+| sequences.xml.j2 | shared | render_static |
+| readme.rst.j2 | shared | render_static |
 
-## Integration Surface Area
+### Current Context Builder (_build_model_context)
 
-### Agent Lightning Integration Points
+Already handles: computed_fields, onchange_fields, constrained_fields, sequence_fields, state_field, inherit_list, needs_api, has_company_field, mail.thread injection. This is the primary extension point for new spec fields.
 
-Agent Lightning's APO algorithm optimizes prompt templates. Our agents ARE prompt templates (markdown files). The integration is:
+## Integration Plan: New Features into Existing Architecture
 
-```
-                    AGENT LIGHTNING APO LOOP
-                    ========================
-
-1. SELECT agent to optimize (e.g., odoo-model-gen.md)
-2. LOAD current prompt template from agents/odoo-model-gen.md
-3. RUN rollouts:
-   For each task in training dataset:
-     a. Invoke the agent via AI coding assistant subprocess
-        (claude --print -p "Generate model for [task spec]"
-         --system-prompt agents/odoo-model-gen.md)
-     b. Capture generated module files
-     c. Run validation pipeline:
-        - pylint-odoo check
-        - Docker install test
-        - Odoo test execution
-     d. Grade outcome (0.0 to 1.0):
-        - 0.0 = pylint errors + install fails
-        - 0.5 = installs but tests fail
-        - 0.8 = installs, tests pass, minor lint warnings
-        - 1.0 = clean install, all tests pass, zero lint issues
-4. CRITIQUE: LLM analyzes rollout traces + grades → textual gradient
-5. REWRITE: LLM edits prompt based on critique → new agent markdown
-6. VALIDATE on held-out tasks
-7. REPEAT (default: 3 beam rounds)
-8. OUTPUT: optimized agents/odoo-model-gen.md
-
-              ┌──────────────┐
-              │  Task Dataset │ (module specs + expected outcomes)
-              └──────┬───────┘
-                     │
-                     ▼
-    ┌────────────────────────────────┐
-    │  Agent Lightning APO Trainer   │
-    │  algorithm=agl.APO(llm_client) │
-    │  n_runners=4                   │
-    └────────┬───────────────────────┘
-             │
-    ┌────────▼────────┐     ┌──────────────────────┐
-    │  Rollout Runner  │────▶│  AI Coding Assistant  │
-    │  (spawns agent)  │     │  (claude --print)     │
-    └────────┬────────┘     └──────────┬───────────┘
-             │                         │
-             │    ┌────────────────────┘
-             │    │  generated module files
-             │    ▼
-    ┌────────┴────────────┐
-    │  Validation Pipeline │
-    │  pylint + Docker     │
-    └────────┬────────────┘
-             │ scores (0.0-1.0)
-             ▼
-    ┌────────────────────┐
-    │  Grader Function    │
-    │  (reward signal)    │
-    └────────┬───────────┘
-             │
-             ▼
-    ┌────────────────────┐
-    │  APO Critique +     │
-    │  Prompt Rewrite     │
-    │  (textual gradient) │
-    └────────┬───────────┘
-             │ improved prompt
-             ▼
-    ┌────────────────────┐
-    │  agents/*.md        │
-    │  (updated file)     │
-    └────────────────────┘
-```
-
-**What changes in existing components:**
-
-| Component | Change | Effort |
-|-----------|--------|--------|
-| `validation/docker_runner.py` | Add structured outcome reporting (JSON with pass/fail, error counts, test results) | LOW -- extend `DockerResult` |
-| `validation/pylint_runner.py` | Add structured outcome reporting (error count, warning count, categories) | LOW -- extend `PylintResult` |
-| `validation/report.py` | Add `to_reward_signal()` method that computes 0.0-1.0 score | LOW -- new method |
-| Agent markdown files | Become APO optimization targets; add version tracking header | LOW -- metadata addition |
-
-**What is NEW:**
-
-| Component | Purpose | Effort |
-|-----------|---------|--------|
-| `python/src/odoo_gen_utils/intelligence/apo_trainer.py` | Wraps Agent Lightning's APO for our agent format | HIGH |
-| `python/src/odoo_gen_utils/intelligence/rollout_runner.py` | Spawns AI coding assistant, runs agent, captures output | HIGH |
-| `python/src/odoo_gen_utils/intelligence/grader.py` | Converts validation results to reward signals | MEDIUM |
-| `python/src/odoo_gen_utils/intelligence/task_dataset.py` | Manages training/validation task specs | MEDIUM |
-| `training_data/tasks/` | Directory of module specs for training (JSON) | MEDIUM |
-| `training_data/golden/` | Known-good module outputs for grading | MEDIUM |
-| CLI command: `/odoo-gen:optimize` | Trigger APO training cycle | LOW |
-
-### Cognee Integration Points
-
-Cognee replaces the read path of our knowledge base, not the storage format. Our 13 markdown KB files remain the source of truth. Cognee ingests them into a knowledge graph, enabling relationship-aware retrieval instead of flat file reads.
+### Overview of Changes
 
 ```
-              COGNEE KNOWLEDGE PIPELINE
-              =========================
+CHANGE CLASSIFICATION
+=====================
 
-INGESTION (one-time + incremental updates):
+SPEC EXTENSIONS (modify spec shape, context builders):
+  1. relationships section       -- new top-level spec key
+  2. computation_chains section  -- new top-level spec key
+  3. constraints section         -- new top-level spec key
+  4. monetary field detection    -- derived from existing fields[]
 
-  knowledge/*.md (13 files)
-       │
-       ▼
-  cognee.add("knowledge/models.md")
-  cognee.add("knowledge/views.md")
-  cognee.add("knowledge/security.md")
-  ... (all 13 files)
-       │
-       ▼
-  cognee.cognify()
-       │
-       ├── Extract: chunk documents, identify entities
-       │   (model names, field types, decorators, patterns)
-       │
-       ├── Relate: build edges between concepts
-       │   ("Many2one field" --requires--> "comodel_name parameter")
-       │   ("mail.thread" --depends-on--> "mail module in depends")
-       │   ("@api.constrains" --forbids--> "@api.multi")
-       │
-       └── Embed: generate vector embeddings for each chunk
-           (stored in LanceDB or existing ChromaDB)
+NEW TEMPLATES (new .j2 files):
+  5. report.xml.j2               -- QWeb report template
+  6. report.py.j2                -- Report Python model
+  7. graph_view.xml.j2           -- Graph/pivot/cohort views
+  8. controller.py.j2            -- HTTP controller
+  9. import_export_wizard.py.j2  -- Import/export wizard
+  10. cron.xml.j2                -- ir.cron scheduled actions
 
-RETRIEVAL (during agent execution):
+NEW RENDERER STAGES (new stage functions):
+  11. render_reports()           -- orchestrates report templates
+  12. render_controllers()      -- orchestrates controller templates
+  13. render_cron()              -- orchestrates cron data
 
-  Agent needs context for "generate a Many2one field to res.partner"
-       │
-       ▼
-  cognee.search("Many2one field res.partner")
-       │
-       ├── Vector search: finds semantically similar KB chunks
-       │
-       ├── Graph traversal: follows relationships
-       │   "Many2one" → needs comodel_name → needs depends
-       │   "res.partner" → belongs to base module → no extra depends
-       │
-       └── Returns: enriched context with related patterns
-           (not just the chunk about Many2one, but also
-            the related comodel rules, import patterns,
-            and dependency resolution rules)
+TEMPLATE MODIFICATIONS (extend existing .j2 files):
+  14. model.py.j2               -- index=True, store=True, _order, ormcache, Monetary+currency_id
+  15. init_root.py.j2           -- import controllers, reports subpackages
+  16. manifest.py.j2            -- add report/cron/controller data files
+  17. access_csv.j2             -- ACL rows for report models
 
-       ┌───────────────────────────────────────────┐
-       │  Enriched Context (for agent prompt)       │
-       │                                            │
-       │  Primary: Many2one field declaration       │
-       │  Related: comodel_name must be valid model │
-       │  Related: add depends in __manifest__.py   │
-       │  Related: import from odoo.fields          │
-       │  Pattern: partner_id = fields.Many2one(    │
-       │           "res.partner", string=_("...")    │
-       │  Warning: do NOT use @api.multi with this  │
-       └───────────────────────────────────────────┘
+CONTEXT BUILDER MODIFICATIONS:
+  18. _build_model_context()    -- performance annotations, monetary detection
+  19. _build_module_context()   -- manifest_files for reports/cron/controllers
 ```
 
-**What changes in existing components:**
+### Detailed Integration Points
 
-| Component | Change | Effort |
-|-----------|--------|--------|
-| Knowledge markdown files | UNCHANGED -- remain source of truth | NONE |
-| ChromaDB search (`search/index.py`) | UNCHANGED -- continues serving module similarity search | NONE |
-| Agent markdown files | Add instruction to query Cognee for context enrichment | LOW |
-| Commands (e.g., `new.md`, `validate.md`) | Add step to populate Cognee if not initialized | LOW |
+#### 1. Spec Extensions (Data Layer)
 
-**What is NEW:**
+The spec JSON gains three new top-level sections. These do NOT change the existing models/fields/wizards structure -- they ADD alongside it.
 
-| Component | Purpose | Effort |
-|-----------|---------|--------|
-| `python/src/odoo_gen_utils/intelligence/cognee_bridge.py` | Wraps Cognee API; `ingest_kb()`, `enrich_context(query)`, `rebuild_graph()` | MEDIUM |
-| `python/src/odoo_gen_utils/intelligence/kb_sync.py` | Detects KB file changes, triggers incremental re-ingestion | LOW |
-| CLI command: `/odoo-gen:kb-sync` | Rebuild Cognee graph from knowledge/*.md | LOW |
-| MCP tool: `search_knowledge` | Query Cognee graph from within AI coding assistant | MEDIUM |
-| `.env` configuration | Cognee LLM provider, graph store, vector store settings | LOW |
+```json
+{
+  "module_name": "...",
+  "models": [...],
+  "wizards": [...],
 
-### Cognee Does NOT Replace ChromaDB
+  "relationships": [
+    {
+      "type": "through_model",
+      "source": "course.course",
+      "target": "student.student",
+      "through": "course.enrollment",
+      "source_field": "course_id",
+      "target_field": "student_id"
+    },
+    {
+      "type": "hierarchical",
+      "model": "department.department",
+      "parent_field": "parent_id",
+      "child_field": "child_ids"
+    },
+    {
+      "type": "self_referential",
+      "model": "employee.employee",
+      "field": "manager_id",
+      "inverse_field": "subordinate_ids"
+    }
+  ],
 
-This is important. The two serve different purposes:
+  "computation_chains": [
+    {
+      "chain": ["line.amount", "order.total_amount", "order.tax_amount", "order.grand_total"],
+      "models": ["sale.order.line", "sale.order", "sale.order", "sale.order"],
+      "description": "Line amounts roll up to order totals"
+    }
+  ],
 
-| Concern | ChromaDB (existing) | Cognee (new) |
-|---------|--------------------|----|
-| **What it stores** | Module descriptions, manifests, README content from GitHub/OCA | Odoo development patterns, conventions, rules from our KB |
-| **What it answers** | "Find modules similar to X" (module discovery) | "What rules apply when building X?" (pattern retrieval) |
-| **Data source** | External (GitHub repos, OCA modules) | Internal (our 13 KB markdown files) |
-| **Search type** | Vector similarity only | Hybrid: vector + graph traversal |
-| **Update frequency** | On `/odoo-gen:index` command | On KB file changes |
+  "constraints": [
+    {
+      "type": "cross_model",
+      "models": ["sale.order", "sale.order.line"],
+      "rule": "order.state == 'confirmed' implies all lines have product_id set",
+      "method": "_check_confirmed_lines"
+    },
+    {
+      "type": "temporal",
+      "model": "project.task",
+      "rule": "date_end >= date_start",
+      "method": "_check_dates"
+    },
+    {
+      "type": "capacity",
+      "model": "room.booking",
+      "rule": "count of bookings for room at time <= room.capacity",
+      "method": "_check_capacity"
+    }
+  ],
 
-ChromaDB handles module DISCOVERY. Cognee handles knowledge ENRICHMENT. They are complementary.
+  "reports": [
+    {
+      "name": "report_invoice",
+      "model": "account.move",
+      "report_type": "qweb-pdf",
+      "title": "Invoice Report"
+    }
+  ],
 
-## Data Flow Changes
+  "controllers": [
+    {
+      "name": "api_controller",
+      "route": "/api/v1",
+      "auth": "user",
+      "methods": [
+        {"endpoint": "/items", "http_method": "GET", "description": "List items"},
+        {"endpoint": "/items/<int:item_id>", "http_method": "GET", "description": "Get item"}
+      ]
+    }
+  ],
 
-### Current Data Flow (v2.1)
+  "cron_jobs": [
+    {
+      "name": "cleanup_old_records",
+      "model": "my.model",
+      "method": "action_cleanup_old",
+      "interval_number": 1,
+      "interval_type": "days",
+      "description": "Clean up records older than 90 days"
+    }
+  ],
 
+  "performance": {
+    "indexed_fields": [
+      {"model": "sale.order", "field": "partner_id"},
+      {"model": "sale.order", "field": "date_order"}
+    ],
+    "order_by": {
+      "sale.order": "date_order desc, id desc"
+    },
+    "cached_methods": [
+      {"model": "product.template", "method": "_get_categories", "keys": ["self.id"]}
+    ],
+    "transient_models": ["import.wizard"],
+    "archival": {
+      "model": "sale.order",
+      "active_field": true,
+      "cleanup_days": 365
+    }
+  }
+}
 ```
-User describes module → Agent reads knowledge/*.md files directly →
-Agent generates code → Validation pipeline → Results logged → Done
-```
 
-Knowledge retrieval is flat file reads. No relationship awareness. The agent gets the whole `knowledge/models.md` file even if it only needs the Many2one section. No connection between related concepts across files.
+**Integration with existing code:** The spec is a plain dict parsed from JSON. No schema validation exists today (spec fields are accessed via `.get()` with defaults). The new sections follow the same pattern -- `.get("relationships", [])`, `.get("reports", [])`, etc. No breaking changes.
 
-### New Data Flow (v3.0)
+#### 2. Context Builder Modifications
 
-```
-User describes module
-    │
-    ├──▶ Cognee: enrich_context(module_description)
-    │       Returns: relevant KB chunks + related patterns
-    │       (graph-aware, not just keyword match)
-    │
-    ├──▶ Agent (APO-optimized prompt) generates code
-    │       Uses: enriched context from Cognee
-    │       Prompt: iteratively improved by Agent Lightning
-    │
-    ├──▶ Validation pipeline runs
-    │       pylint + Docker + tests
-    │       NEW: reports structured outcomes
-    │
-    ├──▶ Outcome Collector captures results
-    │       Formats as Agent Lightning spans
-    │       Stores in training dataset
-    │
-    └──▶ (Periodically) APO Trainer runs
-            Uses accumulated outcomes
-            Generates improved agent prompts
-            Writes optimized agents/*.md
-```
+**`_build_model_context()` additions:**
 
-### Feedback Loop (the key architectural innovation)
-
-```
-┌────────────────────────────────────────────────────────────┐
-│                    CONTINUOUS IMPROVEMENT LOOP              │
-│                                                            │
-│  1. Agent generates module (using current prompt)          │
-│                    │                                       │
-│                    ▼                                       │
-│  2. Validation pipeline scores output                     │
-│                    │                                       │
-│                    ▼                                       │
-│  3. Outcome stored as training data                       │
-│                    │                                       │
-│                    ▼                                       │
-│  4. APO analyzes accumulated outcomes                     │
-│     - What patterns of errors recur?                      │
-│     - Which prompt sections cause issues?                 │
-│     - What KB context was missing?                        │
-│                    │                                       │
-│                    ▼                                       │
-│  5. APO rewrites agent prompt to address weaknesses       │
-│     - Add guardrails for common errors                    │
-│     - Strengthen weak instruction sections                │
-│     - Add/refine examples                                 │
-│                    │                                       │
-│                    ▼                                       │
-│  6. Improved agent generates better modules               │
-│     (back to step 1)                                      │
-│                                                            │
-│  Meanwhile:                                                │
-│  7. Cognee enriches context with related patterns          │
-│     - Validation failures → new KB patterns ingested       │
-│     - Graph connections surface non-obvious relationships  │
-│                                                            │
-└────────────────────────────────────────────────────────────┘
-```
-
-## Patterns to Follow
-
-### Pattern 1: Disaggregated Training (Agent Lightning)
-
-**What:** Separate agent execution from optimization. Agents run in their normal environment (AI coding assistants). Optimization happens offline in a separate process.
-
-**Why:** Our agents are markdown prompts loaded by Claude Code/Gemini. We cannot modify how those tools execute agents. We CAN modify the markdown files between runs.
-
-**How:**
 ```python
-# apo_trainer.py -- runs as standalone Python process
-import agentlightning as agl
+# NEW: Monetary field auto-detection
+has_monetary = any(f.get("type") == "Monetary" for f in fields)
+needs_currency_id = has_monetary and not any(f.get("name") == "currency_id" for f in fields)
 
-async def optimize_agent(agent_name: str, task_dataset: list[dict]):
-    """Optimize a single agent's markdown prompt via APO."""
-    agent_md_path = f"agents/{agent_name}.md"
-    current_prompt = Path(agent_md_path).read_text()
+# NEW: Performance annotations from spec
+perf = spec.get("performance", {})
+model_order = perf.get("order_by", {}).get(model["name"])
+indexed_fields_for_model = [
+    entry["field"] for entry in perf.get("indexed_fields", [])
+    if entry["model"] == model["name"]
+]
+cached_methods = [
+    entry for entry in perf.get("cached_methods", [])
+    if entry["model"] == model["name"]
+]
+is_transient = model["name"] in perf.get("transient_models", [])
 
-    trainer = agl.Trainer(
-        algorithm=agl.APO(
-            async_openai_client=openai_client,  # or litellm proxy
-            gradient_model="gpt-4.1-mini",
-            apply_edit_model="gpt-4.1-mini",
-            beam_width=3,
-            beam_rounds=3,
-        ),
-        n_runners=4,
-        initial_resources={
-            "agent_prompt": agl.PromptTemplate(
-                template=current_prompt,
-                engine="f-string",
-            )
-        },
-    )
+# NEW: Relationship awareness
+relationships = [
+    r for r in spec.get("relationships", [])
+    if r.get("model") == model["name"] or r.get("source") == model["name"] or r.get("target") == model["name"]
+]
 
-    result = trainer.fit(
-        agent=make_rollout_fn(agent_name),
-        train_dataset=task_dataset[:80],
-        val_dataset=task_dataset[80:],
-    )
+# NEW: Computation chains involving this model
+chains = [
+    c for c in spec.get("computation_chains", [])
+    if model["name"] in c.get("models", [])
+]
 
-    optimized_prompt = result.best_resources["agent_prompt"]
-    Path(agent_md_path).write_text(optimized_prompt)
+# NEW: Cross-model constraints involving this model
+model_constraints = [
+    c for c in spec.get("constraints", [])
+    if model["name"] in (c.get("models", []) if isinstance(c.get("models"), list) else [c.get("model", "")])
+]
 ```
 
-**Confidence:** MEDIUM -- APO is documented for API-based agents. Adapting to subprocess-based agents (claude --print) requires custom rollout functions.
+**`_build_module_context()` additions:**
 
-### Pattern 2: Knowledge Graph Augmented Retrieval (Cognee)
-
-**What:** Instead of agents reading flat markdown files, they query a knowledge graph that returns contextually relevant chunks with relationship-aware connections.
-
-**Why:** Our 13 KB files total ~3,000 lines. Agents cannot consume all of them in every prompt. Currently, agents either get too much context (whole file) or too little (manual selection). Cognee's hybrid search returns the right context automatically.
-
-**How:**
 ```python
-# cognee_bridge.py
-import cognee
+# NEW: Report, controller, cron file paths for manifest
+report_files = [f"report/{r['name']}_template.xml" for r in spec.get("reports", [])]
+controller_files = []  # controllers don't go in manifest data
+cron_files = ["data/cron.xml"] if spec.get("cron_jobs") else []
 
-async def ingest_kb(kb_dir: str = "knowledge/"):
-    """Ingest all KB markdown files into Cognee."""
-    for md_file in Path(kb_dir).glob("*.md"):
-        await cognee.add(str(md_file), dataset_name="odoo-kb")
-    await cognee.cognify()
+# Extend manifest_files computation
+manifest_files.extend(report_files)
+manifest_files.extend(cron_files)
 
-async def enrich_context(query: str, max_chunks: int = 10) -> str:
-    """Query Cognee for relevant KB context with relationships."""
-    results = await cognee.search(query)
-    # Format results as markdown context block
-    context_parts = []
-    for result in results[:max_chunks]:
-        context_parts.append(f"### {result.source}\n{result.content}")
-        if result.related:
-            for rel in result.related:
-                context_parts.append(f"**Related ({rel.relation}):** {rel.content}")
-    return "\n\n".join(context_parts)
+# NEW: Flags for init_root.py.j2
+has_controllers = bool(spec.get("controllers"))
+has_reports = bool(spec.get("reports"))
 ```
 
-**Confidence:** HIGH for ingestion (Cognee natively supports .md files). MEDIUM for retrieval quality (depends on entity extraction quality from Odoo-specific markdown).
+#### 3. New Templates
 
-### Pattern 3: Outcome-Based Reward Signal
+| Template | Location | Purpose | Context Keys |
+|----------|----------|---------|-------------|
+| `report_template.xml.j2` | shared | QWeb report XML | report, model_name, fields |
+| `report_action.xml.j2` | shared | Report action + paperformat | report, module_name |
+| `graph_view.xml.j2` | shared | Graph/pivot view XML | model_name, measure_fields, dimension_fields |
+| `controller.py.j2` | shared | HTTP controller class | controller, module_name |
+| `init_controllers.py.j2` | shared | controllers/__init__.py | controllers |
+| `import_export_wizard.py.j2` | shared | Bulk import/export wizard | wizard, model_name, fields |
+| `cron.xml.j2` | shared | ir.cron data records | cron_jobs, module_name |
 
-**What:** Convert our existing validation pipeline outputs into numerical reward signals for Agent Lightning.
+#### 4. New Renderer Stages
 
-**Why:** Agent Lightning's APO needs a grading function. We already have grading infrastructure (pylint scores, Docker pass/fail, test counts). We just need to normalize them to 0.0-1.0.
+Three new stage functions, following the exact same pattern as existing ones:
 
-**How:**
 ```python
-# grader.py
-from dataclasses import dataclass
+def render_reports(
+    env: Environment,
+    spec: dict[str, Any],
+    module_dir: Path,
+    module_context: dict[str, Any],
+) -> Result[list[Path]]:
+    """Render QWeb report templates and report actions."""
+    try:
+        reports = spec.get("reports", [])
+        if not reports:
+            return Result.ok([])
+        created: list[Path] = []
+        for report in reports:
+            rctx = {**module_context, "report": report}
+            rname = report["name"]
+            created.append(render_template(
+                env, "report_template.xml.j2",
+                module_dir / "report" / f"{rname}_template.xml", rctx))
+            created.append(render_template(
+                env, "report_action.xml.j2",
+                module_dir / "report" / f"{rname}_action.xml", rctx))
+        return Result.ok(created)
+    except Exception as exc:
+        return Result.fail(f"render_reports failed: {exc}")
 
-@dataclass(frozen=True)
-class OutcomeReward:
-    pylint_score: float      # 0.0-1.0 (errors=0, warnings penalized)
-    install_score: float     # 0.0 or 1.0 (binary: installs or not)
-    test_score: float        # 0.0-1.0 (fraction of tests passing)
-    overall: float           # weighted combination
 
-def grade_module_output(
-    pylint_result: "PylintResult",
-    docker_result: "DockerResult",
-) -> OutcomeReward:
-    # Pylint: start at 1.0, subtract for errors/warnings
-    pylint_score = max(0.0, 1.0 - (pylint_result.error_count * 0.2)
-                                 - (pylint_result.warning_count * 0.05))
+def render_controllers(
+    env: Environment,
+    spec: dict[str, Any],
+    module_dir: Path,
+    module_context: dict[str, Any],
+) -> Result[list[Path]]:
+    """Render HTTP controllers and controllers/__init__.py."""
+    try:
+        controllers = spec.get("controllers", [])
+        if not controllers:
+            return Result.ok([])
+        created: list[Path] = []
+        created.append(render_template(
+            env, "init_controllers.py.j2",
+            module_dir / "controllers" / "__init__.py",
+            {**module_context, "controllers": controllers}))
+        for ctrl in controllers:
+            cctx = {**module_context, "controller": ctrl}
+            created.append(render_template(
+                env, "controller.py.j2",
+                module_dir / "controllers" / f"{ctrl['name']}.py", cctx))
+        return Result.ok(created)
+    except Exception as exc:
+        return Result.fail(f"render_controllers failed: {exc}")
 
-    # Docker install: binary
-    install_score = 1.0 if docker_result.install_success else 0.0
 
-    # Tests: fraction passing
-    if docker_result.tests_total > 0:
-        test_score = docker_result.tests_passed / docker_result.tests_total
-    else:
-        test_score = 0.0  # no tests = bad
-
-    # Weighted overall (install is most important)
-    overall = (install_score * 0.5
-             + test_score * 0.3
-             + pylint_score * 0.2)
-
-    return OutcomeReward(
-        pylint_score=pylint_score,
-        install_score=install_score,
-        test_score=test_score,
-        overall=overall,
-    )
+def render_cron(
+    env: Environment,
+    spec: dict[str, Any],
+    module_dir: Path,
+    module_context: dict[str, Any],
+) -> Result[list[Path]]:
+    """Render ir.cron scheduled action data file."""
+    try:
+        cron_jobs = spec.get("cron_jobs", [])
+        if not cron_jobs:
+            return Result.ok([])
+        created: list[Path] = []
+        cctx = {**module_context, "cron_jobs": cron_jobs}
+        created.append(render_template(
+            env, "cron.xml.j2",
+            module_dir / "data" / "cron.xml", cctx))
+        return Result.ok(created)
+    except Exception as exc:
+        return Result.fail(f"render_cron failed: {exc}")
 ```
 
-**Confidence:** HIGH -- straightforward mapping from existing validation outputs to numerical rewards.
+**Integration into render_module():**
 
-## Anti-Patterns to Avoid
+```python
+stages = [
+    lambda: render_manifest(env, spec, module_dir, ctx),
+    lambda: render_models(env, spec, module_dir, ctx, verifier=verifier, warnings_out=all_warnings),
+    lambda: render_views(env, spec, module_dir, ctx),
+    lambda: render_security(env, spec, module_dir, ctx),
+    lambda: render_wizards(env, spec, module_dir, ctx),
+    lambda: render_reports(env, spec, module_dir, ctx),       # NEW
+    lambda: render_controllers(env, spec, module_dir, ctx),   # NEW
+    lambda: render_cron(env, spec, module_dir, ctx),          # NEW
+    lambda: render_tests(env, spec, module_dir, ctx),
+    lambda: render_static(env, spec, module_dir, ctx),
+]
+```
 
-### Anti-Pattern 1: Replacing ChromaDB with Cognee for Module Search
+Reports and controllers go AFTER security (they need ACLs defined) and BEFORE tests (tests may reference reports). Cron goes before tests for the same reason.
 
-**What people might do:** Since Cognee has vector search, replace ChromaDB entirely.
-**Why it is wrong:** ChromaDB indexes EXTERNAL modules (GitHub/OCA repos) for module discovery. Cognee indexes INTERNAL knowledge (our KB files) for pattern retrieval. Different data, different purpose, different update cadence.
-**Do this instead:** Keep ChromaDB for module search (`/odoo-gen:search`). Add Cognee for knowledge enrichment (agent context). They are complementary.
+#### 5. Template Modifications (Existing Files)
 
-### Anti-Pattern 2: Using RL Fine-Tuning Instead of APO
+**model.py.j2 changes:**
 
-**What people might do:** Try to use Agent Lightning's PPO/GRPO algorithms to fine-tune Claude or GPT model weights.
-**Why it is wrong:** We use closed-source LLMs (Claude, GPT). We cannot fine-tune them via RL. Even if we could, our users run agents inside their own AI coding assistant subscriptions -- we do not control the model.
-**Do this instead:** Use APO exclusively. It optimizes the prompt text, not the model. The improved prompt works with any underlying model.
+```jinja2
+{# Add after _description line #}
+{% if model_order %}
+    _order = "{{ model_order }}"
+{% endif %}
 
-### Anti-Pattern 3: Running APO in the Generation Pipeline
+{# Monetary currency_id auto-injection #}
+{% if needs_currency_id %}
+    currency_id = fields.Many2one(
+        comodel_name="res.currency",
+        string="Currency",
+        default=lambda self: self.env.company.currency_id,
+    )
+{% endif %}
 
-**What people might do:** Run APO optimization as part of every module generation.
-**Why it is wrong:** APO is expensive (multiple rollouts x multiple beam rounds x validation per rollout). A single APO cycle for one agent could take hours and cost significant API credits. Running it per-generation is wasteful and slow.
-**Do this instead:** Run APO as a separate, periodic offline process (`/odoo-gen:optimize`). Collect outcomes during normal operation. Run optimization weekly/monthly when enough training data accumulates.
+{# Field-level index annotation #}
+{% for field in fields %}
+    {{ field.name }} = fields.{{ field.type }}(
+        ...
+{% if field.name in indexed_field_names %}
+        index=True,
+{% endif %}
+    )
+{% endfor %}
 
-### Anti-Pattern 4: Cognee as Real-Time Query Service
+{# ormcache decorator on methods #}
+{% if cached_methods %}
+from odoo.tools import ormcache
+{% endif %}
 
-**What people might do:** Query Cognee during every agent invocation in the generation pipeline, adding latency to each step.
-**Why it is wrong:** Cognee's cognify() and search() involve LLM calls. Adding them to the hot path of generation adds latency and cost. Agents in Claude Code already have limited context windows.
-**Do this instead:** Pre-compute enriched context at the start of module generation. Cache Cognee search results for the module's domain. Pass pre-computed context to agents as part of their prompt, not as real-time queries.
+{% for cm in cached_methods %}
+    @ormcache({{ cm.keys | map('quote') | join(', ') }})
+    def {{ cm.method }}(self):
+        # TODO: implement cached method
+        pass
+{% endfor %}
+```
 
-### Anti-Pattern 5: Abandoning Markdown KB Files
+**init_root.py.j2 changes:**
 
-**What people might do:** Move all knowledge into Cognee's graph and stop maintaining markdown files.
-**Why it is wrong:** Markdown files are human-readable, version-controlled, and serve as documentation for contributors. They are the "single source of truth" pattern. Cognee is a derived index, not a source.
-**Do this instead:** Keep markdown KB files as the source. Cognee ingests them. When KB files change, re-run cognify(). This is the same pattern as "source code -> compiled binary."
+```jinja2
+from . import models
+{% if has_wizards %}
+from . import wizards
+{% endif %}
+{% if has_controllers %}
+from . import controllers
+{% endif %}
+```
 
-## Integration Dependencies and Build Order
+Note: `report/` subdirectory typically contains only XML templates, not Python models, so no `from . import report` is needed unless the report defines a custom Python parser class.
+
+**manifest.py.j2 changes:** Already driven by `manifest_files` list in context. The `_compute_manifest_data()` function needs extension to include report and cron files.
+
+**access_csv.j2 changes:** No change needed. Report models (`ir.actions.report`) are Odoo core models that do not need custom ACL entries.
+
+## Component Boundary Map
+
+```
+MODIFIED vs NEW COMPONENTS
+==========================
+
+MODIFIED (extend existing files):
+  renderer.py
+    |-- _build_model_context()      +15 context keys
+    |-- _build_module_context()     +5 context keys, manifest file list
+    |-- _compute_manifest_data()    +report, cron file paths
+    |-- render_module()             +3 stages in pipeline
+    |-- _track_artifacts()          +REPORT, CONTROLLER, CRON kinds
+  auto_fix.py
+    |-- (no changes needed for v3.1)
+  templates/shared/init_root.py.j2  +controllers conditional import
+  templates/17.0/model.py.j2        +_order, index, ormcache, currency_id
+  templates/18.0/model.py.j2        +same as 17.0
+
+NEW (entirely new files):
+  renderer.py (new functions, same file):
+    |-- render_reports()
+    |-- render_controllers()
+    |-- render_cron()
+  templates/shared/report_template.xml.j2
+  templates/shared/report_action.xml.j2
+  templates/shared/graph_view.xml.j2
+  templates/shared/controller.py.j2
+  templates/shared/init_controllers.py.j2
+  templates/shared/import_export_wizard.py.j2
+  templates/shared/cron.xml.j2
+```
+
+## Data Flow: Spec Through Pipeline
+
+### Before v3.1
+
+```
+spec.json --> _build_module_context() --> shared context dict
+                                              |
+          --> _build_model_context()  --> per-model context dict
+                                              |
+          --> stage functions         --> render_template() calls
+                                              |
+          --> Jinja2 .j2 templates    --> output files
+```
+
+### After v3.1
+
+```
+spec.json (EXTENDED with relationships, reports, controllers, cron, performance)
+    |
+    v
+_build_module_context()  (EXTENDED: +has_controllers, +has_reports, +cron manifest entries)
+    |                                +report manifest entries
+    v
+shared context dict -----> render_manifest()
+                    -----> render_models()       (per-model context EXTENDED with performance keys)
+                    -----> render_views()
+                    -----> render_security()
+                    -----> render_wizards()
+                    -----> render_reports()       NEW stage
+                    -----> render_controllers()   NEW stage
+                    -----> render_cron()          NEW stage
+                    -----> render_tests()
+                    -----> render_static()
+    |
+    v
+output files (EXPANDED set: +report/*.xml, +controllers/*.py, +data/cron.xml)
+```
+
+### Key Data Flow Principle: Spec Sections Map to Stages
+
+Each new spec section has a single owning stage. Cross-cutting concerns (like monetary detection) are resolved in context builders, not in stages.
+
+| Spec Section | Primary Stage | Context Builder |
+|-------------|---------------|-----------------|
+| `models[]` | render_models | _build_model_context |
+| `wizards[]` | render_wizards | render_wizards (inline) |
+| `reports[]` | render_reports (NEW) | render_reports (inline) |
+| `controllers[]` | render_controllers (NEW) | render_controllers (inline) |
+| `cron_jobs[]` | render_cron (NEW) | render_cron (inline) |
+| `relationships[]` | render_models (enriches model context) | _build_model_context |
+| `computation_chains[]` | render_models (enriches model context) | _build_model_context |
+| `constraints[]` | render_models (enriches model context) | _build_model_context |
+| `performance{}` | render_models (field-level) + render_manifest (_order) | _build_model_context |
+
+## Build Order (Dependency-Driven)
 
 ### Dependency Graph
 
 ```
-                         ┌────────────────────┐
-                         │  Training Dataset   │
-                         │  (module specs +    │
-                         │   golden outputs)   │
-                         └────────┬───────────┘
-                                  │ requires
-         ┌────────────────────────┼───────────────────────┐
-         ▼                        ▼                       ▼
-┌──────────────────┐  ┌───────────────────┐  ┌──────────────────┐
-│ Outcome Collector │  │  Rollout Runner    │  │  Grader Function │
-│ (structured       │  │  (spawns agent,    │  │  (converts       │
-│  validation       │  │   captures output) │  │   validation →   │
-│  reporting)       │  │                    │  │   reward)        │
-└────────┬─────────┘  └────────┬──────────┘  └────────┬─────────┘
-         │                     │                       │
-         │ requires            │ requires              │ requires
-         ▼                     ▼                       ▼
-┌──────────────────┐  ┌───────────────────┐  ┌──────────────────┐
-│ Validation        │  │  Agent Markdown    │  │  Validation      │
-│ Pipeline          │  │  Files (existing)  │  │  Result Types    │
-│ (existing,        │  │                    │  │  (existing)      │
-│  add reporting)   │  │                    │  │                  │
-└──────────────────┘  └───────────────────┘  └──────────────────┘
+                    LAYER 0: Spec Extensions
+                    ========================
+       No code changes needed. JSON is schema-free.
+       Agent/human just produces richer specs.
 
-
-┌──────────────────┐
-│  Cognee Bridge    │
-│  (KB ingestion +  │  ← Independent of Agent Lightning
-│   search wrapper) │
-└────────┬─────────┘
-         │ requires
-         ▼
-┌──────────────────┐
-│  Knowledge Base   │
-│  Markdown Files   │
-│  (existing)       │
-└──────────────────┘
+                    LAYER 1: Context Builders
+                    =========================
+       _build_model_context() extensions
+       _build_module_context() extensions
+       _compute_manifest_data() extensions
+              |
+              | required by
+              v
+                    LAYER 2: Template Changes
+                    =========================
+       model.py.j2 (index, _order, ormcache, currency_id)
+       init_root.py.j2 (controllers import)
+              |
+              | required by            independent of
+              v                              |
+                    LAYER 3: New Templates + Stages
+                    ================================
+       +-----------------+  +-------------------+  +-------------+
+       | render_reports() |  | render_controllers |  | render_cron |
+       | report_*.xml.j2  |  | controller.py.j2   |  | cron.xml.j2 |
+       | graph_view.xml.j2|  | init_controllers   |  |             |
+       +-----------------+  +-------------------+  +-------------+
+              |                      |                      |
+              | all require          |                      |
+              v                      v                      v
+                    LAYER 4: Pipeline Integration
+                    =============================
+       render_module() adds 3 stages
+       _track_artifacts() adds new artifact kinds
+              |
+              v
+                    LAYER 5: Tests
+                    ==============
+       Unit tests for each new stage
+       Integration tests for full pipeline with new spec sections
+       Golden path E2E with extended spec
 ```
 
-### Recommended Build Order
+### Recommended Phase Order
 
-**Build Cognee integration FIRST.** It is simpler, has fewer dependencies, and delivers value immediately.
+| Phase | What | Why This Order | Depends On |
+|-------|------|----------------|------------|
+| **1** | Spec design: relationships, computation_chains, constraints sections | Foundation. No code changes. Just define the spec shape. All downstream work reads this. | Nothing |
+| **2** | Monetary detection + performance annotations in context builders | Small, self-contained changes to `_build_model_context()`. Modifies model.py.j2 only. Low risk. | Phase 1 (spec shape) |
+| **3** | model.py.j2 template updates (index, _order, ormcache, Monetary+currency_id) | Template changes that consume the new context keys from Phase 2. | Phase 2 |
+| **4** | render_reports() + QWeb report templates | Independent new stage. Report templates are XML-only (no Python model needed for basic reports). | Phase 1 (spec shape) |
+| **5** | render_controllers() + controller templates | Independent new stage. Controllers need init_root.py.j2 update. | Phase 1 (spec shape) |
+| **6** | render_cron() + cron.xml template | Simplest new stage (single XML data file). | Phase 1 (spec shape) |
+| **7** | Graph/pivot/cohort views + import/export wizards | Analytics views extend render_models or render_views. Import/export wizards extend render_wizards. | Phase 1 |
+| **8** | Pipeline integration (stages added to render_module, manifest updates) | Wire everything together. Requires all new stages to exist. | Phases 2-7 |
+| **9** | Tests + golden path E2E with extended spec | Validate the entire pipeline with a spec that exercises all new features. | Phase 8 |
 
-**Build Agent Lightning integration SECOND.** It requires training data (which accumulates during Cognee-enhanced operation) and has more complex integration plumbing.
+**Parallelizable:** Phases 4, 5, 6, 7 are independent of each other. They all depend only on Phase 1 (spec shape). They can be built in parallel or in any order.
 
-| Order | Component | Rationale | Dependencies |
-|-------|-----------|-----------|-------------|
-| 1 | Cognee Bridge (`cognee_bridge.py`) | Standalone module. Ingests existing KB files. No changes to other components needed. | Cognee pip package, KB markdown files |
-| 2 | KB Sync (`kb_sync.py`) | Detects KB file changes, triggers re-ingestion. Simple file watcher. | Cognee Bridge |
-| 3 | MCP tool: `search_knowledge` | Exposes Cognee search to AI coding assistants via MCP. Immediate value. | Cognee Bridge, MCP server (existing) |
-| 4 | Outcome Collector | Extends validation pipeline to report structured outcomes. Foundation for Agent Lightning. | Validation pipeline (existing) |
-| 5 | Grader Function | Converts validation outcomes to 0.0-1.0 rewards. Simple pure function. | Outcome Collector |
-| 6 | Training Dataset | Creates/manages sets of module specs for APO training. Requires collecting real-world specs. | None (but accumulates from real usage) |
-| 7 | Rollout Runner | Spawns AI coding assistant subprocess, runs agent, captures output. Most complex new component. | Agent markdown files, validation pipeline |
-| 8 | APO Trainer | Wraps Agent Lightning's APO algorithm for our agent format. | Rollout Runner, Grader, Training Dataset |
-| 9 | CLI command: `/odoo-gen:optimize` | User-facing command to trigger APO training cycle. | APO Trainer |
+**Critical path:** Phase 1 -> Phase 2 -> Phase 3 -> Phase 8 -> Phase 9. This is the path for performance annotations in models, which is the only chain with sequential dependencies.
 
-**Build order rationale:**
-- Cognee (steps 1-3) is independent and delivers value without Agent Lightning.
-- Steps 4-5 (outcome collection) are small modifications to existing code, provide observability value on their own, and are prerequisites for Agent Lightning.
-- Steps 6-8 (Agent Lightning core) require the most new code and benefit from data accumulated during steps 1-5.
-- Step 9 is trivial CLI wiring after the core is built.
+## Architectural Patterns
 
-## Technology Requirements
+### Pattern 1: Stage Function Contract
 
-### Agent Lightning
+**What:** Every renderer stage follows the same contract: `(env, spec, module_dir, module_context) -> Result[list[Path]]`.
 
-| Requirement | Details | Compatibility |
-|------------|---------|---------------|
-| Python | >=3.10 | COMPATIBLE with our 3.12 |
-| `agentlightning` package | v0.3.0+ (pip install agentlightning) | OK |
-| LLM API access | For APO critique/rewrite (uses LiteLLM proxy internally) | OK -- can use OpenAI or Anthropic via LiteLLM |
-| GPU | NOT required for APO (CPU-only). Only needed for RL fine-tuning (which we skip). | OK -- no GPU needed |
-| Training data | Module specs + expected outcomes for grading | Must create |
-| Compute time | APO cycle: ~10 min per agent with 8 parallel runners | Acceptable for offline optimization |
+**Why:** Uniform error handling (Result.ok/Result.fail), composability (stages are lambdas in a list), independent testability (call one stage with mock inputs).
 
-### Cognee
+**Rule:** New stages MUST return `Result.ok([])` when their spec section is empty, not `Result.ok(None)` or skip execution. The pipeline calls `.extend(result.data or [])` and expects a list.
 
-| Requirement | Details | Compatibility |
-|------------|---------|---------------|
-| Python | 3.10-3.13 | COMPATIBLE with our 3.12 |
-| `cognee` package | v0.5.3+ (pip install cognee) | OK |
-| LLM API | For entity extraction during cognify() | OK -- supports Anthropic, OpenAI, Ollama |
-| Graph store | Default: NetworkX (file-based, zero setup) | OK for our scale (~13 files) |
-| Vector store | Default: LanceDB (file-based, zero setup) | OK -- or use existing ChromaDB |
-| Disk space | Minimal for 13 KB files | OK |
-
-### Combined Dependency Installation
-
-```bash
-# In python/ directory
-uv add cognee agentlightning
-
-# Or with extras
-uv add "cognee[neo4j]"  # if wanting Neo4j graph backend later
+```python
+# CORRECT
+def render_reports(...) -> Result[list[Path]]:
+    reports = spec.get("reports", [])
+    if not reports:
+        return Result.ok([])  # empty list, not None
+    ...
 ```
 
-## Scalability Considerations
+### Pattern 2: Context Builder Layering
 
-| Concern | Current (13 KB files, 8 agents) | Future (50+ KB files, 20+ agents) |
-|---------|--------------------------------|-----------------------------------|
-| Cognee ingestion | ~30 seconds for 13 markdown files | ~2 minutes. Still fine. |
-| Cognee search | <1 second with NetworkX/LanceDB | <1 second. NetworkX handles thousands of nodes fine. |
-| APO per agent | ~10 min with 8 runners | Same per agent. More agents = run in sequence or parallelize. |
-| Training data | Need 20-50 module specs minimum | More data = better optimization. No scaling issue. |
-| Graph store | NetworkX (in-memory, file persistence) | Switch to Neo4j at 1000+ nodes. Currently ~200 nodes. |
+**What:** Module-level context (shared across all templates) goes in `_build_module_context()`. Per-model context goes in `_build_model_context()`. Stage-specific context is built inline in the stage function.
 
-## Risk Assessment
+**Why:** Prevents context bloat. Not every template needs every key. The model template needs `indexed_field_names` but the report template does not.
 
-| Risk | Severity | Likelihood | Mitigation |
-|------|----------|------------|------------|
-| APO optimizes prompts in ways that work for training tasks but fail on novel specs | HIGH | MEDIUM | Use diverse training dataset. Validate on held-out specs. Keep human review. Version-control agent files for rollback. |
-| Cognee entity extraction misidentifies Odoo concepts (e.g., treats field names as general nouns) | MEDIUM | MEDIUM | Custom ontology hints. Test extraction quality on each KB file. Iterate cognify pipeline configuration. |
-| Agent Lightning's OpenAI dependency blocks Anthropic-only users | MEDIUM | LOW | LiteLLM proxy supports Anthropic. APO critique/rewrite can use any model via LiteLLM. |
-| APO rollouts are slow (each needs Docker validation) | MEDIUM | HIGH | Parallelize runners. Cache Docker images. Use pylint-only for fast feedback, Docker for final validation. |
-| Cognee adds latency to agent context preparation | LOW | MEDIUM | Pre-compute at generation start. Cache per module domain. |
-| Training data is insufficient (need 20+ diverse module specs) | HIGH | MEDIUM | Start collecting specs from real usage now. Create synthetic specs from OCA module manifests. |
+**Rule:** New spec sections that create standalone output (reports, controllers, cron) build their template context INLINE in their stage function. Only cross-cutting concerns (monetary detection, performance flags that affect model.py.j2) go in the shared builders.
+
+### Pattern 3: Immutable Context Extension
+
+**What:** Use `{**module_context, "report": report}` to create new contexts. Never mutate `module_context` or `model_context` in place.
+
+**Why:** Stages share the same `ctx` reference. Mutation in one stage would contaminate later stages.
+
+**Rule:** Already enforced throughout v3.0. All new stages MUST follow this pattern.
+
+### Pattern 4: Conditional File Generation
+
+**What:** If a spec section is empty, generate zero files and return `Result.ok([])`. Do NOT generate stub files.
+
+**Why:** Clean modules. A module without reports should not have an empty `report/` directory. Matches Odoo community conventions.
+
+**Rule:** `render_reports()` returns `Result.ok([])` when `spec.get("reports", [])` is empty. The `manifest_files` list must also conditionally exclude report paths.
+
+### Pattern 5: Template Directory Convention
+
+**What:** New templates go in `shared/` unless they differ between Odoo 17.0 and 18.0. Version-specific templates go in `17.0/` or `18.0/` and override `shared/`.
+
+**Why:** The `FileSystemLoader([version_dir, shared_dir])` fallback chain handles this automatically.
+
+**Rule:** QWeb reports, controllers, and cron are syntax-identical between 17.0 and 18.0. Put them in `shared/`. If future Odoo versions change report syntax, add version-specific overrides.
+
+## Anti-Patterns to Avoid
+
+### Anti-Pattern 1: Monolithic Context Builder
+
+**What people do:** Add all 15+ new context keys to `_build_model_context()`, even keys only used by reports or controllers.
+**Why it is wrong:** Context builder grows beyond 200 lines. Every template receives keys it does not use. StrictUndefined cannot catch typos in optional keys.
+**Do this instead:** Add only model-relevant keys (performance, monetary, relationships) to `_build_model_context()`. Report/controller/cron contexts are built inline in their stage functions.
+
+### Anti-Pattern 2: Nested Stage Dependencies
+
+**What people do:** Make `render_reports()` call `render_models()` to get model context, or have stages return data that later stages consume.
+**Why it is wrong:** Breaks the independent-stage contract. Stages become coupled. Order changes break things.
+**Do this instead:** Stages read from `spec` (immutable input) and `module_context` (shared context). They do NOT read from other stages' outputs. If a report needs model field names, it reads `spec["models"]` directly.
+
+### Anti-Pattern 3: Performance Annotations in Templates Only
+
+**What people do:** Add `index=True` logic only in model.py.j2 without spec-level declaration, relying on template heuristics.
+**Why it is wrong:** Heuristics guess wrong. A field named `partner_id` is usually indexed, but not always. Performance decisions should be explicit in the spec, not implicit in templates.
+**Do this instead:** Performance annotations live in `spec["performance"]`. The context builder translates them into template-friendly keys. Templates render what the spec declares.
+
+### Anti-Pattern 4: Separate Renderer File for Each Stage
+
+**What people do:** Create `render_reports.py`, `render_controllers.py`, `render_cron.py` as separate modules.
+**Why it is wrong:** Over-fragmentation. The existing 7 stages are all in `renderer.py` (~770 lines). Adding 3 more stages adds ~120 lines. Still well under 800 lines. Separate files add import complexity without benefit.
+**Do this instead:** Keep all stage functions in `renderer.py`. If it exceeds 800 lines after adding all stages plus context builder extensions, THEN extract context builders into a `renderer_context.py` module.
+
+## Generated Module Structure (After v3.1)
+
+```
+my_module/
+  __init__.py                 # MODIFIED: +controllers import
+  __manifest__.py             # MODIFIED: +report, cron data files
+  models/
+    __init__.py
+    my_model.py               # MODIFIED: +_order, +index, +ormcache, +currency_id
+  views/
+    my_model_views.xml         # MODIFIED: +graph/pivot views appended
+    my_model_action.xml
+    menu.xml
+  security/
+    security.xml
+    ir.model.access.csv
+    record_rules.xml
+  wizards/                     # existing
+    __init__.py
+    import_data.py             # NEW: import/export wizard
+  controllers/                 # NEW directory
+    __init__.py
+    api_controller.py
+  report/                      # NEW directory
+    report_invoice_template.xml
+    report_invoice_action.xml
+  data/
+    data.xml
+    sequences.xml
+    cron.xml                   # NEW file
+  tests/
+    __init__.py
+    test_my_model.py
+  demo/
+    demo_data.xml
+  static/description/index.html
+  README.rst
+  i18n/my_module.pot
+```
+
+## Scaling Considerations
+
+| Concern | Impact | Approach |
+|---------|--------|----------|
+| Template count growth (21 -> 28) | Minimal. FileSystemLoader handles hundreds of templates efficiently. | No action needed. |
+| Context builder complexity | `_build_model_context` grows from ~100 to ~130 lines. | Monitor. Extract to separate function if exceeding 150 lines. |
+| Stage count growth (7 -> 10) | Minimal. Lambda list iteration is O(n) where n=10. | No action needed. |
+| Spec size growth | Specs with all sections may reach 200+ lines of JSON. | Consider spec validation (JSON Schema or Pydantic) in a future milestone. |
+| Manifest data file ordering | More file types increase ordering complexity. | Extend `_compute_manifest_data()` with clear section comments. |
 
 ## Sources
 
-### Agent Lightning
-- [Agent Lightning Official Docs](https://microsoft.github.io/agent-lightning/latest/) -- HIGH confidence, official documentation
-- [Agent Lightning GitHub](https://github.com/microsoft/agent-lightning) -- HIGH confidence, source code + README
-- [Agent Lightning Blog Post](https://www.microsoft.com/en-us/research/blog/agent-lightning-adding-reinforcement-learning-to-ai-agents-without-code-rewrites/) -- HIGH confidence, Microsoft Research
-- [Agent Lightning APO Algorithm](https://microsoft.github.io/agent-lightning/latest/algorithm-zoo/apo/) -- HIGH confidence, official algorithm docs
-- [Agent Lightning Training Guide](https://microsoft.github.io/agent-lightning/latest/how-to/train-first-agent/) -- HIGH confidence, official how-to
-- [Agent Lightning arXiv Paper](https://arxiv.org/abs/2508.03680) -- HIGH confidence, research paper
-- [Agent Lightning LiteLLM Integration](https://docs.litellm.ai/docs/projects/Agent%20Lightning) -- MEDIUM confidence, third-party integration docs
-- [Agent Lightning MarkTechPost](https://www.marktechpost.com/2025/10/29/microsoft-releases-agent-lightning-a-new-ai-framework-that-enables-reinforcement-learning-rl-based-training-of-llms-for-any-ai-agent/) -- MEDIUM confidence, tech journalism
-- [Agent Lightning pyproject.toml](https://github.com/microsoft/agent-lightning/blob/main/pyproject.toml) -- HIGH confidence, source file (requires-python >= 3.10)
-
-### Cognee
-- [Cognee GitHub](https://github.com/topoteretes/cognee) -- HIGH confidence, source code + README
-- [Cognee Documentation](https://docs.cognee.ai/) -- HIGH confidence, official docs
-- [Cognee Core Concepts](https://docs.cognee.ai/core-concepts) -- HIGH confidence, official
-- [Cognee Vector Store Config](https://docs.cognee.ai/setup-configuration/vector-stores) -- HIGH confidence, official
-- [Cognee LLM Providers](https://docs.cognee.ai/setup-configuration/llm-providers) -- HIGH confidence, official
-- [Cognee Add Operation](https://docs.cognee.ai/core-concepts/main-operations/add) -- HIGH confidence, official
-- [Cognee PyPI](https://pypi.org/project/cognee/) -- HIGH confidence, package registry
-- [Cognee + FalkorDB Integration](https://docs.falkordb.com/agentic-memory/cognee.html) -- MEDIUM confidence, partner docs
-- [Cognee Memory Architecture Blog](https://www.cognee.ai/blog/fundamentals/how-cognee-builds-ai-memory) -- MEDIUM confidence, vendor blog
-- [Self-Hosting Cognee with Ollama](https://www.glukhov.org/post/2025/12/selfhosting-cognee-quickstart-llms-comparison/) -- LOW confidence, single blog post
+- Existing codebase: `renderer.py` (770 lines), `auto_fix.py`, `validation/types.py` -- HIGH confidence, direct source code analysis
+- Odoo 17.0 QWeb Reports documentation: `ir.actions.report` model and QWeb template conventions -- HIGH confidence (Odoo official docs)
+- Odoo 17.0 Controllers documentation: `http.Controller`, `@http.route` decorator -- HIGH confidence (Odoo official docs)
+- Odoo 17.0 Scheduled Actions: `ir.cron` XML data format -- HIGH confidence (Odoo official docs)
+- Odoo 17.0 Performance: `index=True`, `store=True`, `_order`, `@ormcache` -- HIGH confidence (Odoo official docs)
 
 ---
-*Architecture research for: Agent Lightning + Cognee integration with Odoo Module Automation v3.0*
-*Researched: 2026-03-04*
+*Architecture research for: v3.1 Design Flaws & Feature Gaps integration with existing Odoo module automation pipeline*
+*Researched: 2026-03-05*

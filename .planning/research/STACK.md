@@ -1,302 +1,227 @@
-# Stack Research: Agent Lightning + Cognee Integration
+# Stack Research: v3.1 Design Flaws & Feature Gaps
 
-**Domain:** RL-based agent optimization + knowledge graph pipeline for Odoo module automation
-**Researched:** 2026-03-04
-**Confidence:** MEDIUM (both libraries are actively evolving; Agent Lightning is pre-1.0, Cognee is beta)
+**Domain:** Odoo module automation -- spec design patterns, template generation, performance patterns
+**Researched:** 2026-03-05
+**Confidence:** HIGH
 
-> **SCOPE:** This research covers ONLY the new stack additions for v3.0. The existing stack (Python 3.12, Jinja2, Click, pylint-odoo, ChromaDB, Docker, uv) is validated and unchanged. See the original STACK.md header for prior research.
+> **SCOPE:** This research covers ONLY the stack additions/changes needed for v3.1 features. The existing validated stack (Python 3.12, Jinja2, Click, pylint-odoo, ChromaDB, Docker, MCP, Context7) is unchanged. See previous STACK.md versions for prior research.
 
 ---
 
-## New Stack Additions
+## Key Finding: Minimal New Dependencies
 
-### Agent Lightning (RL-Based Agent Optimization)
+The v3.1 features are overwhelmingly **template and spec-parsing work**, not technology integrations. The existing stack (Jinja2 templates + Python spec analysis + AST-based tooling) already provides 90% of what is needed. Only one new library is genuinely required.
+
+---
+
+## New Stack Addition
+
+### openpyxl (XLSX Import/Export Wizard Templates)
 
 | Attribute | Value | Confidence |
 |-----------|-------|------------|
-| **Package name** | `agentlightning` | HIGH (verified PyPI) |
-| **Latest stable** | 0.3.0 (Dec 24, 2024) | HIGH (verified PyPI + GitHub releases) |
-| **Latest dev** | 0.3.1+ (main branch) | MEDIUM (pyproject.toml on GitHub shows 0.3.1) |
-| **Python requirement** | >=3.10 | HIGH (verified pyproject.toml) |
-| **Python 3.12 compatible** | YES | HIGH |
+| **Package** | `openpyxl` | HIGH (verified PyPI) |
+| **Version** | 3.1.5 (Nov 2025) | HIGH (verified PyPI) |
+| **Python** | >=3.8 | HIGH |
 | **License** | MIT | HIGH |
-| **Wheel size** | 612 KB | HIGH (verified PyPI) |
-| **Source size** | 1.3 MB | HIGH (verified PyPI) |
-| **GPU required** | NO (APO mode is CPU-only, uses LLM API calls) | HIGH (verified: APO tests run on GitHub Actions Ubuntu runners) |
-| **PyTorch required** | NO (optional, only for VERL/SFT modes) | HIGH (verified: PyTorch is in optional extras, not core deps) |
+| **Size** | ~4MB installed | HIGH |
+| **Dependencies** | et_xmlfile only | HIGH |
 
-#### Core Dependencies (what it pulls in)
+**Why needed:** Import/export wizard templates must generate Python code that reads/writes `.xlsx` files. The generated Odoo modules will `import openpyxl` in their wizard code. Our templates need to produce correct openpyxl API calls, and our validation (Docker) needs openpyxl available in the Odoo container.
 
-| Dependency | Version | Size Impact | Overlap with Our Stack |
-|------------|---------|-------------|----------------------|
-| litellm[proxy] | >=1.74 | ~50MB (moderate) | NEW - also used by Cognee (>=1.76) - compatible |
-| pydantic | >=2.11 | ~5MB | COMPATIBLE - we already use pydantic |
-| openai | (unversioned) | ~10MB | NEW - required for APO LLM calls |
-| fastapi | (unversioned) | ~5MB | NEW - used for internal dashboard/API |
-| uvicorn | (unversioned) | ~2MB | NEW - ASGI server |
-| gunicorn | (unversioned) | ~1MB | NEW |
-| flask | (unversioned) | ~3MB | NEW - used for legacy endpoints |
-| aiohttp | (unversioned) | ~5MB | NEW |
-| rich | (unversioned) | ~3MB | COMPATIBLE - we already use rich |
-| graphviz | (unversioned) | ~1MB | NEW |
-| psutil | (unversioned) | ~1MB | NEW |
-| gpustat | (unversioned) | ~1MB | NEW (harmless on CPU-only) |
-| agentops | >=0.4.13 | ~5MB | NEW - agent observability |
-| opentelemetry-api/sdk/exporter | >=1.35 | ~15MB | NEW - telemetry |
-| portpicker | (unversioned) | ~1MB | NEW |
-| aiologic | (unversioned) | ~1MB | NEW |
+**Why openpyxl specifically:**
+- Odoo's own web addon uses xlwt (old xls) and xlsxwriter (write-only). Neither reads xlsx.
+- openpyxl handles both read AND write, which import wizards require.
+- OCA's `excel_import_export` module uses openpyxl. Following OCA convention.
+- No PyTorch, no heavy deps -- just `et_xmlfile` (~100KB).
 
-**Total estimated new dependency footprint (APO mode):** ~100-120MB
-**With PyTorch (VERL mode):** +2GB (not recommended for our use case)
+**Integration points:**
+1. **Jinja2 templates**: New `import_wizard.py.j2` and `export_wizard.py.j2` templates generate code that `import openpyxl`.
+2. **Docker validation**: The Odoo Docker image needs openpyxl installed. Add to `docker-compose.yml` pip install or module `external_dependencies`.
+3. **Module manifest**: Generated modules declare `"external_dependencies": {"python": ["openpyxl"]}`.
 
-#### What We Actually Need: APO Only
+**NOT needed in our tooling venv:** openpyxl is only needed inside the generated modules (runtime), not in our template rendering pipeline. However, if we add template unit tests that import-check generated code, we would need it in the test venv.
 
-For our use case (optimizing agent prompts based on validation outcomes), we ONLY need APO:
+### Installation
 
 ```bash
-pip install agentlightning[apo]
+# Only needed in Docker validation image and generated module deps
+# NOT in our core pyproject.toml dependencies
+
+# For test venv (optional, only if testing generated import code):
+uv add --dev openpyxl>=3.1.5
 ```
 
-The `[apo]` extra adds only `poml` (Prompt Optimization Markup Language), a lightweight package. The heavy extras (verl, torch-stable, torch-gpu-stable) are NOT needed.
-
-#### How APO Works (Relevant to Our Agents)
-
-1. **Emit spans**: Wrap agent calls with `agl.emit_xxx()` helpers or use tracer
-2. **Define reward**: Score agent output (e.g., 1.0 if module passes pylint + Docker, 0.0 if not)
-3. **APO optimizes**: Uses LLM-generated "textual gradients" to iteratively improve prompt templates
-4. **Output**: Optimized `PromptTemplate` objects (NOT fine-tuned models)
-
-APO uses two LLM calls per optimization step:
-- **Gradient model** (default: gpt-4-mini): Generates critique of current prompt
-- **Apply-edit model** (default: gpt-4-mini): Rewrites prompt based on critique
-
-Configuration parameters:
-- `beam_width`: 4 (top prompts retained per round)
-- `branch_factor`: 4 (new candidates per parent)
-- `beam_rounds`: 3 (optimization iterations)
-- Training a single agent takes ~10 minutes with 8 parallel runners
-
----
-
-### Cognee (Knowledge Graph Pipeline)
-
-| Attribute | Value | Confidence |
-|-----------|-------|------------|
-| **Package name** | `cognee` | HIGH (verified PyPI) |
-| **Latest stable** | 0.5.3 (Feb 27, 2026) | HIGH (verified PyPI) |
-| **Python requirement** | >=3.10, <3.14 | HIGH (verified pyproject.toml) |
-| **Python 3.12 compatible** | YES | HIGH |
-| **License** | Apache-2.0 | HIGH |
-| **Wheel size** | 1.7 MB | HIGH (verified PyPI) |
-| **Source size** | 14.6 MB | HIGH (verified PyPI) |
-| **Development status** | Beta (4 - Beta) | HIGH |
-| **LLM API key required** | YES (default: OpenAI; configurable to Anthropic, Ollama, etc.) | HIGH |
-
-#### Core Dependencies (37 packages)
-
-| Dependency | Version | Size Impact | Overlap with Our Stack |
-|------------|---------|-------------|----------------------|
-| openai | >=1.80.1 | ~10MB | SHARED with Agent Lightning |
-| litellm | >=1.76.0 | ~50MB | SHARED with Agent Lightning (>=1.74) - compatible |
-| pydantic | >=2.10.5 | ~5MB | COMPATIBLE - we already use pydantic |
-| pydantic-settings | (unversioned) | ~1MB | COMPATIBLE |
-| numpy | >=1.26.4, <=4.0.0 | ~30MB | NEW |
-| sqlalchemy | >=2.0.39, <3.0.0 | ~10MB | NEW |
-| aiosqlite | (unversioned) | ~1MB | NEW |
-| tiktoken | (unversioned) | ~10MB | NEW |
-| instructor | >=1.9.1, <2.0.0 | ~5MB | NEW - structured LLM output |
-| fastembed | <=0.6.0 | ~20MB | NEW - local ONNX embeddings (like ChromaDB's built-in) |
-| onnxruntime | <=1.22.1 | ~50MB | NEW - needed by fastembed |
-| lancedb | >=0.24.0, <1.0.0 | ~30MB | NEW - default vector store |
-| kuzu | ==0.11.3 | ~20MB | NEW - default graph database |
-| jinja2 | (unversioned) | ~1MB | COMPATIBLE - we already use jinja2 |
-| networkx | (unversioned) | ~5MB | NEW - graph algorithms |
-| fastapi | (unversioned) | ~5MB | SHARED with Agent Lightning |
-| uvicorn | (unversioned) | ~2MB | SHARED with Agent Lightning |
-| gunicorn | (unversioned) | ~1MB | SHARED with Agent Lightning |
-| aiohttp | (unversioned) | ~5MB | SHARED with Agent Lightning |
-| alembic | (unversioned) | ~5MB | NEW - DB migrations |
-| rdflib | (unversioned) | ~5MB | NEW - RDF/knowledge graph |
-| pypdf | (unversioned) | ~3MB | NEW - PDF parsing |
-| structlog | (unversioned) | ~1MB | NEW - structured logging |
-| Other (15+ small pkgs) | various | ~20MB | NEW |
-
-**Total estimated new dependency footprint (core only):** ~250-300MB
-**With ChromaDB extra:** +ChromaDB (already installed) + pypika (~1MB)
-
-#### Storage Backends
-
-**Vector Store (default: LanceDB - file-based)**
-| Backend | Type | Setup | Our Use |
-|---------|------|-------|---------|
-| LanceDB | File-based (default) | Zero config | Use this - no infrastructure needed |
-| ChromaDB | HTTP server | `cognee[chromadb]` extra | CAN point to our existing ChromaDB instance |
-| PGVector | PostgreSQL | Needs postgres | Overkill |
-| Qdrant | Server | Needs Qdrant | Overkill |
-| Redis | Server | Needs Redis | Overkill |
-| FalkorDB | Server | Needs FalkorDB | Overkill |
-
-**Graph Store (default: Kuzu - file-based)**
-| Backend | Type | Setup | Our Use |
-|---------|------|-------|---------|
-| Kuzu | File-based (default) | Zero config, included in core deps | Use this - embedded, no infrastructure |
-| Neo4j | Server | Needs Neo4j | Production option for later |
-| Neptune | AWS cloud | Needs AWS | Overkill |
-| Memgraph | Server | Needs Memgraph | Overkill |
-| NetworkX | In-memory | Zero config | Too limited for persistence |
-
-**Embedding Provider (default: OpenAI)**
-| Backend | Type | API Key? | Our Use |
-|---------|------|----------|---------|
-| OpenAI | API | YES | Default but costs money |
-| **Fastembed** | **Local ONNX** | **NO** | **Use this - CPU-friendly, no API key, included by default** |
-| Ollama | Local server | NO | Alternative local option |
-
-**RECOMMENDATION:** Use defaults (LanceDB + Kuzu + Fastembed) for zero-infrastructure local operation. This means NO external services needed beyond the LLM API for graph generation.
-
-#### ChromaDB Overlap Analysis
-
-**Critical finding:** Cognee and our existing stack both touch vector search, but they serve DIFFERENT purposes:
-
-| Concern | Our ChromaDB | Cognee's Vector Store |
-|---------|-------------|----------------------|
-| **Purpose** | Semantic search for OCA/GitHub module matching | Knowledge graph embeddings for Odoo documentation |
-| **Data** | Module manifests, READMEs, descriptions | Odoo patterns, OCA standards, API docs, KB articles |
-| **Query pattern** | "Find modules similar to X" | "What are the relationships between sale.order and account.move?" |
-| **Overlap** | NONE - different data, different queries | NONE |
-
-**Decision:** Keep both. ChromaDB for module search, Cognee's LanceDB for knowledge graph embeddings. They store different data and serve different retrieval needs. No need to consolidate.
-
-**Optional:** If desired later, Cognee CAN be configured to use our existing ChromaDB as its vector backend via `VECTOR_DB_PROVIDER=chromadb` and `VECTOR_DB_URL=http://localhost:3002`. But LanceDB default is simpler (file-based, no server).
-
----
-
-## Compatibility Analysis
-
-### Python 3.12 Compatibility Matrix
-
-| Package | Python 3.12 Support | Verified |
-|---------|-------------------|----------|
-| agentlightning | YES (>=3.10) | PyPI classifiers |
-| cognee | YES (>=3.10, <3.14) | PyPI + pyproject.toml |
-| litellm | YES (>=3.9, <4.0) | PyPI |
-| kuzu | YES | PyPI (pinned ==0.11.3) |
-| lancedb | YES | PyPI |
-| fastembed | YES (Python <3.13) | PyPI + community reports |
-| onnxruntime | YES | PyPI |
-
-**Verdict:** All packages support Python 3.12. No blockers.
-
-### Shared Dependency Compatibility
-
-Both Agent Lightning and Cognee depend on several shared packages. Here is the conflict analysis:
-
-| Dependency | Agent Lightning | Cognee | Compatible? |
-|------------|----------------|--------|-------------|
-| litellm | >=1.74 | >=1.76 | YES - Cognee's floor is higher, resolver picks >=1.76 |
-| pydantic | >=2.11 | >=2.10.5 | YES - Agent Lightning's floor is higher, resolver picks >=2.11 |
-| openai | unversioned (core-stable: >=2.0) | >=1.80.1 | YES - both want recent openai |
-| fastapi | unversioned | unversioned | YES - no conflict |
-| uvicorn | unversioned | unversioned | YES - no conflict |
-| aiohttp | unversioned | unversioned | YES - no conflict |
-
-**Verdict:** No dependency conflicts detected. Both can coexist in the same venv.
-
-### Can Both Coexist in Same Venv?
-
-**YES.** Analysis:
-1. Shared deps (litellm, pydantic, openai, fastapi, uvicorn, aiohttp) have compatible version ranges
-2. No mutually exclusive version pins
-3. Both target Python >=3.10, our env is 3.12
-4. Both use pydantic v2 (no v1/v2 split)
-5. Agent Lightning's litellm[proxy]>=1.74 satisfies with Cognee's litellm>=1.76 (resolver picks >=1.76)
-
-**Recommendation:** Single venv. No isolation needed. Use `uv add` to install both.
-
----
-
-## Recommended Installation
-
-```bash
-# Agent Lightning - APO mode only (no PyTorch, no GPU)
-uv add agentlightning[apo]
-
-# Cognee - core with ChromaDB support as optional bridge
-uv add cognee
-
-# If you want Cognee to use our existing ChromaDB instance (optional)
-# uv add "cognee[chromadb]"
-
-# Environment variables needed
-# For Cognee knowledge graph generation:
-export LLM_API_KEY="your-openai-or-anthropic-key"
-export LLM_PROVIDER="openai"  # or "anthropic"
-export LLM_MODEL="gpt-4.1-mini"  # or "claude-sonnet-4-20250514"
-
-# For local embeddings (no API key needed):
-export EMBEDDING_PROVIDER="fastembed"
-export EMBEDDING_MODEL="sentence-transformers/all-MiniLM-L6-v2"
-export EMBEDDING_DIMENSIONS="384"
-
-# For Agent Lightning APO:
-export OPENAI_API_KEY="your-openai-key"  # APO uses OpenAI for prompt optimization
-```
-
-### Updated pyproject.toml Additions
+### pyproject.toml Change (Minimal)
 
 ```toml
-[project]
-dependencies = [
-    # ... existing deps ...
-    "agentlightning[apo]>=0.3.0",
-    "cognee>=0.5.3",
-]
-
 [project.optional-dependencies]
-# Full RL training (requires GPU + PyTorch)
-rl-full = [
-    "agentlightning[verl]>=0.3.0",
-    "torch>=2.8.0",
-]
-# Cognee with ChromaDB bridge
-cognee-chromadb = [
-    "cognee[chromadb]>=0.5.3",
+# Add to existing test extras if testing generated wizard code
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "openpyxl>=3.1.5",  # For validating generated import/export wizard code
 ]
 ```
 
 ---
 
-## What NOT to Add
+## No New Dependencies Needed For
 
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| `agentlightning[verl]` | Pulls in PyTorch (~2GB), vLLM, CUDA deps. Only needed for model fine-tuning, which is overkill for prompt optimization. | `agentlightning[apo]` - prompt optimization via LLM API calls |
-| `agentlightning[torch-stable]` | Same as above - massive dependency for GPU training | `agentlightning[apo]` |
-| `cognee[neo4j]` | Requires running a Neo4j server. Kuzu (default) is embedded and file-based. | Default Kuzu graph store |
-| `cognee[postgres]` | Requires PostgreSQL with pgvector. LanceDB (default) is file-based. | Default LanceDB vector store |
-| `sentence-transformers` | Was in original STACK.md but ChromaDB uses built-in ONNX embedding. Cognee uses fastembed (also ONNX). No need for sentence-transformers + PyTorch. | ChromaDB built-in embeddings + Cognee fastembed |
-| `langchain` / `langgraph` | Neither Agent Lightning nor Cognee require these for our use case. Adds massive dependency trees. | Direct API integration |
-| `transformers` (huggingface) | Only needed for Cognee's huggingface/ollama/codegraph extras. Not needed for core knowledge graphs. | Fastembed for embeddings |
-| `torch` / `pytorch` | Not needed. APO is CPU-only (LLM API). Cognee uses fastembed (ONNX). ChromaDB uses ONNX. Zero PyTorch. | ONNX-based alternatives |
+These features are implemented entirely through new Jinja2 templates, spec-parsing logic, and knowledge base entries. No new Python libraries required.
+
+### Spec Design Features
+
+| Feature | Implementation | Why No New Deps |
+|---------|---------------|-----------------|
+| Relationship patterns (through-models, self-ref, hierarchical) | Spec parser logic + knowledge base rules | Pure Python dict/list analysis of spec structure |
+| Computed field dependency chains | Spec parser + topological sort | `graphlib.TopologicalSorter` is in Python 3.12 stdlib |
+| Complex constraints (cross-model, temporal, capacity) | Spec parser + template conditionals | Jinja2 `{% if %}` blocks in model.py.j2 |
+
+### Template/Generation Features
+
+| Feature | Implementation | Why No New Deps |
+|---------|---------------|-----------------|
+| Monetary field + currency_id injection | Spec analyzer + model.py.j2 extension | Pattern detection in spec dict, Jinja2 template output |
+| QWeb report templates | New `report.xml.j2` + `report_template.xml.j2` | Pure XML/HTML generation via Jinja2 -- QWeb is just XML |
+| Dashboard views (graph, pivot, cohort) | New `view_graph.xml.j2`, `view_pivot.xml.j2` | Pure XML generation via Jinja2 |
+| HTTP controllers | New `controller.py.j2` + `controllers/__init__.py.j2` | Standard Odoo `http.Controller` -- pure Python template |
+| Cron jobs (ir.cron) | New `cron.xml.j2` data file template | Pure XML data record generation via Jinja2 |
+
+### Performance Features
+
+| Feature | Implementation | Why No New Deps |
+|---------|---------------|-----------------|
+| Bulk operations (`@api.model_create_multi`) | model.py.j2 template extension | Decorator added in generated Python code |
+| Database indexes | model.py.j2 `_sql_constraints` + index hints | Generated Python code uses Odoo's built-in index API |
+| ormcache patterns | model.py.j2 template extension | `@tools.ormcache` is Odoo stdlib, not a pip dep |
+| Archival/partitioning | model.py.j2 `active` field + cron.xml.j2 cleanup | Odoo's built-in active field pattern |
 
 ---
 
-## Dependency Size Impact Summary
+## Existing Stack Adequacy Assessment
 
-| Component | Estimated Size | Notes |
-|-----------|---------------|-------|
-| agentlightning (core) | 612 KB | Wheel only |
-| agentlightning deps (new) | ~100 MB | litellm, opentelemetry, agentops, etc. |
-| cognee (core) | 1.7 MB | Wheel only |
-| cognee deps (new) | ~250 MB | numpy, sqlalchemy, kuzu, lancedb, fastembed, onnxruntime, etc. |
-| Shared deps (deduplicated) | -70 MB | litellm, pydantic, openai, fastapi, aiohttp already counted once |
-| **Total new footprint** | **~280-350 MB** | Without PyTorch (compare: PyTorch alone is 2GB) |
+### Jinja2 (Already Installed: >=3.1)
 
-This is a SIGNIFICANT increase from the current lean stack but justified because:
-1. Cognee replaces static markdown KB with a queryable knowledge graph (much richer retrieval)
-2. Agent Lightning enables agents to improve over time (measurable quality gains)
-3. We avoided PyTorch entirely (saved 2GB) by using APO + fastembed + ONNX
-4. The alternative (building custom KG + RL) would be far more code and maintenance
+**Verdict: FULLY ADEQUATE.** All 8 new template types (report, graph, pivot, controller, cron, import_wizard, export_wizard, cohort) are Jinja2 templates rendering to Python or XML. No Jinja2 extensions or plugins needed.
+
+Current Jinja2 features we already use that cover v3.1:
+- `StrictUndefined` -- catches missing variables in new templates
+- `FileSystemLoader` with version fallback -- new templates go in `shared/` or version-specific dirs
+- Custom filters (`to_class`, `model_ref`, `to_python_var`, `to_xml_id`) -- reused in all new templates
+- `trim_blocks`, `lstrip_blocks` -- clean output for XML templates
+
+**New filters potentially needed:**
+
+| Filter | Purpose | Implementation |
+|--------|---------|----------------|
+| `to_report_id` | Convert model name to QWeb report external ID | `lambda name: f"report_{name.replace('.', '_')}"` |
+| `to_cron_id` | Convert action name to cron external ID | `lambda name: f"ir_cron_{name.replace('.', '_')}"` |
+| `to_controller_route` | Convert model name to URL path | `lambda name: f"/{name.replace('.', '/')}"` |
+
+These are trivial string transformations added to `_register_filters()` in `renderer.py`.
+
+### Python stdlib (graphlib.TopologicalSorter)
+
+**Verdict: FULLY ADEQUATE** for computed field dependency chain analysis.
+
+```python
+from graphlib import TopologicalSorter
+
+# Example: resolving compute dependency order
+deps = {"total": {"subtotal", "tax"}, "tax": {"subtotal"}, "subtotal": set()}
+ts = TopologicalSorter(deps)
+order = list(ts.static_order())  # ['subtotal', 'tax', 'total']
+```
+
+Available since Python 3.9, stable in 3.12. No external graph library needed.
+
+### Python ast Module (Already Used Extensively)
+
+**Verdict: FULLY ADEQUATE.** The existing AST-based auto-fix pipeline handles all the code analysis patterns needed for v3.1:
+- Detecting monetary fields that need `currency_id` companion
+- Analyzing compute dependency chains across model files
+- Validating generated controller/wizard code for unused imports
+
+### Docker Validation (Already Configured)
+
+**Verdict: ADEQUATE with one addition.** The Docker `run --rm` pattern validates generated modules. For v3.1:
+- QWeb reports require `wkhtmltopdf` -- already in Odoo Docker images
+- Controllers need HTTP request testing -- covered by Odoo's test framework
+- Cron jobs are XML data records -- validated by module install
+- **Addition needed:** `openpyxl` must be pip-installed in the Docker image for import/export wizard validation
+
+---
+
+## Template File Plan (No Stack Impact, Pure Jinja2)
+
+New templates to create in `python/src/odoo_gen_utils/templates/`:
+
+| Template | Location | Generates |
+|----------|----------|-----------|
+| `report_action.xml.j2` | `shared/` | `ir.actions.report` record pointing to QWeb template |
+| `report_template.xml.j2` | `shared/` | QWeb report body (`<t t-call="web.html_container">`) |
+| `view_graph.xml.j2` | `shared/` | `<graph>` view with measure fields |
+| `view_pivot.xml.j2` | `shared/` | `<pivot>` view with row/col/measure fields |
+| `view_cohort.xml.j2` | `shared/` | `<cohort>` view (Enterprise only) |
+| `controller.py.j2` | `shared/` | `http.Controller` with `@route` decorators |
+| `init_controllers.py.j2` | `shared/` | Controllers `__init__.py` |
+| `cron.xml.j2` | `shared/` | `ir.cron` XML data records |
+| `import_wizard.py.j2` | `shared/` | TransientModel with openpyxl import logic |
+| `export_wizard.py.j2` | `shared/` | TransientModel with openpyxl/xlsxwriter export logic |
+| `import_wizard_form.xml.j2` | `shared/` | File upload wizard form view |
+| `export_wizard_form.xml.j2` | `shared/` | Export config wizard form view |
+
+**Version-specific overrides (17.0 vs 18.0):**
+- Controller routes: identical across versions
+- QWeb reports: identical across versions
+- Dashboard views: `<cohort>` requires Enterprise, otherwise identical
+- No version-specific templates expected for v3.1 features
+
+---
+
+## Renderer Changes Needed
+
+### New Stage Functions
+
+The existing 7-stage `render_module()` pipeline needs expansion:
+
+| Current Stage | Status |
+|---------------|--------|
+| `render_manifest` | MODIFY -- add controller, report, cron files to manifest `data` list |
+| `render_models` | MODIFY -- add monetary field injection, bulk operation decorators, index hints |
+| `render_views` | MODIFY -- add graph/pivot/cohort view rendering |
+| `render_security` | UNCHANGED |
+| `render_wizards` | MODIFY -- add import/export wizard subtypes |
+| `render_tests` | MODIFY -- add test templates for controllers, reports |
+| `render_static` | MODIFY -- add cron.xml to data files |
+
+New stages:
+
+| New Stage | Purpose |
+|-----------|---------|
+| `render_controllers` | Generate `controllers/` directory with route handlers |
+| `render_reports` | Generate QWeb report templates and actions |
+| `render_crons` | Generate `data/cron.xml` with ir.cron records |
+
+### New Spec Context Keys
+
+`_build_model_context()` needs these additions:
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `monetary_fields` | `list[dict]` | Fields with `type="Monetary"` needing `currency_id` |
+| `has_monetary` | `bool` | Whether model has any Monetary fields |
+| `compute_chain` | `list[str]` | Topologically sorted compute dependency order |
+| `relationship_type` | `str` | `"standard"`, `"through"`, `"self_ref"`, `"hierarchical"` |
+| `parent_store` | `bool` | Whether model uses `_parent_store = True` |
+| `index_fields` | `list[str]` | Fields that should have `index=True` |
+| `use_create_multi` | `bool` | Whether to add `@api.model_create_multi` |
+| `ormcache_methods` | `list[dict]` | Methods needing `@tools.ormcache` |
+| `is_archivable` | `bool` | Whether model has `active` field for soft-delete |
+| `cron_actions` | `list[dict]` | Scheduled actions for this model |
+| `controllers` | `list[dict]` | HTTP controller routes for this model |
+| `reports` | `list[dict]` | QWeb reports for this model |
 
 ---
 
@@ -304,84 +229,112 @@ This is a SIGNIFICANT increase from the current lean stack but justified because
 
 | Recommended | Alternative | Why Not |
 |-------------|-------------|---------|
-| Cognee (knowledge graphs) | Custom NetworkX + ChromaDB | Cognee provides the full pipeline (ingest, cognify, memify, search) out of the box. Building custom would take weeks and produce worse results. |
-| Cognee (knowledge graphs) | LlamaIndex Knowledge Graphs | LlamaIndex pulls in more dependencies, is less focused on knowledge graphs, and doesn't provide the graph+vector hybrid search Cognee offers. |
-| Cognee (knowledge graphs) | GraphRAG (Microsoft) | GraphRAG is research code, not a maintained library. Cognee is actively developed with proper packaging. |
-| Agent Lightning APO | DSPy | DSPy does prompt optimization but is more complex, less framework-agnostic, and doesn't integrate as cleanly with arbitrary agents. |
-| Agent Lightning APO | TextGrad | TextGrad is research code. Agent Lightning is maintained by Microsoft with proper packaging and docs. |
-| Agent Lightning APO | Custom prompt tuning | Manual A/B testing of prompts doesn't scale. APO automates this with measurable reward signals. |
-| Kuzu (graph DB) | Neo4j | Neo4j requires running a server. Kuzu is embedded (file-based), zero config, and sufficient for our scale. |
-| LanceDB (vector DB for Cognee) | Reuse our ChromaDB | LanceDB is Cognee's default, requires zero setup. Using ChromaDB would require running it as an HTTP server. Different data anyway. |
-| Fastembed (embeddings for Cognee) | OpenAI text-embedding-3-large | Fastembed is local, free, no API key. OpenAI embeddings cost money per call. For KB indexing, local is better. |
+| openpyxl 3.1.5 | xlsxwriter | xlsxwriter is write-only; import wizards need read capability |
+| openpyxl 3.1.5 | pandas + openpyxl | pandas adds ~150MB of deps for simple row iteration. Overkill. |
+| graphlib.TopologicalSorter (stdlib) | networkx | networkx is 5MB+ and we only need topological sort, which stdlib provides |
+| Jinja2 templates for QWeb | Python string formatting | Jinja2 is already our rendering engine; adding another output method fragments the codebase |
+| No new ORM/DB library | SQLAlchemy for index analysis | Odoo manages its own schema; we generate code, not run migrations |
 
 ---
 
-## Integration Architecture
+## What NOT to Add
 
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| `pandas` | 150MB+ for simple xlsx row reading. Generated modules should use openpyxl directly. | openpyxl (4MB) |
+| `networkx` | Overkill for topological sort. Only needed if building full dependency graphs. | `graphlib.TopologicalSorter` (stdlib) |
+| `xlsxwriter` as new dep | Already available in Odoo's Python environment. Generated export wizards can use it without us adding it. | Reference in template; Odoo ships it |
+| `wkhtmltopdf` (in tooling) | Only needed at runtime in Docker. Already in Odoo Docker images. | Docker validation handles this |
+| `reportlab` | Odoo uses wkhtmltopdf for PDF, not reportlab. Wrong tool. | QWeb + wkhtmltopdf (Odoo's built-in approach) |
+| `lxml` as new dep | Already available in Odoo's Python environment. We generate XML via Jinja2, not lxml. | Jinja2 template rendering |
+| Any REST framework (Flask, FastAPI) | Generated controllers use Odoo's built-in `http.Controller`. No external framework. | Odoo's `odoo.http` module |
+| `APScheduler` or `celery` | Odoo has `ir.cron` for scheduling. External schedulers conflict with Odoo's worker model. | `ir.cron` XML records |
+
+---
+
+## Version Compatibility
+
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| openpyxl>=3.1.5 | Python 3.12 | Verified on PyPI. No conflicts with existing deps. |
+| openpyxl>=3.1.5 | Odoo 17.0 Docker image | Must be pip-installed in container. Add to module `external_dependencies`. |
+| openpyxl>=3.1.5 | Odoo 18.0 Docker image | Same as 17.0. |
+| graphlib (stdlib) | Python 3.9+ | Built-in. No install needed. |
+
+### Odoo Version Differences Affecting Templates
+
+| Feature | Odoo 17.0 | Odoo 18.0 | Template Impact |
+|---------|-----------|-----------|-----------------|
+| `@api.model_create_multi` | Available | Available | Same template for both |
+| `tools.ormcache` | Available | Available | Same template for both |
+| `_sql_constraints` | Tuple format | Tuple format | Same template for both |
+| QWeb reports | `t-call="web.html_container"` | Same | Same template for both |
+| HTTP controllers | `@route()` decorator | Same | Same template for both |
+| `ir.cron` | XML `<record>` format | Same | Same template for both |
+| `display_name` vs `name_get` | `name_get()` method | `_compute_display_name()` | Already handled in v3.0 version gate |
+| Cohort view | Enterprise only | Enterprise only | Same; gate on edition in spec |
+| Database indexes | `index=True` on field | Declarative Index API | May need version-specific template for 18.0 indexes |
+
+**Action item:** The declarative Index API in Odoo 18.0 (`from odoo import models, Index`) may warrant a version-specific `model.py.j2` override in `templates/18.0/` for index definitions. Research this during implementation if generating explicit composite indexes.
+
+---
+
+## Docker Image Changes
+
+The existing `docker-compose.yml` needs a minor addition for v3.1:
+
+```yaml
+# In the Odoo service, add pip install for import/export wizard deps
+command: >
+  bash -c "pip install openpyxl>=3.1.5 &&
+  odoo --test-tags=${MODULE} -d test --stop-after-init"
 ```
-Existing Stack (unchanged)          New Stack (v3.0)
-================================    ================================
-ChromaDB                            Cognee
-  - Module search embeddings           - Knowledge graph (Kuzu)
-  - OCA/GitHub module matching         - KB embeddings (LanceDB)
-  - ONNX built-in embeddings           - Fastembed (ONNX)
-                                       - Replaces static markdown KB
 
-8 Specialized Agents                Agent Lightning (APO)
-  - model-gen, view-gen, etc.          - Wraps agent invocations
-  - Static prompt templates            - Collects reward signals
-  - No learning/improvement            - Optimizes prompts over time
-                                       - Stores optimized templates
+Alternatively, generated modules declare `external_dependencies` in `__manifest__.py`:
+
+```python
+"external_dependencies": {
+    "python": ["openpyxl"],
+},
 ```
 
-### Data Flow
+Odoo will check for openpyxl at module install time and raise a clear error if missing. This is the OCA-standard approach.
 
-```
-1. KNOWLEDGE GRAPH (Cognee):
-   Odoo docs + OCA standards + KB files
-     → cognee.add(documents)
-     → cognee.cognify()  [extracts entities, relationships]
-     → Knowledge graph (Kuzu) + embeddings (LanceDB)
-     → cognee.search("how does sale.order relate to account.move?")
-     → Structured, connected results (not just similarity)
+---
 
-2. AGENT OPTIMIZATION (Agent Lightning):
-   Agent executes (e.g., model-gen generates models.py)
-     → agl.emit_xxx() captures prompt + output
-     → Validator scores result (pylint pass=0.5, Docker pass=1.0, fail=0.0)
-     → APO analyzes scored trajectories
-     → Generates improved prompt template
-     → Next execution uses optimized prompt
-```
+## Summary: Stack Delta for v3.1
+
+| Category | Change | Impact |
+|----------|--------|--------|
+| **New dependency** | `openpyxl>=3.1.5` (test/Docker only) | +4MB, zero risk |
+| **New stdlib usage** | `graphlib.TopologicalSorter` | Zero cost, already in Python 3.12 |
+| **New Jinja2 filters** | 3 trivial string transforms | ~10 lines in renderer.py |
+| **New templates** | 12 new `.j2` files | Core deliverable of v3.1 |
+| **New renderer stages** | 3 new stage functions | ~200-300 lines total |
+| **New spec context keys** | 12 new keys in `_build_model_context()` | ~100 lines in renderer.py |
+| **Docker changes** | openpyxl pip install | 1-line addition |
+| **pyproject.toml** | openpyxl in test extras | 1-line addition |
+
+**Total new external dependencies: 1 (openpyxl)**
+**Total new Python code: ~500-700 lines** (renderer extensions + spec analysis)
+**Total new template files: 12**
+
+This is a clean, low-risk stack evolution. The architecture stays the same. The renderer pipeline extends naturally. No paradigm shifts.
 
 ---
 
 ## Sources
 
-### Agent Lightning
-- [GitHub Repository](https://github.com/microsoft/agent-lightning) (HIGH confidence)
-- [Official Documentation](https://microsoft.github.io/agent-lightning/latest/) (HIGH confidence)
-- [PyPI Package](https://pypi.org/project/agentlightning/) (HIGH confidence)
-- [Installation Guide](https://microsoft.github.io/agent-lightning/latest/tutorials/installation/) (HIGH confidence)
-- [APO Algorithm](https://microsoft.github.io/agent-lightning/latest/algorithm-zoo/apo/) (HIGH confidence)
-- [Training Tutorial](https://microsoft.github.io/agent-lightning/latest/how-to/train-first-agent/) (HIGH confidence)
-- [Microsoft Research Blog](https://www.microsoft.com/en-us/research/blog/agent-lightning-adding-reinforcement-learning-to-ai-agents-without-code-rewrites/) (HIGH confidence)
-- [arXiv Paper](https://arxiv.org/abs/2508.03680) (HIGH confidence)
-- [GitHub Releases](https://github.com/microsoft/agent-lightning/releases) (HIGH confidence)
-
-### Cognee
-- [GitHub Repository](https://github.com/topoteretes/cognee) (HIGH confidence)
-- [PyPI Package](https://pypi.org/project/cognee/) (HIGH confidence)
-- [Official Documentation - Vector Stores](https://docs.cognee.ai/setup-configuration/vector-stores) (HIGH confidence)
-- [Official Documentation - Graph Stores](https://docs.cognee.ai/setup-configuration/graph-stores) (HIGH confidence)
-- [Official Documentation - Embedding Providers](https://docs.cognee.ai/setup-configuration/embedding-providers) (HIGH confidence)
-- [Cognee + LanceDB Case Study](https://lancedb.com/blog/case-study-cognee/) (MEDIUM confidence)
-- [Cognee + Kuzu Blog Post](https://blog.kuzudb.com/post/cognee-kuzu-relational-data-to-knowledge-graph/) (MEDIUM confidence)
-
-### Shared Dependencies
-- [LiteLLM PyPI](https://pypi.org/project/litellm/) (HIGH confidence)
-- [LiteLLM + Agent Lightning Docs](https://docs.litellm.ai/docs/projects/Agent%20Lightning) (MEDIUM confidence)
+- [openpyxl PyPI](https://pypi.org/project/openpyxl/) -- version 3.1.5 verified (HIGH confidence)
+- [openpyxl Documentation](https://openpyxl.readthedocs.io/) -- API reference (HIGH confidence)
+- [Odoo 17 QWeb Reports](https://www.odoo.com/documentation/17.0/developer/reference/backend/reports.html) -- report template patterns (HIGH confidence)
+- [Odoo 17 Web Controllers](https://www.odoo.com/documentation/17.0/developer/reference/backend/http.html) -- controller route patterns (HIGH confidence)
+- [Odoo 17 ORM API](https://www.odoo.com/documentation/17.0/developer/reference/backend/orm.html) -- ormcache, model_create_multi (HIGH confidence)
+- [OCA excel_import_export Discussion](https://github.com/orgs/OCA/discussions/154) -- OCA xlsx wizard patterns (MEDIUM confidence)
+- [Odoo 17 Scheduled Actions](https://www.cybrosys.com/blog/how-to-configure-scheduled-actions-in-odoo-17) -- ir.cron patterns (MEDIUM confidence)
+- [Odoo Query Optimizations](https://stormatics.tech/blogs/query-optimizations-in-odoo-versions-17-19-for-faster-postgresql-performance) -- index/performance patterns (MEDIUM confidence)
+- [Python graphlib docs](https://docs.python.org/3.12/library/graphlib.html) -- TopologicalSorter API (HIGH confidence)
 
 ---
-*Stack research for: Agent Lightning + Cognee Integration (v3.0)*
-*Researched: 2026-03-04*
+*Stack research for: v3.1 Design Flaws & Feature Gaps*
+*Researched: 2026-03-05*
