@@ -18,14 +18,16 @@ A domain-specific extension of the GSD (Get Shit Done) framework that automates 
 - 444 tests passing, 15,700+ LOC Python (src + tests)
 - See: `.planning/MILESTONES.md` for full history
 
-## Current Milestone: v3.0 Intelligent Agent & Knowledge Layer
+## Current Milestone: v3.0 Bug Fixes, Flaws & Tech Debt
 
-**Goal:** Research and integrate Agent Lightning (RL-based agent optimization) and Cognee (knowledge graph pipeline) to make the system's agents smarter over time and its knowledge retrieval richer and more connected.
+**Goal:** Fix all confirmed bugs, resolve design flaws, and pay down technical debt identified in BUGS_FLAWS_DEBT.md. Research-first: authenticate each issue against the actual codebase before committing to a fix.
 
-**Target features:**
-- Agent Lightning integration — RL optimization for agent behavior based on validation outcomes
-- Cognee integration — Knowledge graph pipeline replacing/augmenting static markdown KB
-- Research-first approach — deep feasibility analysis before committing scope
+**Target areas:**
+- 3 HIGH severity bugs (mail.thread injection, Docker exec race, regex-based auto-fix)
+- 6 MEDIUM severity bugs (multi-line fix, AST analyzer, unused imports, rate limiting, CLI imports, wizard template)
+- 3 LOW severity bugs (wizard ACLs, deprecated name_get, inconsistent error handling)
+- 4 technical debt items (render_module monolith, Docker path, Result type, GitHub rate limiting)
+- 26 design flaws (relationship patterns, computed chains, security groups, QWeb reports, etc.)
 
 ## Core Value
 
@@ -122,7 +124,7 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 
 ### Active
 
-v3.0 — Intelligent Agent & Knowledge Layer (defining requirements)
+v3.0 — Bug Fixes, Flaws & Tech Debt (defining requirements)
 
 ### Out of Scope
 
@@ -203,4 +205,4 @@ v3.0 — Intelligent Agent & Knowledge Layer (defining requirements)
 | **Context7** | INTEGRATE | Live documentation MCP for real-time Odoo API reference |
 
 ---
-*Last updated: 2026-03-04 — after v3.0 milestone started*
+*Last updated: 2026-03-05 — v3.0 milestone restarted (Bug Fixes, Flaws & Tech Debt)*
