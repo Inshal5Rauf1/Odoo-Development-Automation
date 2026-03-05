@@ -127,7 +127,7 @@ Plans:
   1. A unified Result[T] type with success, data, and errors fields exists and is used by auto_fix, docker_runner, pylint_runner, and verifier modules
   2. Callers of validation functions receive structured Result objects instead of mixed return types (tuples, booleans, exceptions)
   3. Error messages from validation pipeline are consistently formatted and accessible through Result.errors
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 23-01-PLAN.md — Define Result[T] type and refactor pylint_runner + docker_runner
 - [ ] 23-02-PLAN.md — Refactor auto_fix + verifier and update cli.py/renderer.py consumers
@@ -158,7 +158,7 @@ Phases 20-22 can execute in parallel (independent). Phase 23 before Phase 24 (de
 | 20. Auto-Fix AST Migration | 2/2 | Complete    | 2026-03-05 | - |
 | 21. Template Correctness | 2/2 | Complete   | 2026-03-05 | - |
 | 22. Validation & Search Fixes | 2/2 | Complete   | 2026-03-05 | - |
-| 23. Unified Result Type | v3.0 | 0/2 | Not started | - |
+| 23. Unified Result Type | 1/2 | In Progress|  | - |
 | 24. Code Quality & Decomposition | v3.0 | 0/? | Not started | - |
 
 ---
