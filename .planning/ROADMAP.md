@@ -199,7 +199,9 @@ Plans:
   1. A spec with `archival: true` on a model that also has a `state` Selection field renders without error — `view_form.xml.j2` guards `wizard.trigger_state` access
   2. `cron_data.xml.j2` renders `doall` from spec value instead of hardcoding `False`
   3. Regression tests cover both scenarios
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 35-01-PLAN.md — Fix view_form.xml.j2 trigger_state crash and cron_data.xml.j2 doall hardcoding
 
 ## Progress
 
@@ -223,7 +225,7 @@ Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32 -> 33 ->
 | 32. Controllers & Import/Export | 2/2 | Complete    | 2026-03-05 | - |
 | 33. Database Performance | 1/1 | Complete    | 2026-03-05 | - |
 | 34. Production Patterns | 2/2 | Complete    | 2026-03-05 | - |
-| 35. Template Bug Fixes & Tech Debt | v3.1 | 0/TBD | Not started | - |
+| 35. Template Bug Fixes & Tech Debt | v3.1 | 0/1 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-01*
