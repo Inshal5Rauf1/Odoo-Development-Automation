@@ -8,7 +8,7 @@
 - **v2.0 Environment-Aware Generation** — Phases 15-17 (shipped 2026-03-04)
 - **v2.1 Auto-Fix & Enhancements** — Phases 18-19 (shipped 2026-03-04) | [Archive](milestones/v2.1-ROADMAP.md)
 - **v3.0 Bug Fixes & Tech Debt** — Phases 20-25 (shipped 2026-03-05) | [Archive](milestones/v3.0-ROADMAP.md)
-- **v3.1 Design Flaws & Feature Gaps** — Phases 26-34 (in progress)
+- **v3.1 Design Flaws & Feature Gaps** — Phases 26-35 (in progress)
 
 ## Phases
 
@@ -61,6 +61,7 @@
 - [x] **Phase 32: Controllers & Import/Export** - HTTP controllers and bulk import/export wizards (completed 2026-03-05)
 - [x] **Phase 33: Database Performance** - Index auto-detection, store=True selectivity, transient model config (completed 2026-03-05)
 - [x] **Phase 34: Production Patterns** - Bulk operations, reference caching, and archival strategies (completed 2026-03-05)
+- [ ] **Phase 35: Template Bug Fixes & Tech Debt** - Fix archival+state template crash and cron doall hardcoding
 
 ## Phase Details
 
@@ -189,10 +190,21 @@ Plans:
 - [x] 34-01-PLAN.md — Preprocessor + model template extensions for bulk create and ORM cache patterns
 - [ ] 34-02-PLAN.md — Archival wizard/cron generation with batch processing and active field injection
 
+### Phase 35: Template Bug Fixes & Tech Debt
+**Goal**: Fix critical template bugs and tech debt discovered during v3.1 milestone audit
+**Depends on**: Phase 34 (archival wizard trigger_state bug), Phase 30 (cron doall hardcoding)
+**Requirements**: PERF-04, TMPL-05
+**Gap Closure**: Closes gaps from v3.1 audit
+**Success Criteria** (what must be TRUE):
+  1. A spec with `archival: true` on a model that also has a `state` Selection field renders without error — `view_form.xml.j2` guards `wizard.trigger_state` access
+  2. `cron_data.xml.j2` renders `doall` from spec value instead of hardcoding `False`
+  3. Regression tests cover both scenarios
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32 -> 33 -> 34
+Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32 -> 33 -> 34 -> 35
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -211,6 +223,7 @@ Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32 -> 33 ->
 | 32. Controllers & Import/Export | 2/2 | Complete    | 2026-03-05 | - |
 | 33. Database Performance | 1/1 | Complete    | 2026-03-05 | - |
 | 34. Production Patterns | 2/2 | Complete    | 2026-03-05 | - |
+| 35. Template Bug Fixes & Tech Debt | v3.1 | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-03-01*
