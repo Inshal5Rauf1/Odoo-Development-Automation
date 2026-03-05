@@ -1,5 +1,14 @@
 # Milestones
 
+## v3.0 Bug Fixes & Tech Debt (Shipped: 2026-03-05)
+
+**Phases completed:** 11 phases, 21 plans, 2 tasks
+
+**Key accomplishments:**
+- (none recorded)
+
+---
+
 ## v2.1 Auto-Fix & Enhancements (Shipped: 2026-03-04)
 
 **Phases completed:** 2 phases (18-19), 5 plans | 25 commits | +4,994 net LOC Python

@@ -250,7 +250,7 @@ odoo-gen-utils extract-i18n /path/to/module
 ```bash
 cd python/
 
-# Run all unit tests (309 tests, ~3s)
+# Run all unit tests (494 tests, ~3s)
 uv run pytest tests/ -v
 
 # Skip Docker tests (when Docker unavailable)
@@ -373,8 +373,9 @@ Extend the knowledge base by adding files to `knowledge/custom/`. These are auto
 | v1.2 | Template Quality | 12-14 | Shipped 2026-03-04 |
 | v2.0 | Environment-Aware Generation | 15-17 | Shipped 2026-03-04 |
 | v2.1 | Auto-Fix & Enhancements | 18-19 | Shipped 2026-03-04 |
+| v3.0 | Bug Fixes & Tech Debt | 20-25 | Shipped 2026-03-05 |
 
-**Stats:** 19 phases, 45 plans, 270+ commits, 15,700 LOC Python, 444 tests
+**Stats:** 25 phases, 56 plans, 325+ commits, 18,400 LOC Python, 494 tests
 
 ## License
 

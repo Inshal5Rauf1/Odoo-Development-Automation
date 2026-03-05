@@ -8,26 +8,16 @@ A domain-specific extension of the GSD (Get Shit Done) framework that automates 
 
 ## Current State
 
-**Shipped:** v2.1 (2026-03-04) — Auto-Fix & Enhancements
-- 19 phases total across 5 milestones, 45 plans, 270+ commits over 4 days
-- Auto-fix pipeline handles all 5 common Docker error patterns with bounded iterations
-- Context7 REST client for live Odoo documentation queries (graceful fallback)
-- Artifact state tracking with JSON sidecar persistence and CLI display
-- MCP server with 6 tools for live Odoo introspection (XML-RPC)
-- Docker Compose dev environment with Odoo 17 CE + PostgreSQL
-- 444 tests passing, 15,700+ LOC Python (src + tests)
+**Shipped:** v3.0 (2026-03-05) — Bug Fixes & Tech Debt
+- 25 phases total across 7 milestones, 56 plans, 325+ commits over 5 days
+- AST-based auto-fix pipeline (replaced regex) with multi-line expression support
+- Unified Result[T] type across entire validation pipeline
+- Renderer decomposed into 7 independently testable stage functions
+- Smart mail.thread injection with line item detection and tri-state chatter flag
+- Docker run --rm pattern eliminates serialization race conditions
+- Lazy CLI imports for fast startup
+- 494 tests passing, 18,400+ LOC Python (7,178 src + 11,227 tests)
 - See: `.planning/MILESTONES.md` for full history
-
-## Current Milestone: v3.0 Bug Fixes, Flaws & Tech Debt
-
-**Goal:** Fix all confirmed bugs, resolve design flaws, and pay down technical debt identified in BUGS_FLAWS_DEBT.md. Research-first: authenticate each issue against the actual codebase before committing to a fix.
-
-**Target areas:**
-- 3 HIGH severity bugs (mail.thread injection, Docker exec race, regex-based auto-fix)
-- 6 MEDIUM severity bugs (multi-line fix, AST analyzer, unused imports, rate limiting, CLI imports, wizard template)
-- 3 LOW severity bugs (wizard ACLs, deprecated name_get, inconsistent error handling)
-- 4 technical debt items (render_module monolith, Docker path, Result type, GitHub rate limiting)
-- 26 design flaws (relationship patterns, computed chains, security groups, QWeb reports, etc.)
 
 ## Core Value
 
@@ -122,9 +112,25 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 - Context7 MCP for live Odoo docs with graceful fallback (KB remains primary) — v2.1
 - Artifact state tracking (pending/generated/validated/approved) with JSON sidecar and CLI display — v2.1
 
+**Bug Fixes & Tech Debt (v3.0):**
+- AST-based auto-fix for all 5 pylint fixers (multi-line safe) — v3.0
+- Full-body AST unused import detection (no whitelist) — v3.0
+- Smart mail.thread injection with line item detection, tri-state chatter, parent dedup — v3.0
+- Conditional api import in wizard template — v3.0
+- Wizard ACL entries for TransientModels — v3.0
+- display_name vs name_get version gate for Odoo 18.0 — v3.0
+- Docker run --rm eliminates serialization race — v3.0
+- Unified Result[T] type across validation pipeline — v3.0
+- GitHub rate limiting with exponential backoff — v3.0
+- AST _inherit-only model detection — v3.0
+- Lazy CLI imports (fast startup) — v3.0
+- render_module decomposed into 7 stage functions — v3.0
+- Docker compose path via importlib.resources — v3.0
+- All test files correctly unwrap Result[T] — v3.0
+
 ### Active
 
-v3.0 — Bug Fixes, Flaws & Tech Debt (defining requirements)
+v3.1 — Design Flaws & Feature Gaps (not yet started)
 
 ### Out of Scope
 
@@ -138,16 +144,15 @@ v3.0 — Bug Fixes, Flaws & Tech Debt (defining requirements)
 
 ## Context
 
+- v3.0 shipped 2026-03-05 — Bug fixes & tech debt (14 requirements, 6 phases, 11 plans)
+- v2.1 shipped 2026-03-04 — Docker auto-fix hardening, Context7 REST client, artifact state tracking
 - v2.0 shipped 2026-03-04 — environment-aware generation via MCP (Phases 15-17)
 - v1.2 shipped 2026-03-04 — template correctness, golden path E2E, auto-fix dispatch wiring
 - v1.1 shipped 2026-03-03 — GitHub auth, dependency cleanup, live Docker testing, field string= i18n
 - v1.0 shipped 2026-03-03 with 4,150 LOC Python, 243 tests, and full pipeline coverage
 - Tech stack: Python 3.12, Jinja2, Click CLI, pylint-odoo, ChromaDB, Docker
-- 8 specialized agents: odoo-scaffold, odoo-model-gen, odoo-view-gen, odoo-test-gen, odoo-security-gen, odoo-validator, odoo-search, odoo-extend
-- 12 user commands via /odoo-gen:* prefix (new, validate, search, plan, extend, etc.)
-- 13 knowledge base files covering Odoo 17.0/18.0 OCA standards
-- v2.1 shipped: Docker auto-fix hardening (5 patterns), Context7 REST client, artifact state tracking
-- Remaining tech debt: Context7 query_docs not wired into generation pipeline (available on-demand for agents)
+- 8 specialized agents, 12 user commands, 13 knowledge base files
+- Remaining: 24 design flaws deferred to v3.1, Context7 query_docs not wired into generation pipeline
 - Distribution: users clone into `~/.claude/odoo-gen/` and run `install.sh`
 
 ## Constraints
@@ -187,6 +192,11 @@ v3.0 — Bug Fixes, Flaws & Tech Debt (defining requirements)
 | Context7 stdlib-only (urllib.request) | No new deps for simple GET calls | Good — zero dependency growth |
 | JSON sidecar for artifact state | .odoo-gen-state.json alongside module | Good — non-intrusive observability |
 | Warning-only invalid state transitions | Log warnings but never block generation | Good — observability never interferes |
+| AST-based auto-fix (not regex) | Handles multi-line expressions, complex Python syntax | Good — eliminated all regex corruption bugs |
+| Result[T] unified type | Single error handling pattern across validation pipeline | Good — consistent .success/.data/.errors interface |
+| Renderer decomposition (7 stages) | Each stage independently testable, under 80 lines | Good — render_module maintainable |
+| Lazy CLI imports | Fast startup, heavy deps only when needed | Good — no import-time penalties |
+| Docker run --rm (not exec) | Eliminates serialization race with entrypoint server | Good — reliable validation |
 
 ## Prior Art
 
@@ -205,4 +215,4 @@ v3.0 — Bug Fixes, Flaws & Tech Debt (defining requirements)
 | **Context7** | INTEGRATE | Live documentation MCP for real-time Odoo API reference |
 
 ---
-*Last updated: 2026-03-05 — v3.0 milestone restarted (Bug Fixes, Flaws & Tech Debt)*
+*Last updated: 2026-03-05 after v3.0 milestone*
