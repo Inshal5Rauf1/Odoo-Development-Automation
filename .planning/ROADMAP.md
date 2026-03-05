@@ -7,7 +7,7 @@
 - **v1.2 Template Quality** — Phases 12-14 (shipped 2026-03-04) | [Archive](milestones/v1.2-ROADMAP.md)
 - **v2.0 Environment-Aware Generation** — Phases 15-17 (shipped 2026-03-04)
 - **v2.1 Auto-Fix & Enhancements** — Phases 18-19 (shipped 2026-03-04) | [Archive](milestones/v2.1-ROADMAP.md)
-- **v3.0 Bug Fixes & Tech Debt** — Phases 20-24 (in progress)
+- **v3.0 Bug Fixes & Tech Debt** — Phases 20-25 (in progress)
 
 ## Phases
 
@@ -75,6 +75,7 @@
 - [x] **Phase 22: Validation & Search Fixes** - Docker exec race condition, GitHub rate limiting, and AST _inherit-only detection (completed 2026-03-05)
 - [x] **Phase 23: Unified Result Type** - Cross-cutting Result[T] type across validation pipeline modules (completed 2026-03-05)
 - [x] **Phase 24: Code Quality & Decomposition** - Lazy CLI imports, render_module decomposition, Docker path resolution (completed 2026-03-05)
+- [ ] **Phase 25: Test Migration Cleanup** - Fix Result[T] unwrapping in golden path and Docker integration tests
 
 ## Phase Details
 
@@ -146,10 +147,19 @@ Plans:
 - [ ] 24-01-PLAN.md — CLI lazy imports + Docker compose path via importlib.resources
 - [ ] 24-02-PLAN.md — render_module decomposition into 7 stage functions with Result[T]
 
+### Phase 25: Test Migration Cleanup
+**Goal**: All test files correctly unwrap Result[T] objects from Phase 23 migration
+**Depends on**: Phase 23 (Result[T] type must exist), Phase 24 (complete)
+**Requirements**: DEBT-01
+**Success Criteria** (what must be TRUE):
+  1. test_golden_path.py unwraps Result objects via .data before accessing InstallResult/TestResult fields
+  2. All test files using docker_install_module or docker_run_tests correctly handle Result[T] return type
+**Plans:** 0/0 plans
+
 ## Progress
 
 **Execution Order:**
-Phases 20-22 can execute in parallel (independent). Phase 23 before Phase 24 (dependency).
+Phases 20-22 can execute in parallel (independent). Phase 23 before Phase 24 (dependency). Phase 25 after Phase 24.
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|

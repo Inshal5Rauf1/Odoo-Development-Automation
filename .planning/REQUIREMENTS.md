@@ -33,6 +33,10 @@
 - [x] **QUAL-02**: render_module decomposed from 371-line monolith into independently testable stage functions (render_manifest, render_models, render_views, render_security, render_wizards, render_tests, render_static)
 - [x] **QUAL-03**: Docker compose file path resolved via importlib.resources or configuration instead of 5-level parent directory traversal
 
+### Tech Debt Cleanup
+
+- [ ] **DEBT-01**: All test files consuming docker_install_module and docker_run_tests correctly unwrap Result[T] objects (access .data before using InstallResult/TestResult fields)
+
 ## v3.1 Requirements (Deferred)
 
 ### Design Flaws — Feature Gaps
@@ -87,10 +91,11 @@
 | QUAL-01 | Phase 24 | Complete |
 | QUAL-02 | Phase 24 | Complete |
 | QUAL-03 | Phase 24 | Complete |
+| DEBT-01 | Phase 25 | Pending |
 
 **Coverage:**
-- v3.0 requirements: 13 total
-- Mapped to phases: 13
+- v3.0 requirements: 14 total
+- Mapped to phases: 14
 - Unmapped: 0
 
 ---
