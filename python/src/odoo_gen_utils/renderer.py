@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from odoo_gen_utils.validation.types import Result
+
 if TYPE_CHECKING:
     from odoo_gen_utils.verifier import EnvironmentVerifier, VerificationWarning
 
@@ -349,6 +351,121 @@ def _compute_view_files(spec: dict[str, Any]) -> list[str]:
     return view_files
 
 
+def render_manifest(
+    env: Environment,
+    spec: dict[str, Any],
+    module_dir: Path,
+    module_context: dict[str, Any],
+) -> Result[list[Path]]:
+    """Render __manifest__.py, root __init__.py, and models/__init__.py.
+
+    Args:
+        env: Configured Jinja2 Environment.
+        spec: Full module specification dictionary.
+        module_dir: Path to the module directory.
+        module_context: Shared module-level template context.
+
+    Returns:
+        Result containing list of created file Paths on success.
+    """
+    try:
+        created: list[Path] = []
+        created.append(
+            render_template(env, "manifest.py.j2", module_dir / "__manifest__.py", module_context)
+        )
+        created.append(
+            render_template(env, "init_root.py.j2", module_dir / "__init__.py", module_context)
+        )
+        created.append(
+            render_template(env, "init_models.py.j2", module_dir / "models" / "__init__.py", module_context)
+        )
+        return Result.ok(created)
+    except Exception as exc:
+        return Result.fail(f"render_manifest failed: {exc}")
+
+
+def render_models(
+    env: Environment,
+    spec: dict[str, Any],
+    module_dir: Path,
+    module_context: dict[str, Any],
+    verifier: "EnvironmentVerifier | None" = None,
+) -> Result[list[Path]]:
+    """Render per-model .py files, views, and action files.
+
+    Args:
+        env: Configured Jinja2 Environment.
+        spec: Full module specification dictionary.
+        module_dir: Path to the module directory.
+        module_context: Shared module-level template context.
+        verifier: Optional EnvironmentVerifier for inline verification.
+
+    Returns:
+        Result containing (created_files, warnings) on success.
+    """
+    try:
+        models = spec.get("models", [])
+        created: list[Path] = []
+        warnings: list = []
+
+        for model in models:
+            model_ctx = _build_model_context(spec, model)
+            model_var = _to_python_var(model["name"])
+
+            if verifier is not None:
+                model_result = verifier.verify_model_spec(model)
+                if model_result.success:
+                    warnings.extend(model_result.data or [])
+
+            created.append(
+                render_template(env, "model.py.j2", module_dir / "models" / f"{model_var}.py", model_ctx)
+            )
+            created.append(
+                render_template(env, "view_form.xml.j2", module_dir / "views" / f"{model_var}_views.xml", model_ctx)
+            )
+
+            if verifier is not None:
+                field_names = [f.get("name", "") for f in model.get("fields", [])]
+                view_result = verifier.verify_view_spec(model.get("name", ""), field_names)
+                if view_result.success:
+                    warnings.extend(view_result.data or [])
+
+            created.append(
+                render_template(env, "action.xml.j2", module_dir / "views" / f"{model_var}_action.xml", model_ctx)
+            )
+
+        return Result.ok(created)
+    except Exception as exc:
+        return Result.fail(f"render_models failed: {exc}")
+
+
+def render_views(
+    env: Environment,
+    spec: dict[str, Any],
+    module_dir: Path,
+    module_context: dict[str, Any],
+) -> Result[list[Path]]:
+    """Render views/menu.xml for all models.
+
+    Args:
+        env: Configured Jinja2 Environment.
+        spec: Full module specification dictionary.
+        module_dir: Path to the module directory.
+        module_context: Shared module-level template context.
+
+    Returns:
+        Result containing list of created file Paths on success.
+    """
+    try:
+        created: list[Path] = []
+        created.append(
+            render_template(env, "menu.xml.j2", module_dir / "views" / "menu.xml", module_context)
+        )
+        return Result.ok(created)
+    except Exception as exc:
+        return Result.fail(f"render_views failed: {exc}")
+
+
 def render_module(
     spec: dict[str, Any],
     template_dir: Path,
@@ -468,10 +585,11 @@ def render_module(
         "spec_wizards": spec_wizards,
     }
 
-    # 1. __manifest__.py (uses updated manifest_files with canonical ordering)
-    created_files.append(
-        render_template(env, "manifest.py.j2", module_dir / "__manifest__.py", module_context)
-    )
+    # Stage 1: __manifest__.py, root __init__.py, models/__init__.py
+    manifest_result = render_manifest(env, spec, module_dir, module_context)
+    if not manifest_result.success:
+        return created_files, all_warnings
+    created_files.extend(manifest_result.data)
     if _state is not None:
         try:
             _state = _state.transition(
@@ -483,73 +601,36 @@ def render_module(
         except Exception:
             pass  # State tracking must never block generation
 
-    # 2. Root __init__.py (conditionally imports wizards)
-    created_files.append(
-        render_template(env, "init_root.py.j2", module_dir / "__init__.py", module_context)
-    )
-
-    # 3. models/__init__.py
-    created_files.append(
-        render_template(env, "init_models.py.j2", module_dir / "models" / "__init__.py", module_context)
-    )
-
-    # 4. Per-model files
-    for model in models:
-        model_ctx = _build_model_context(spec, model)
-        model_var = _to_python_var(model["name"])
-
-        # Inline environment verification (MCP-03): verify inherit and comodel targets.
-        if verifier is not None:
-            model_result = verifier.verify_model_spec(model)
-            if model_result.success:
-                all_warnings.extend(model_result.data or [])
-
-        # models/<model_var>.py
-        created_files.append(
-            render_template(env, "model.py.j2", module_dir / "models" / f"{model_var}.py", model_ctx)
-        )
-        if _state is not None:
+    # Stage 2: Per-model .py, views, actions
+    models_result = render_models(env, spec, module_dir, module_context, verifier=verifier)
+    if not models_result.success:
+        return created_files, all_warnings
+    created_files.extend(models_result.data)
+    # Track model and view state for each model
+    if _state is not None:
+        for model in models:
+            model_var = _to_python_var(model["name"])
             try:
                 _state = _state.transition(
                     kind=ArtifactKind.MODEL.value,
                     name=model["name"],
-                    file_path=str(created_files[-1].relative_to(module_dir)),
+                    file_path=f"models/{model_var}.py",
                     new_status=ArtifactStatus.GENERATED.value,
                 )
-            except Exception:
-                pass  # State tracking must never block generation
-
-        # views/<model_var>_views.xml (form + tree + search combined)
-        created_files.append(
-            render_template(env, "view_form.xml.j2", module_dir / "views" / f"{model_var}_views.xml", model_ctx)
-        )
-        if _state is not None:
-            try:
                 _state = _state.transition(
                     kind=ArtifactKind.VIEW.value,
                     name=model["name"],
-                    file_path=str(created_files[-1].relative_to(module_dir)),
+                    file_path=f"views/{model_var}_views.xml",
                     new_status=ArtifactStatus.GENERATED.value,
                 )
             except Exception:
                 pass  # State tracking must never block generation
 
-        # Inline environment verification (MCP-04): verify view field references.
-        if verifier is not None:
-            field_names = [f.get("name", "") for f in model.get("fields", [])]
-            view_result = verifier.verify_view_spec(model.get("name", ""), field_names)
-            if view_result.success:
-                all_warnings.extend(view_result.data or [])
-
-        # views/<model_var>_action.xml
-        created_files.append(
-            render_template(env, "action.xml.j2", module_dir / "views" / f"{model_var}_action.xml", model_ctx)
-        )
-
-    # 5. views/menu.xml (single menu file for all models)
-    created_files.append(
-        render_template(env, "menu.xml.j2", module_dir / "views" / "menu.xml", module_context)
-    )
+    # Stage 3: views/menu.xml
+    views_result = render_views(env, spec, module_dir, module_context)
+    if not views_result.success:
+        return created_files, all_warnings
+    created_files.extend(views_result.data)
 
     # 6. security/security.xml
     created_files.append(
