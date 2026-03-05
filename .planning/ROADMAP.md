@@ -154,9 +154,10 @@ Plans:
   2. Generated controllers default to `auth='user'` and `csrf=True` (secure by default); JSON routes include proper error handling
   3. A spec with `import_export: true` on a model generates a TransientModel wizard with `fields.Binary` upload, row validation, preview step, and batch `_do_import()` method
   4. The import wizard validates file content type (not just extension) and the export action produces xlsx output
-**Plans**: 1 plan
+**Plans**: 2 plans
 Plans:
-- [ ] 31-01-PLAN.md — QWeb report templates, graph/pivot dashboard views, render_reports() implementation
+- [ ] 32-01-PLAN.md — HTTP controller generation with @http.route, secure defaults, JSON error handling
+- [ ] 32-02-PLAN.md — Import/export TransientModel wizards with Binary upload, magic byte validation, xlsx export
 
 ### Phase 33: Database Performance
 **Goal**: Generated models automatically get index=True on filterable fields, store=True on computed fields used in views, and TransientModels get cleanup configuration
@@ -203,7 +204,7 @@ Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32 -> 33 ->
 | 29. Complex Constraints | v3.1 | 0/1 | Not started | - |
 | 30. Scheduled Actions & Render Pipeline | 1/1 | Complete    | 2026-03-05 | - |
 | 31. Reports & Analytics | 1/1 | Complete    | 2026-03-05 | - |
-| 32. Controllers & Import/Export | v3.1 | 0/TBD | Not started | - |
+| 32. Controllers & Import/Export | v3.1 | 0/2 | Not started | - |
 | 33. Database Performance | v3.1 | 0/TBD | Not started | - |
 | 34. Production Patterns | v3.1 | 0/TBD | Not started | - |
 
