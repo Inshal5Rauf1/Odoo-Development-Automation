@@ -256,3 +256,28 @@ class {{ model_name | to_class }}(models.Model):
         pass
 {% endfor %}
 {% endif %}
+{% if is_archival %}
+
+    @api.model
+    def _cron_archive_old_records(self):
+        """Scheduled action: archive records older than threshold.
+
+        Uses batch processing with commit-per-batch to avoid long transactions.
+        """
+        from dateutil.relativedelta import relativedelta
+        BATCH_SIZE = {{ archival_batch_size }}
+        cutoff = fields.Date.today() - relativedelta(days=int(
+            self.env['ir.config_parameter'].sudo().get_param(
+                '{{ module_name }}.archival_days', default={{ archival_days }}
+            )
+        ))
+        while True:
+            records = self.search([
+                ('active', '=', True),
+                ('create_date', '<', cutoff),
+            ], limit=BATCH_SIZE)
+            if not records:
+                break
+            records.write({'active': False})
+            self.env.cr.commit()
+{% endif %}

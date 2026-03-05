@@ -436,13 +436,15 @@ def _process_performance(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 def _process_production_patterns(spec: dict[str, Any]) -> dict[str, Any]:
-    """Enrich models with bulk create and ORM cache production patterns.
+    """Enrich models with bulk create, ORM cache, and archival production patterns.
 
     Analyzes:
     1. bulk:true -> is_bulk=True, has_create_override=True
     2. cacheable:true -> is_cacheable=True, needs_tools=True,
        has_create_override=True, has_write_override=True,
        cache_lookup_field (from cache_key or first unique Char or "name")
+    3. archival:true -> is_archival=True, active field injection,
+       archival wizard in spec["wizards"], archival cron in spec["cron_jobs"]
 
     Preserves existing has_create_override/has_write_override from Phase 29
     constraints (OR them, don't replace).
@@ -454,13 +456,17 @@ def _process_production_patterns(spec: dict[str, Any]) -> dict[str, Any]:
         return spec
 
     new_models = []
+    new_wizards = list(spec.get("wizards", []))
+    new_cron_jobs = list(spec.get("cron_jobs", []))
+
     for model in models:
-        new_model = {**model}
+        new_model = {**model, "fields": list(model.get("fields", []))}
 
         is_bulk = bool(model.get("bulk"))
         is_cacheable = bool(model.get("cacheable"))
+        is_archival = bool(model.get("archival"))
 
-        if not is_bulk and not is_cacheable:
+        if not is_bulk and not is_cacheable and not is_archival:
             new_models.append(new_model)
             continue
 
@@ -488,6 +494,54 @@ def _process_production_patterns(spec: dict[str, Any]) -> dict[str, Any]:
                 )
                 new_model["cache_lookup_field"] = unique_char or "name"
 
+        if is_archival:
+            new_model["is_archival"] = True
+            new_model["archival_batch_size"] = model.get("archival_batch_size", 100)
+            new_model["archival_days"] = model.get("archival_days", 365)
+
+            # Inject active field if not already present
+            existing_field_names = {f["name"] for f in new_model["fields"]}
+            if "active" not in existing_field_names:
+                new_model["fields"] = [
+                    *new_model["fields"],
+                    {
+                        "name": "active",
+                        "type": "Boolean",
+                        "default": True,
+                        "index": True,
+                        "string": "Active",
+                    },
+                ]
+
+            # Inject archival wizard into spec wizards
+            wizard_name = f"{model['name']}.archive.wizard"
+            new_wizards.append({
+                "name": wizard_name,
+                "target_model": model["name"],
+                "template": "archival_wizard.py.j2",
+                "form_template": "archival_wizard_form.xml.j2",
+                "fields": [
+                    {
+                        "name": "days_threshold",
+                        "type": "Integer",
+                        "string": "Archive records older than (days)",
+                        "default": 365,
+                        "required": True,
+                    },
+                ],
+                "transient_max_hours": 1.0,
+            })
+
+            # Inject archival cron into spec cron_jobs
+            new_cron_jobs.append({
+                "name": f"Archive Old {model.get('description', model['name'])} Records",
+                "model_name": model["name"],
+                "method": "_cron_archive_old_records",
+                "interval_number": 1,
+                "interval_type": "days",
+                "doall": False,
+            })
+
         # Preserve existing override flags from Phase 29 (OR, don't replace)
         if model.get("has_create_override"):
             new_model["has_create_override"] = True
@@ -496,7 +550,7 @@ def _process_production_patterns(spec: dict[str, Any]) -> dict[str, Any]:
 
         new_models.append(new_model)
 
-    return {**spec, "models": new_models}
+    return {**spec, "models": new_models, "wizards": new_wizards, "cron_jobs": new_cron_jobs}
 
 
 def _enrich_model_performance(model: dict[str, Any]) -> dict[str, Any]:
@@ -990,6 +1044,14 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     is_cacheable = model.get("is_cacheable", False)
     cache_lookup_field = model.get("cache_lookup_field", "name")
     needs_tools = model.get("needs_tools", False)
+    is_archival = model.get("is_archival", False)
+    archival_batch_size = model.get("archival_batch_size", 100)
+    archival_days = model.get("archival_days", 365)
+
+    # Phase 34-02: filter archival cron from generic cron_methods
+    # (archival has a dedicated template block, not a stub)
+    if is_archival:
+        cron_methods = [c for c in cron_methods if c.get("method") != "_cron_archive_old_records"]
 
     # Phase 12: conditional api import (TMPL-02)
     # Phase 29: also need api when temporal constraints exist (@api.constrains)
@@ -1000,7 +1062,7 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     needs_api = bool(
         computed_fields or onchange_fields or constrained_fields
         or sequence_fields or has_temporal or has_create_override
-        or cron_methods or is_bulk or is_cacheable
+        or cron_methods or is_bulk or is_cacheable or is_archival
     )
 
     return {
@@ -1067,6 +1129,9 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         "is_cacheable": is_cacheable,
         "cache_lookup_field": cache_lookup_field,
         "needs_tools": needs_tools,
+        "is_archival": is_archival,
+        "archival_batch_size": archival_batch_size,
+        "archival_days": archival_days,
     }
 
 
@@ -1337,9 +1402,11 @@ def render_wizards(
                     "wizard_xml_id": wxid, "wizard_class": _to_class(wizard["name"]), "needs_api": True,
                     "transient_max_hours": wizard.get("transient_max_hours"),
                     "transient_max_count": wizard.get("transient_max_count")}
-            created.append(render_template(env, "wizard.py.j2", module_dir / "wizards" / f"{wvar}.py", wctx))
+            py_template = wizard.get("template", "wizard.py.j2")
+            form_template = wizard.get("form_template", "wizard_form.xml.j2")
+            created.append(render_template(env, py_template, module_dir / "wizards" / f"{wvar}.py", wctx))
             created.append(render_template(
-                env, "wizard_form.xml.j2", module_dir / "views" / f"{wxid}_wizard_form.xml", wctx))
+                env, form_template, module_dir / "views" / f"{wxid}_wizard_form.xml", wctx))
         return Result.ok(created)
     except Exception as exc:
         return Result.fail(f"render_wizards failed: {exc}")
