@@ -225,7 +225,7 @@ Phases execute in numeric order: 26 -> 27 -> 28 -> 29 -> 30 -> 31 -> 32 -> 33 ->
 | 32. Controllers & Import/Export | 2/2 | Complete    | 2026-03-05 | - |
 | 33. Database Performance | 1/1 | Complete    | 2026-03-05 | - |
 | 34. Production Patterns | 2/2 | Complete    | 2026-03-05 | - |
-| 35. Template Bug Fixes & Tech Debt | 1/1 | Complete   | 2026-03-05 | - |
+| 35. Template Bug Fixes & Tech Debt | 1/1 | Complete    | 2026-03-05 | - |
 
 ---
 *Roadmap created: 2026-03-01*
