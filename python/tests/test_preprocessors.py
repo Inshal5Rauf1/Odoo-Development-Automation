@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from odoo_gen_utils.preprocessors import _process_audit_patterns
+from odoo_gen_utils.preprocessors import _process_audit_patterns, _process_approval_patterns
 
 
 # ---------------------------------------------------------------------------
@@ -495,3 +495,376 @@ class TestAuditPreprocessor:
         assert "audit" in enriched["override_sources"]["write"]
         # Create sources should be preserved
         assert "bulk" in enriched["override_sources"]["create"]
+
+
+# ---------------------------------------------------------------------------
+# Helpers for approval preprocessor tests
+# ---------------------------------------------------------------------------
+
+
+def _make_approval_spec(
+    models: list[dict[str, Any]] | None = None,
+    security_roles: list[dict[str, Any]] | None = None,
+    module_name: str = "uni_fee",
+) -> dict[str, Any]:
+    """Build a minimal spec for approval preprocessor testing."""
+    return {
+        "module_name": module_name,
+        "depends": ["base"],
+        "models": models or [],
+        "security_roles": security_roles or _make_security_roles(
+            roles=["user", "editor", "hod", "dean", "manager"],
+            module_name=module_name,
+        ),
+    }
+
+
+def _make_approval_model(
+    name: str = "fee.request",
+    fields: list[dict[str, Any]] | None = None,
+    approval: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Build a minimal approval model dict for testing."""
+    model: dict[str, Any] = {
+        "name": name,
+        "description": name.replace(".", " ").title(),
+        "fields": fields or [
+            {"name": "name", "type": "Char", "required": True},
+            {"name": "amount", "type": "Float"},
+            {"name": "notes", "type": "Text"},
+        ],
+        **kwargs,
+    }
+    if approval is not None:
+        model["approval"] = approval
+    return model
+
+
+def _default_approval_block() -> dict[str, Any]:
+    """Return a standard 3-level approval block."""
+    return {
+        "levels": [
+            {"state": "submitted", "role": "editor", "next": "approved_hod", "label": "Submitted"},
+            {"state": "approved_hod", "role": "hod", "next": "approved_dean", "label": "HOD Approved"},
+            {"state": "approved_dean", "role": "dean", "next": "done", "label": "Dean Approved"},
+        ],
+        "on_reject": "draft",
+        "reject_allowed_from": ["approved_hod", "approved_dean"],
+        "lock_after": "draft",
+        "editable_fields": ["notes", "rejection_reason"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# TestApprovalPreprocessor
+# ---------------------------------------------------------------------------
+
+
+class TestApprovalPreprocessor:
+    """Test _process_approval_patterns preprocessor."""
+
+    def test_approval_enriches_model_has_approval_true(self):
+        """Spec with approval block produces has_approval=True on enriched model."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["has_approval"] is True
+
+    def test_draft_auto_prepended_as_first_state(self):
+        """Draft state is auto-prepended as first Selection value."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        state_field = next(f for f in enriched["fields"] if f["name"] == "state")
+        selection = state_field["selection"]
+        assert selection[0] == ("draft", "Draft")
+
+    def test_all_level_states_in_selection_in_order(self):
+        """All level states appear in synthesized Selection in order."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        state_field = next(f for f in enriched["fields"] if f["name"] == "state")
+        keys = [s[0] for s in state_field["selection"]]
+        # draft, submitted, approved_hod, approved_dean, done
+        assert keys == ["draft", "submitted", "approved_hod", "approved_dean", "done"]
+
+    def test_terminal_state_appended_from_last_level_next(self):
+        """Terminal state (last level's 'next') is appended after all levels."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        state_field = next(f for f in enriched["fields"] if f["name"] == "state")
+        keys = [s[0] for s in state_field["selection"]]
+        assert keys[-1] == "done"
+
+    def test_on_reject_rejected_appends_rejected_state(self):
+        """on_reject='rejected' appends ('rejected', 'Rejected') to Selection."""
+        approval = _default_approval_block()
+        approval["on_reject"] = "rejected"
+        model = _make_approval_model(approval=approval)
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        state_field = next(f for f in enriched["fields"] if f["name"] == "state")
+        keys = [s[0] for s in state_field["selection"]]
+        assert "rejected" in keys
+        assert state_field["selection"][-1] == ("rejected", "Rejected")
+
+    def test_on_reject_draft_no_rejected_state(self):
+        """on_reject='draft' does NOT append rejected state."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        state_field = next(f for f in enriched["fields"] if f["name"] == "state")
+        keys = [s[0] for s in state_field["selection"]]
+        assert "rejected" not in keys
+
+    def test_action_methods_one_per_level(self):
+        """approval_action_methods list has one entry per approval level."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        methods = enriched["approval_action_methods"]
+        assert len(methods) == 3  # 3 levels
+
+    def test_action_method_has_required_keys(self):
+        """Each action method dict has name, from_state, to_state, group_xml_id, role_label, from_state_label, button_label."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        methods = enriched["approval_action_methods"]
+        required_keys = {"name", "from_state", "to_state", "group_xml_id", "role_label", "from_state_label", "button_label"}
+        for method in methods:
+            assert required_keys.issubset(method.keys()), f"Missing keys in {method}"
+
+    def test_action_method_first_level_from_draft(self):
+        """First action method transitions FROM previous state TO current level state."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        methods = enriched["approval_action_methods"]
+        first = methods[0]
+        # First level: from "draft" -> to "submitted" (wait, actually per plan,
+        # the action transitions FROM previous state TO current level state)
+        # Level 0: state=submitted, from_state=draft, to_state=submitted
+        assert first["from_state"] == "draft"
+        assert first["to_state"] == "submitted"
+
+    def test_role_resolution_uses_module_group_format(self):
+        """Role resolution uses {module_name}.group_{module_name}_{role} format."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        methods = enriched["approval_action_methods"]
+        # First level has role "editor" -> uni_fee.group_uni_fee_editor
+        assert methods[0]["group_xml_id"] == "uni_fee.group_uni_fee_editor"
+
+    def test_explicit_group_override_takes_priority(self):
+        """Explicit group override takes priority over role-based resolution."""
+        approval = _default_approval_block()
+        approval["levels"][1]["group"] = "account.group_account_manager"
+        model = _make_approval_model(approval=approval)
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        methods = enriched["approval_action_methods"]
+        assert methods[1]["group_xml_id"] == "account.group_account_manager"
+
+    def test_reject_action_generated_when_reject_allowed_from_nonempty(self):
+        """Reject action is generated when reject_allowed_from is non-empty."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["approval_reject_action"] is not None
+
+    def test_reset_action_always_generated(self):
+        """Reset action (action_reset_to_draft) is always generated."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["approval_reset_action"] is not None
+        assert enriched["approval_reset_action"]["name"] == "action_reset_to_draft"
+
+    def test_submit_action_generated(self):
+        """Submit action is generated for draft -> first level transition."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        submit = enriched["approval_submit_action"]
+        assert submit is not None
+        assert submit["name"] == "action_submit"
+        assert submit["from_state"] == "draft"
+        assert submit["to_state"] == "submitted"
+
+    def test_validates_roles_exist_in_security_roles(self):
+        """Preprocessor validates all roles exist in security_roles (raises ValueError for unknown roles)."""
+        approval = _default_approval_block()
+        # Use a role that doesn't exist in security_roles
+        approval["levels"][0]["role"] = "nonexistent_role"
+        model = _make_approval_model(approval=approval)
+        spec = _make_approval_spec(models=[model])
+        with pytest.raises(ValueError, match="nonexistent_role"):
+            _process_approval_patterns(spec)
+
+    def test_skips_models_without_approval_block(self):
+        """Preprocessor skips models without approval block (returns unchanged)."""
+        model = _make_approval_model()  # No approval
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert "has_approval" not in enriched
+
+    def test_no_approval_models_returns_spec_unchanged(self):
+        """Spec with no approval models returns spec unchanged."""
+        model = _make_approval_model()  # No approval
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        assert result is spec  # Same object -- no changes needed
+
+    def test_override_sources_write_contains_approval(self):
+        """override_sources['write'] contains 'approval'."""
+        model = _make_approval_model(approval=_default_approval_block())
+        model["override_sources"] = defaultdict(set)
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert "approval" in enriched["override_sources"]["write"]
+
+    def test_has_write_override_true_for_approval(self):
+        """has_write_override is True for approval models."""
+        model = _make_approval_model(approval=_default_approval_block())
+        model["override_sources"] = defaultdict(set)
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["has_write_override"] is True
+
+    def test_needs_translate_set_true(self):
+        """needs_translate flag is set True on approval models."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["needs_translate"] is True
+
+    def test_existing_state_field_replaced(self):
+        """Existing state field in model is replaced by synthesized one."""
+        model = _make_approval_model(
+            fields=[
+                {"name": "name", "type": "Char", "required": True},
+                {"name": "state", "type": "Selection", "selection": [("a", "A"), ("b", "B")]},
+                {"name": "amount", "type": "Float"},
+            ],
+            approval=_default_approval_block(),
+        )
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        state_fields = [f for f in enriched["fields"] if f["name"] == "state"]
+        assert len(state_fields) == 1
+        # Should be the synthesized one, not the original
+        assert state_fields[0]["selection"][0] == ("draft", "Draft")
+
+    def test_lock_after_defaults_to_draft(self):
+        """lock_after defaults to 'draft' when not specified."""
+        approval = _default_approval_block()
+        del approval["lock_after"]
+        model = _make_approval_model(approval=approval)
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["lock_after"] == "draft"
+
+    def test_editable_fields_defaults_to_empty(self):
+        """editable_fields defaults to empty list when not specified."""
+        approval = _default_approval_block()
+        del approval["editable_fields"]
+        model = _make_approval_model(approval=approval)
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["editable_fields"] == []
+
+    def test_approval_record_rules_has_two_entries(self):
+        """approval_record_rules contains two entries (draft_owner and manager_full)."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert len(enriched["approval_record_rules"]) == 2
+
+    def test_record_rule_scopes_includes_approval(self):
+        """record_rule_scopes includes 'approval' scope."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert "approval" in enriched.get("record_rule_scopes", [])
+
+    def test_pure_function_does_not_mutate_input(self):
+        """Preprocessor does not mutate original spec."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        original_model_names = [m["name"] for m in spec["models"]]
+        _process_approval_patterns(spec)
+        current_model_names = [m["name"] for m in spec["models"]]
+        assert current_model_names == original_model_names
+
+    def test_preserves_existing_override_sources(self):
+        """Approval preprocessor preserves existing override_sources from prior preprocessors."""
+        model = _make_approval_model(approval=_default_approval_block())
+        model["override_sources"] = defaultdict(set)
+        model["override_sources"]["write"].add("constraints")
+        model["override_sources"]["create"].add("bulk")
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert "constraints" in enriched["override_sources"]["write"]
+        assert "approval" in enriched["override_sources"]["write"]
+        assert "bulk" in enriched["override_sources"]["create"]
+
+    def test_state_field_attributes(self):
+        """Synthesized state field has default='draft', tracking=True, required=True."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        state_field = next(f for f in enriched["fields"] if f["name"] == "state")
+        assert state_field["default"] == "draft"
+        assert state_field["tracking"] is True
+        assert state_field["required"] is True
+
+    def test_approval_state_field_name_always_state(self):
+        """approval_state_field_name is always 'state'."""
+        model = _make_approval_model(approval=_default_approval_block())
+        spec = _make_approval_spec(models=[model])
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["approval_state_field_name"] == "state"
+
+    def test_role_validation_skipped_when_group_explicit(self):
+        """Role validation is skipped when 'group' is explicitly provided."""
+        approval = _default_approval_block()
+        # Set a non-existent role but provide explicit group
+        approval["levels"][0]["role"] = "nonexistent_role"
+        approval["levels"][0]["group"] = "some_module.group_something"
+        model = _make_approval_model(approval=approval)
+        spec = _make_approval_spec(models=[model])
+        # Should NOT raise ValueError because group is explicitly provided
+        result = _process_approval_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["has_approval"] is True

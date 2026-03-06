@@ -28,6 +28,7 @@ from odoo_gen_utils.renderer_utils import (
 )
 
 from odoo_gen_utils.preprocessors import (
+    _process_approval_patterns,
     _process_audit_patterns,
     _process_computation_chains,
     _process_constraints,
@@ -706,6 +707,8 @@ def render_module(
     spec = _process_security_patterns(spec)
     # Phase 38: audit trail patterns (audit metadata, audit.trail.log model, auditor role)
     spec = _process_audit_patterns(spec)
+    # Phase 39: approval workflow patterns (state field, action methods, record rules)
+    spec = _process_approval_patterns(spec)
     module_name = spec["module_name"]
     module_dir = output_dir / module_name
     ctx = _build_module_context(spec, module_name)
