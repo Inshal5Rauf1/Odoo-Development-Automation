@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.2
 milestone_name: Security, Business Logic & Context7
-status: completed
-stopped_at: Completed 38-02-PLAN.md
-last_updated: "2026-03-06T18:21:16.693Z"
-last_activity: 2026-03-06 — Phase 38 Plan 02 complete (audit template rendering + smoke tests)
+status: in-progress
+stopped_at: Phase 39 Plan 01 complete
+last_updated: "2026-03-06T19:33:19Z"
+last_activity: 2026-03-06 — Phase 39 Plan 01 complete (approval preprocessor + context keys)
 progress:
   total_phases: 8
   completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 25
+  total_plans: 8
+  completed_plans: 7
+  percent: 29
 ---
 
 # Project State
@@ -22,23 +22,23 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v3.2 Phase 38 — Audit Trail (Plan 01 complete)
+**Current focus:** v3.2 Phase 39 — Approval Workflows (Plan 01 complete)
 
 ## Current Position
 
-Phase: 38 of 43 (Audit Trail)
-Plan: 2 of 2 in current phase
-Status: phase-complete
-Last activity: 2026-03-06 — Phase 38 Plan 02 complete (audit template rendering + smoke tests)
+Phase: 39 of 43 (Approval Workflows)
+Plan: 1 of 2 in current phase
+Status: in-progress
+Last activity: 2026-03-06 — Phase 39 Plan 01 complete (approval preprocessor + context keys)
 
-Progress: [██░░░░░░░░] 25%
+Progress: [██░░░░░░░░] 29%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 65 (across all milestones)
+- Total plans completed: 66 (across all milestones)
 - Average duration: ~24 min
-- Total execution time: ~24.7 hours
+- Total execution time: ~24.9 hours
 
 ## Accumulated Context
 
@@ -65,6 +65,10 @@ Progress: [██░░░░░░░░] 25%
 - [Phase 38]: needs_api extended to include has_audit for @api.model on _audit_tracked_fields
 - [Phase 38]: Write stacking pattern: audit guard -> old value capture -> cache clear -> super() -> constraints -> audit log
 - [Phase 38]: Audit skip path duplicates full non-audit write path for recursion safety
+- [Phase 39]: Approval action methods transition FROM previous state TO current level state
+- [Phase 39]: Submit action is separate metadata (approval_submit_action), not in approval_action_methods
+- [Phase 39]: Two-tier record rules: draft-owner uses OR domain, manager uses global [(1,'=',1)]
+- [Phase 39]: needs_translate set True for approval models (action methods use _() for UserError)
 
 ### Pending Todos
 
@@ -86,11 +90,11 @@ None yet.
 - v3.0 Bug Fixes & Tech Debt (6 phases, 11 plans) -- 2026-03-05
 - v3.1 Design Flaws & Feature Gaps (10 phases, 12 plans) -- 2026-03-05
 
-**Total:** 37 phases, 65 plans, 360+ commits, 851 tests, ~19,000+ LOC Python
+**Total:** 37 phases, 66 plans, 360+ commits, 898 tests, ~19,000+ LOC Python
 
 ## Session Continuity
 
-Last session: 2026-03-06T17:58:32.639Z
-Stopped at: Completed 38-02-PLAN.md
-Resume file: None
-Next step: Execute 38-02-PLAN.md (audit trail templates)
+Last session: 2026-03-06T19:33:19Z
+Stopped at: Completed 39-01-PLAN.md
+Resume file: .planning/phases/39-approval-workflows/39-01-SUMMARY.md
+Next step: Execute 39-02-PLAN.md (approval templates)

@@ -158,10 +158,11 @@ Plans:
   2. Each approval action method is gated by a security group check (e.g., only `group_approver_l1` can call `action_approve_l1`)
   3. Form view `<header>` section contains workflow buttons with `states=` and `groups=` attributes controlling visibility per approval stage
   4. `ir.rule` record rules restrict record visibility by approval stage (e.g., draft records visible only to creator and managers)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 39-01: TBD
+- [ ] 39-01-PLAN.md — Approval preprocessor, context defaults, pipeline wiring, and unit tests
+- [ ] 39-02-PLAN.md — Template blocks (action methods, header buttons, record rules), smoke tests
 
 ### Phase 40: Notifications & Webhooks
 **Goal**: State transitions generate mail.template XML records with send_mail() calls, and models with webhooks generate extensible hook method stubs in create()/write()
@@ -236,7 +237,7 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 36. Renderer Extraction | 2/2 | Complete    | 2026-03-06 | - |
 | 37. Security Foundation | 2/2 | Complete   | 2026-03-06 | - |
 | 38. Audit Trail | 1/2 | Complete    | 2026-03-06 | - |
-| 39. Approval Workflows | v3.2 | 0/? | Not started | - |
+| 39. Approval Workflows | 1/2 | In Progress|  | - |
 | 40. Notifications & Webhooks | v3.2 | 0/? | Not started | - |
 | 41. Spec Diffing & Migration | v3.2 | 0/? | Not started | - |
 | 42. Context7 Pipeline | v3.2 | 0/? | Not started | - |
