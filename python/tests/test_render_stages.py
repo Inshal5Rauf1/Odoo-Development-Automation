@@ -2365,3 +2365,199 @@ class TestRenderSecurityFullIntegration:
         # Non-sensitive model file has no groups=
         fee_line_py = (module_dir / "models" / "fee_line.py").read_text()
         assert "groups=" not in fee_line_py
+
+
+# ---------------------------------------------------------------------------
+# Phase 38 Plan 02: Audit smoke test -- full pipeline with audit:true
+# ---------------------------------------------------------------------------
+
+
+class TestAuditSmokeFullPipeline:
+    """Smoke test: minimal spec with audit:true through the complete render_module pipeline."""
+
+    def test_audit_full_pipeline_no_crash(self, tmp_path):
+        """render_module() completes without raising any exception for a spec with audit:true."""
+        spec = _make_spec(
+            models=[
+                {
+                    "name": "test.record",
+                    "description": "Test Record",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "quantity", "type": "Integer"},
+                        {"name": "partner_id", "type": "Many2one", "comodel_name": "res.partner"},
+                        {"name": "line_ids", "type": "One2many", "comodel_name": "test.line", "inverse_name": "record_id"},
+                        {"name": "attachment", "type": "Binary"},
+                        {"name": "start_date", "type": "Date"},
+                    ],
+                    "audit": True,
+                    "audit_exclude": ["start_date"],
+                },
+            ],
+        )
+        spec["module_title"] = "Test Module"
+        spec["summary"] = "Test"
+        spec["author"] = "Test"
+        spec["security"] = {
+            "roles": ["viewer", "manager"],
+            "defaults": {
+                "viewer": "r",
+                "manager": "crud",
+            },
+        }
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        assert len(files) > 0
+
+    def test_audit_model_py_contains_audit_skip(self, tmp_path):
+        """Generated audited model .py file contains _audit_skip context guard."""
+        spec = _make_spec(
+            models=[
+                {
+                    "name": "test.record",
+                    "description": "Test Record",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "quantity", "type": "Integer"},
+                        {"name": "partner_id", "type": "Many2one", "comodel_name": "res.partner"},
+                        {"name": "line_ids", "type": "One2many", "comodel_name": "test.line", "inverse_name": "record_id"},
+                        {"name": "attachment", "type": "Binary"},
+                    ],
+                    "audit": True,
+                },
+            ],
+        )
+        spec["module_title"] = "Test Module"
+        spec["summary"] = "Test"
+        spec["author"] = "Test"
+        spec["security"] = {
+            "roles": ["viewer", "manager"],
+            "defaults": {"viewer": "r", "manager": "crud"},
+        }
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "test_record.py").read_text()
+        assert "_audit_skip" in model_py
+
+    def test_audit_log_model_generated(self, tmp_path):
+        """Generated files include an audit.trail.log model .py file."""
+        spec = _make_spec(
+            models=[
+                {
+                    "name": "test.record",
+                    "description": "Test Record",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "quantity", "type": "Integer"},
+                    ],
+                    "audit": True,
+                },
+            ],
+        )
+        spec["module_title"] = "Test Module"
+        spec["summary"] = "Test"
+        spec["author"] = "Test"
+        spec["security"] = {
+            "roles": ["viewer", "manager"],
+            "defaults": {"viewer": "r", "manager": "crud"},
+        }
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        audit_model = tmp_path / "test_module" / "models" / "audit_trail_log.py"
+        assert audit_model.exists(), (
+            f"audit_trail_log.py not generated. Model files: "
+            f"{[str(f) for f in files if 'models' in str(f)]}"
+        )
+
+    def test_audit_acl_csv_has_audit_entries(self, tmp_path):
+        """Generated ir.model.access.csv contains audit.trail.log entries."""
+        spec = _make_spec(
+            models=[
+                {
+                    "name": "test.record",
+                    "description": "Test Record",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "quantity", "type": "Integer"},
+                    ],
+                    "audit": True,
+                },
+            ],
+        )
+        spec["module_title"] = "Test Module"
+        spec["summary"] = "Test"
+        spec["author"] = "Test"
+        spec["security"] = {
+            "roles": ["viewer", "manager"],
+            "defaults": {"viewer": "r", "manager": "crud"},
+        }
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        acl_csv = (tmp_path / "test_module" / "security" / "ir.model.access.csv").read_text()
+        assert "audit_trail_log" in acl_csv
+
+    def test_audit_security_xml_has_auditor_group(self, tmp_path):
+        """Generated security_group.xml contains auditor group when security roles present."""
+        spec = _make_spec(
+            models=[
+                {
+                    "name": "test.record",
+                    "description": "Test Record",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "quantity", "type": "Integer"},
+                    ],
+                    "audit": True,
+                },
+            ],
+        )
+        spec["module_title"] = "Test Module"
+        spec["summary"] = "Test"
+        spec["author"] = "Test"
+        spec["security"] = {
+            "roles": ["viewer", "manager"],
+            "defaults": {"viewer": "r", "manager": "crud"},
+        }
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        security_xml = (tmp_path / "test_module" / "security" / "security.xml").read_text()
+        assert "auditor" in security_xml
+
+    def test_audit_tracked_fields_excludes_non_auditable(self, tmp_path):
+        """_audit_tracked_fields does NOT include One2many, Binary, or manually excluded fields."""
+        spec = _make_spec(
+            models=[
+                {
+                    "name": "test.record",
+                    "description": "Test Record",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "quantity", "type": "Integer"},
+                        {"name": "partner_id", "type": "Many2one", "comodel_name": "res.partner"},
+                        {"name": "line_ids", "type": "One2many", "comodel_name": "test.line", "inverse_name": "record_id"},
+                        {"name": "attachment", "type": "Binary"},
+                        {"name": "start_date", "type": "Date"},
+                    ],
+                    "audit": True,
+                    "audit_exclude": ["start_date"],
+                },
+            ],
+        )
+        spec["module_title"] = "Test Module"
+        spec["summary"] = "Test"
+        spec["author"] = "Test"
+        spec["security"] = {
+            "roles": ["viewer", "manager"],
+            "defaults": {"viewer": "r", "manager": "crud"},
+        }
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "test_record.py").read_text()
+        # Find the _audit_tracked_fields method and extract its return value
+        lines = model_py.split("\n")
+        tracked_idx = next(
+            i for i, line in enumerate(lines) if "_audit_tracked_fields" in line and "def " in line
+        )
+        method_text = "\n".join(lines[tracked_idx:tracked_idx + 5])
+        # Should include auditable fields
+        assert "'name'" in method_text or '"name"' in method_text
+        assert "'quantity'" in method_text or '"quantity"' in method_text
+        assert "'partner_id'" in method_text or '"partner_id"' in method_text
+        # Should NOT include excluded types/fields
+        assert "line_ids" not in method_text  # One2many auto-excluded
+        assert "attachment" not in method_text  # Binary auto-excluded
+        assert "start_date" not in method_text  # manually excluded
