@@ -10,7 +10,12 @@ from typing import Any
 
 import pytest
 
-from odoo_gen_utils.preprocessors import _process_audit_patterns, _process_approval_patterns
+from odoo_gen_utils.preprocessors import (
+    _process_audit_patterns,
+    _process_approval_patterns,
+    _process_notification_patterns,
+    _process_webhook_patterns,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -868,3 +873,510 @@ class TestApprovalPreprocessor:
         result = _process_approval_patterns(spec)
         enriched = next(m for m in result["models"] if m["name"] == "fee.request")
         assert enriched["has_approval"] is True
+
+
+# ---------------------------------------------------------------------------
+# Helpers for notification/webhook preprocessor tests
+# ---------------------------------------------------------------------------
+
+
+def _make_notify_approval_block(
+    notify_on_levels: list[int] | None = None,
+    on_reject_notify: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return a 3-level approval block with optional notify on specified levels."""
+    levels = [
+        {"state": "submitted", "role": "editor", "next": "approved_hod", "label": "Submitted"},
+        {"state": "approved_hod", "role": "hod", "next": "approved_dean", "label": "HOD Approved"},
+        {"state": "approved_dean", "role": "dean", "next": "done", "label": "Dean Approved"},
+    ]
+    if notify_on_levels is not None:
+        for idx in notify_on_levels:
+            if idx == 0:
+                levels[0]["notify"] = {
+                    "template": "email_fee_waiver_submitted",
+                    "recipients": "role:hod",
+                    "subject": "Fee Waiver Submitted: {{ object.name }}",
+                }
+            elif idx == 1:
+                levels[1]["notify"] = {
+                    "template": "email_fee_waiver_approved_hod",
+                    "recipients": "role:dean",
+                    "subject": "Fee Waiver Approved by HOD: {{ object.name }}",
+                }
+            elif idx == 2:
+                levels[2]["notify"] = {
+                    "template": "email_fee_waiver_approved_dean",
+                    "recipients": "creator",
+                    "subject": "Fee Waiver Final Approval: {{ object.name }}",
+                }
+    block: dict[str, Any] = {
+        "levels": levels,
+        "on_reject": "draft",
+        "reject_allowed_from": ["approved_hod", "approved_dean"],
+        "lock_after": "draft",
+        "editable_fields": ["notes"],
+    }
+    if on_reject_notify is not None:
+        block["on_reject_notify"] = on_reject_notify
+    return block
+
+
+def _make_notify_spec(
+    models: list[dict[str, Any]] | None = None,
+    security_roles: list[dict[str, Any]] | None = None,
+    module_name: str = "uni_fee",
+    depends: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a spec for notification preprocessor testing.
+
+    The spec already has approval preprocessor run on it (so models are enriched
+    with approval_action_methods, approval_submit_action, etc.).
+    """
+    spec: dict[str, Any] = {
+        "module_name": module_name,
+        "depends": depends or ["base"],
+        "models": models or [],
+        "security_roles": security_roles or _make_security_roles(
+            roles=["user", "editor", "hod", "dean", "manager"],
+            module_name=module_name,
+        ),
+    }
+    # Pre-process approval so notification preprocessor has enriched data
+    return _process_approval_patterns(spec)
+
+
+def _make_notify_model(
+    name: str = "fee.request",
+    fields: list[dict[str, Any]] | None = None,
+    approval: dict[str, Any] | None = None,
+    webhooks: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Build a model dict for notification/webhook testing."""
+    model: dict[str, Any] = {
+        "name": name,
+        "description": name.replace(".", " ").title(),
+        "fields": fields or [
+            {"name": "name", "type": "Char", "required": True, "string": "Request Name"},
+            {"name": "amount", "type": "Float", "required": True, "string": "Amount"},
+            {"name": "notes", "type": "Text", "string": "Notes"},
+            {"name": "student_id", "type": "Many2one", "comodel_name": "res.partner", "string": "Student"},
+            {"name": "supervisor_id", "type": "Many2one", "comodel_name": "res.users", "string": "Supervisor"},
+        ],
+        **kwargs,
+    }
+    if approval is not None:
+        model["approval"] = approval
+    if webhooks is not None:
+        model["webhooks"] = webhooks
+    return model
+
+
+# ---------------------------------------------------------------------------
+# TestNotificationPreprocessor
+# ---------------------------------------------------------------------------
+
+
+class TestNotificationPreprocessor:
+    """Test _process_notification_patterns preprocessor."""
+
+    def test_no_approval_no_change(self):
+        """Spec without approval returns unchanged."""
+        model = _make_notify_model()
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": _make_security_roles(
+                roles=["user", "editor", "hod", "dean", "manager"],
+                module_name="uni_fee",
+            ),
+        }
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert "has_notifications" not in enriched or enriched.get("has_notifications") is False
+
+    def test_approval_without_notify_no_change(self):
+        """Approval levels without notify objects produce no notification metadata."""
+        approval = _make_notify_approval_block(notify_on_levels=None)
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert not enriched.get("has_notifications")
+
+    def test_notify_on_level_enriches_action_method(self):
+        """A level with notify object adds notification sub-dict to the corresponding approval_action_methods entry."""
+        approval = _make_notify_approval_block(notify_on_levels=[1])
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        # Level 1 (index 1) = approved_hod -> action_approve_approved_hod
+        method = next(
+            m for m in enriched["approval_action_methods"]
+            if m["name"] == "action_approve_approved_hod"
+        )
+        assert "notification" in method
+        assert "template_xml_id" in method["notification"]
+
+    def test_notify_on_first_level_enriches_submit(self):
+        """Notify on levels[0] enriches approval_submit_action with notification."""
+        approval = _make_notify_approval_block(notify_on_levels=[0])
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        submit = enriched["approval_submit_action"]
+        assert "notification" in submit
+        assert "template_xml_id" in submit["notification"]
+
+    def test_on_reject_notify_enriches_reject_action(self):
+        """on_reject_notify at approval root enriches approval_reject_action with notification."""
+        approval = _make_notify_approval_block(
+            notify_on_levels=[0],
+            on_reject_notify={
+                "template": "email_fee_waiver_rejected",
+                "recipients": "creator",
+                "subject": "Fee Waiver Rejected: {{ object.name }}",
+            },
+        )
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        reject = enriched["approval_reject_action"]
+        assert "notification" in reject
+        assert "template_xml_id" in reject["notification"]
+
+    def test_notification_templates_list(self):
+        """All notify objects produce a flat notification_templates list on the model."""
+        approval = _make_notify_approval_block(notify_on_levels=[0, 1])
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        templates = enriched["notification_templates"]
+        assert len(templates) == 2
+        for t in templates:
+            assert "xml_id" in t
+            assert "name" in t
+            assert "subject" in t
+            assert "email_to" in t
+
+    def test_mail_dependency_added(self):
+        """Notification presence adds 'mail' to spec['depends'] if not already present."""
+        approval = _make_notify_approval_block(notify_on_levels=[0])
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model], depends=["base"])
+        result = _process_notification_patterns(spec)
+        assert "mail" in result["depends"]
+
+    def test_mail_dependency_not_duplicated(self):
+        """If 'mail' already in depends, it is not added again."""
+        approval = _make_notify_approval_block(notify_on_levels=[0])
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model], depends=["base", "mail"])
+        result = _process_notification_patterns(spec)
+        assert result["depends"].count("mail") == 1
+
+    def test_has_notifications_flag(self):
+        """Model gets has_notifications=True when any level has notify."""
+        approval = _make_notify_approval_block(notify_on_levels=[0])
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["has_notifications"] is True
+
+    def test_needs_logger_flag(self):
+        """Model gets needs_logger=True when has_notifications."""
+        approval = _make_notify_approval_block(notify_on_levels=[0])
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["needs_logger"] is True
+
+    def test_recipient_creator(self):
+        """'creator' resolves to email_to with create_uid.partner_id.email."""
+        approval = _make_notify_approval_block(
+            notify_on_levels=[],
+            on_reject_notify={
+                "template": "email_rejected",
+                "recipients": "creator",
+                "subject": "Rejected",
+            },
+        )
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        reject = enriched["approval_reject_action"]
+        assert "create_uid.partner_id.email" in reject["notification"]["email_to"]
+
+    def test_recipient_role(self):
+        """'role:hod' resolves to email_to with group-based expression."""
+        approval = _make_notify_approval_block(notify_on_levels=[0])
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        submit = enriched["approval_submit_action"]
+        email_to = submit["notification"]["email_to"]
+        assert "group_uni_fee_hod" in email_to
+
+    def test_recipient_field(self):
+        """'field:supervisor_id' resolves to email_to with object.supervisor_id.email."""
+        approval = _make_notify_approval_block(notify_on_levels=[])
+        approval["levels"][0]["notify"] = {
+            "template": "email_notify_supervisor",
+            "recipients": "field:supervisor_id",
+            "subject": "Notification",
+        }
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        submit = enriched["approval_submit_action"]
+        assert "object.supervisor_id.email" in submit["notification"]["email_to"]
+
+    def test_recipient_fixed(self):
+        """'fixed:admin@test.com' resolves to email_to='admin@test.com'."""
+        approval = _make_notify_approval_block(notify_on_levels=[])
+        approval["levels"][0]["notify"] = {
+            "template": "email_notify_admin",
+            "recipients": "fixed:admin@test.com",
+            "subject": "Admin Notification",
+        }
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        submit = enriched["approval_submit_action"]
+        assert submit["notification"]["email_to"] == "admin@test.com"
+
+    def test_body_fields_selection(self):
+        """body_fields excludes Binary, O2m, M2m, computed, technical fields; includes name + up to 3-4 fields."""
+        approval = _make_notify_approval_block(notify_on_levels=[0])
+        model = _make_notify_model(
+            approval=approval,
+            fields=[
+                {"name": "name", "type": "Char", "required": True, "string": "Name"},
+                {"name": "amount", "type": "Float", "required": True, "string": "Amount"},
+                {"name": "notes", "type": "Text", "string": "Notes"},
+                {"name": "photo", "type": "Binary", "string": "Photo"},
+                {"name": "tag_ids", "type": "Many2many", "comodel_name": "tag", "string": "Tags"},
+                {"name": "line_ids", "type": "One2many", "comodel_name": "line", "string": "Lines"},
+                {"name": "total", "type": "Float", "compute": "_compute_total", "string": "Total"},
+                {"name": "create_uid", "type": "Many2one", "comodel_name": "res.users"},
+                {"name": "write_date", "type": "Datetime"},
+            ],
+        )
+        spec = _make_notify_spec(models=[model])
+        result = _process_notification_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        templates = enriched["notification_templates"]
+        assert len(templates) >= 1
+        body_fields = templates[0]["body_fields"]
+        field_names = {f["name"] for f in body_fields}
+        # Should include name and amount
+        assert "name" in field_names
+        # Should NOT include excluded types
+        assert "photo" not in field_names
+        assert "tag_ids" not in field_names
+        assert "line_ids" not in field_names
+        assert "total" not in field_names  # computed
+        assert "create_uid" not in field_names
+        assert "write_date" not in field_names
+        # Max fields constraint
+        assert len(body_fields) <= 5
+
+    def test_pure_function(self):
+        """Input spec is not mutated."""
+        approval = _make_notify_approval_block(notify_on_levels=[0, 1])
+        model = _make_notify_model(approval=approval)
+        spec = _make_notify_spec(models=[model])
+        original_model_names = [m["name"] for m in spec["models"]]
+        original_depends = list(spec["depends"])
+        _process_notification_patterns(spec)
+        assert [m["name"] for m in spec["models"]] == original_model_names
+        assert spec["depends"] == original_depends
+
+
+# ---------------------------------------------------------------------------
+# TestWebhookPreprocessor
+# ---------------------------------------------------------------------------
+
+
+class TestWebhookPreprocessor:
+    """Test _process_webhook_patterns preprocessor."""
+
+    def test_no_webhooks_no_change(self):
+        """Spec without webhooks returns unchanged."""
+        model = _make_notify_model()
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": [],
+        }
+        result = _process_webhook_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert not enriched.get("has_webhooks")
+
+    def test_on_create_adds_create_override(self):
+        """webhooks.on_create=true adds 'webhooks' to override_sources['create']."""
+        model = _make_notify_model(
+            webhooks={"on_create": True, "on_write": [], "on_unlink": False},
+        )
+        model["override_sources"] = defaultdict(set)
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": [],
+        }
+        result = _process_webhook_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert "webhooks" in enriched["override_sources"]["create"]
+
+    def test_on_write_adds_write_override(self):
+        """webhooks.on_write=['state','amount'] adds 'webhooks' to override_sources['write']."""
+        model = _make_notify_model(
+            webhooks={"on_create": False, "on_write": ["state", "amount"], "on_unlink": False},
+        )
+        model["override_sources"] = defaultdict(set)
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": [],
+        }
+        result = _process_webhook_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert "webhooks" in enriched["override_sources"]["write"]
+
+    def test_webhook_watched_fields(self):
+        """on_write field list stored as webhook_watched_fields on model."""
+        model = _make_notify_model(
+            webhooks={"on_create": False, "on_write": ["state", "amount"], "on_unlink": False},
+        )
+        model["override_sources"] = defaultdict(set)
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": [],
+        }
+        result = _process_webhook_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["webhook_watched_fields"] == ["state", "amount"]
+
+    def test_has_webhooks_flag(self):
+        """Model gets has_webhooks=True."""
+        model = _make_notify_model(
+            webhooks={"on_create": True, "on_write": [], "on_unlink": False},
+        )
+        model["override_sources"] = defaultdict(set)
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": [],
+        }
+        result = _process_webhook_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["has_webhooks"] is True
+
+    def test_webhook_config(self):
+        """webhook_config dict stored on model with on_create, on_write, on_unlink keys."""
+        model = _make_notify_model(
+            webhooks={"on_create": True, "on_write": ["state"], "on_unlink": True},
+        )
+        model["override_sources"] = defaultdict(set)
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": [],
+        }
+        result = _process_webhook_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        config = enriched["webhook_config"]
+        assert config["on_create"] is True
+        assert config["on_write"] == ["state"]
+        assert config["on_unlink"] is True
+
+    def test_on_unlink_stub(self):
+        """on_unlink=true sets webhook_on_unlink=True on model."""
+        model = _make_notify_model(
+            webhooks={"on_create": False, "on_write": [], "on_unlink": True},
+        )
+        model["override_sources"] = defaultdict(set)
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": [],
+        }
+        result = _process_webhook_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert enriched["webhook_on_unlink"] is True
+
+    def test_override_sources_merge_with_audit(self):
+        """When audit already added 'audit' to override_sources['write'], webhooks adds 'webhooks' alongside without clobbering."""
+        model = _make_notify_model(
+            webhooks={"on_create": False, "on_write": ["state"], "on_unlink": False},
+        )
+        model["override_sources"] = defaultdict(set)
+        model["override_sources"]["write"].add("audit")
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": [],
+        }
+        result = _process_webhook_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert "audit" in enriched["override_sources"]["write"]
+        assert "webhooks" in enriched["override_sources"]["write"]
+
+    def test_override_sources_merge_with_approval(self):
+        """When approval already added 'approval' to override_sources['write'], webhooks coexists."""
+        model = _make_notify_model(
+            webhooks={"on_create": True, "on_write": ["state"], "on_unlink": False},
+        )
+        model["override_sources"] = defaultdict(set)
+        model["override_sources"]["write"].add("approval")
+        model["override_sources"]["create"].add("bulk")
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": [],
+        }
+        result = _process_webhook_patterns(spec)
+        enriched = next(m for m in result["models"] if m["name"] == "fee.request")
+        assert "approval" in enriched["override_sources"]["write"]
+        assert "webhooks" in enriched["override_sources"]["write"]
+        assert "bulk" in enriched["override_sources"]["create"]
+        assert "webhooks" in enriched["override_sources"]["create"]
+
+    def test_pure_function(self):
+        """Input spec is not mutated."""
+        model = _make_notify_model(
+            webhooks={"on_create": True, "on_write": ["state"], "on_unlink": True},
+        )
+        model["override_sources"] = defaultdict(set)
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": [],
+        }
+        original_model_names = [m["name"] for m in spec["models"]]
+        _process_webhook_patterns(spec)
+        assert [m["name"] for m in spec["models"]] == original_model_names
+        assert not spec["models"][0].get("has_webhooks")
