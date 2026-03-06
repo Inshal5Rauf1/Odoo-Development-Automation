@@ -10,7 +10,7 @@ progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 2
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -27,9 +27,9 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 37 of 43 (Security Foundation)
-Plan: 1 of 1 in current phase
-Status: Plan 37-01 complete
-Last activity: 2026-03-06 — Completed 37-01 security preprocessor
+Plan: 2 of 2 in current phase
+Status: Plan 37-02 complete
+Last activity: 2026-03-06 — Completed 37-02 field-level groups enrichment
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -56,6 +56,7 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 37]: Spec-driven RBAC preprocessor normalizes both legacy and spec-driven to unified security_roles + security_acl structure
 - [Phase 37]: Wizards get full CRUD for all roles (transient, gated by parent model access)
 - [Phase 37]: Record rule ownership uses create_uid domain for Odoo convention alignment
+- [Phase 37]: Sensitive fields default to highest role group; full external IDs kept as-is; view auto-fix logs at INFO level
 
 ### Pending Todos
 
@@ -81,7 +82,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T09:47:34Z
-Stopped at: Completed 37-01-PLAN.md
+Last session: 2026-03-06T10:01:50Z
+Stopped at: Completed 37-02-PLAN.md
 Resume file: None
-Next step: Next plan in phase 37 or advance to phase 38
+Next step: Advance to phase 38
