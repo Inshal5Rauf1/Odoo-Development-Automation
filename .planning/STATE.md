@@ -4,7 +4,7 @@ milestone: v3.2
 milestone_name: Security, Business Logic & Context7
 status: planning
 stopped_at: Completed 36-02-PLAN.md
-last_updated: "2026-03-06T07:49:37.631Z"
+last_updated: "2026-03-06T07:52:12.011Z"
 last_activity: 2026-03-06 — Roadmap created
 progress:
   total_phases: 8
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v3.2 Phase 36 — Renderer Extraction
+**Current focus:** v3.2 Phase 37 — Security Foundation
 
 ## Current Position
 
-Phase: 36 of 43 (Renderer Extraction)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-03-06 — Roadmap created
+Phase: 37 of 43 (Security Foundation)
+Plan: 1 of 1 in current phase
+Status: Plan 37-01 complete
+Last activity: 2026-03-06 — Completed 37-01 security preprocessor
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -53,6 +53,9 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 36]: Kept legacy boolean has_create/write_override alongside override_sources for backward compat
 - [Phase 36]: Placed _topologically_sort_fields in renderer_utils.py per research recommendation
 - [Phase 36]: Completed 4-module renderer split: renderer.py, renderer_context.py, renderer_utils.py, preprocessors.py
+- [Phase 37]: Spec-driven RBAC preprocessor normalizes both legacy and spec-driven to unified security_roles + security_acl structure
+- [Phase 37]: Wizards get full CRUD for all roles (transient, gated by parent model access)
+- [Phase 37]: Record rule ownership uses create_uid domain for Odoo convention alignment
 
 ### Pending Todos
 
@@ -78,7 +81,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T07:49:37.629Z
-Stopped at: Completed 36-02-PLAN.md
+Last session: 2026-03-06T09:47:34Z
+Stopped at: Completed 37-01-PLAN.md
 Resume file: None
-Next step: `/gsd:plan-phase 36`
+Next step: Next plan in phase 37 or advance to phase 38

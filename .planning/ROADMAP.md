@@ -233,7 +233,7 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 20-25 | v3.0 | 11/11 | Complete | 2026-03-05 |
 | 26-35 | v3.1 | 12/12 | Complete | 2026-03-05 |
 | 36. Renderer Extraction | 2/2 | Complete    | 2026-03-06 | - |
-| 37. Security Foundation | v3.2 | 0/2 | Planning complete | - |
+| 37. Security Foundation | 1/2 | In Progress|  | - |
 | 38. Audit Trail | v3.2 | 0/? | Not started | - |
 | 39. Approval Workflows | v3.2 | 0/? | Not started | - |
 | 40. Notifications & Webhooks | v3.2 | 0/? | Not started | - |
