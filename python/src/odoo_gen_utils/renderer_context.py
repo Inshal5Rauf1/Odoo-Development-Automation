@@ -379,7 +379,11 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
     import_export_wizards = [
         {"name": f"{m['name']}.import.wizard"} for m in import_export_models
     ]
-    manifest_files = _compute_manifest_data(spec, data_files, wiz_files, has_company_modules=has_company)
+    has_record_rules = any(m.get("record_rule_scopes") for m in models)
+    manifest_files = _compute_manifest_data(
+        spec, data_files, wiz_files,
+        has_company_modules=has_company or has_record_rules,
+    )
     ctx: dict[str, Any] = {
         "module_name": module_name,
         "module_title": spec.get("module_title", module_name.replace("_", " ").title()),
@@ -400,6 +404,8 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         "has_controllers": bool(spec.get("controllers")),
         "has_import_export": has_import_export,
         "import_export_wizards": import_export_wizards,
+        "security_roles": spec.get("security_roles", []),
+        "has_record_rules": has_record_rules,
     }
     if has_import_export:
         ctx["external_dependencies"] = {"python": ["openpyxl"]}

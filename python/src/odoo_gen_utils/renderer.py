@@ -33,6 +33,7 @@ from odoo_gen_utils.preprocessors import (
     _process_performance,
     _process_production_patterns,
     _process_relationships,
+    _process_security_patterns,
     _validate_no_cycles,
 )
 
@@ -709,6 +710,8 @@ def render_module(
     spec = _process_performance(spec)
     # Phase 34: production patterns (bulk create, ORM cache)
     spec = _process_production_patterns(spec)
+    # Phase 37: security patterns (RBAC groups, ACL matrix, record rules)
+    spec = _process_security_patterns(spec)
     module_name = spec["module_name"]
     module_dir = output_dir / module_name
     ctx = _build_module_context(spec, module_name)

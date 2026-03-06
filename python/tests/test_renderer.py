@@ -19,11 +19,13 @@ from odoo_gen_utils.renderer import (
     _process_constraints,
     _process_performance,
     _process_production_patterns,
+    _process_security_patterns,
     _topologically_sort_fields,
     _validate_no_cycles,
     get_template_dir,
     render_module,
 )
+from odoo_gen_utils.preprocessors import _parse_crud
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -3689,3 +3691,297 @@ class TestProcessProductionPatterns:
         crons = result.get("cron_jobs", [])
         assert any("archive" in w["name"] for w in wizards)
         assert any(c["method"] == "_cron_archive_old_records" for c in crons)
+
+
+# ---------------------------------------------------------------------------
+# Phase 37: Security preprocessor tests
+# ---------------------------------------------------------------------------
+
+
+def _make_security_spec(
+    models: list[dict] | None = None,
+    security: dict | None = None,
+) -> dict:
+    """Helper to construct a spec with security block and 2 models."""
+    if models is None:
+        models = [
+            {
+                "name": "fee.structure",
+                "description": "Fee Structure",
+                "fields": [
+                    {"name": "name", "type": "Char", "required": True},
+                    {"name": "company_id", "type": "Many2one", "comodel_name": "res.company"},
+                    {"name": "department_id", "type": "Many2one", "comodel_name": "hr.department"},
+                ],
+            },
+            {
+                "name": "fee.line",
+                "description": "Fee Line",
+                "fields": [
+                    {"name": "name", "type": "Char", "required": True},
+                    {"name": "amount", "type": "Float"},
+                ],
+            },
+        ]
+    if security is None:
+        security = {
+            "roles": ["viewer", "editor", "manager"],
+            "defaults": {
+                "viewer": "r",
+                "editor": "cru",
+                "manager": "crud",
+            },
+        }
+    spec = _make_spec(models=models)
+    spec["security"] = security
+    return spec
+
+
+class TestParseCrud:
+    def test_parse_crud_cru(self):
+        result = _parse_crud("cru")
+        assert result == {"perm_create": 1, "perm_read": 1, "perm_write": 1, "perm_unlink": 0}
+
+    def test_parse_crud_full(self):
+        result = _parse_crud("crud")
+        assert result == {"perm_create": 1, "perm_read": 1, "perm_write": 1, "perm_unlink": 1}
+
+    def test_parse_crud_read_only(self):
+        result = _parse_crud("r")
+        assert result == {"perm_create": 0, "perm_read": 1, "perm_write": 0, "perm_unlink": 0}
+
+    def test_parse_crud_uppercase_normalized(self):
+        result = _parse_crud("CRU")
+        assert result == {"perm_create": 1, "perm_read": 1, "perm_write": 1, "perm_unlink": 0}
+
+    def test_parse_crud_invalid_chars_raises(self):
+        with pytest.raises(ValueError, match="invalid"):
+            _parse_crud("xyz")
+
+    def test_parse_crud_mixed_invalid_raises(self):
+        with pytest.raises(ValueError, match="invalid"):
+            _parse_crud("crx")
+
+
+class TestSecurityRolesBuilding:
+    def test_three_roles_produces_security_roles(self):
+        spec = _make_security_spec()
+        result = _process_security_patterns(spec)
+        roles = result["security_roles"]
+        assert len(roles) == 3
+
+    def test_implied_ids_chain(self):
+        spec = _make_security_spec()
+        result = _process_security_patterns(spec)
+        roles = result["security_roles"]
+        # Lowest role implies base.group_user
+        assert roles[0]["implied_ids"] == "base.group_user"
+        # Second role implies first
+        assert roles[1]["implied_ids"] == "group_test_module_viewer"
+        # Third implies second
+        assert roles[2]["implied_ids"] == "group_test_module_editor"
+
+    def test_xml_id_format(self):
+        spec = _make_security_spec()
+        result = _process_security_patterns(spec)
+        roles = result["security_roles"]
+        assert roles[0]["xml_id"] == "group_test_module_viewer"
+        assert roles[1]["xml_id"] == "group_test_module_editor"
+        assert roles[2]["xml_id"] == "group_test_module_manager"
+
+    def test_is_highest_only_on_last(self):
+        spec = _make_security_spec()
+        result = _process_security_patterns(spec)
+        roles = result["security_roles"]
+        assert roles[0].get("is_highest") is not True
+        assert roles[1].get("is_highest") is not True
+        assert roles[2]["is_highest"] is True
+
+    def test_role_labels(self):
+        spec = _make_security_spec()
+        result = _process_security_patterns(spec)
+        roles = result["security_roles"]
+        assert roles[0]["label"] == "Viewer"
+        assert roles[1]["label"] == "Editor"
+        assert roles[2]["label"] == "Manager"
+
+
+class TestSecurityAclMatrix:
+    def test_defaults_produce_acl_per_model(self):
+        spec = _make_security_spec()
+        result = _process_security_patterns(spec)
+        for model in result["models"]:
+            assert "security_acl" in model
+            assert len(model["security_acl"]) == 3
+
+    def test_acl_permissions_from_defaults(self):
+        spec = _make_security_spec()
+        result = _process_security_patterns(spec)
+        model = result["models"][0]
+        viewer_acl = next(a for a in model["security_acl"] if a["role"] == "viewer")
+        assert viewer_acl["perm_read"] == 1
+        assert viewer_acl["perm_write"] == 0
+        assert viewer_acl["perm_create"] == 0
+        assert viewer_acl["perm_unlink"] == 0
+
+    def test_per_model_override(self):
+        spec = _make_security_spec()
+        spec["security"]["acl"] = {
+            "fee.structure": {
+                "viewer": "r",
+                "editor": "r",
+                "manager": "crud",
+            },
+        }
+        result = _process_security_patterns(spec)
+        fee_structure = next(m for m in result["models"] if m["name"] == "fee.structure")
+        editor_acl = next(a for a in fee_structure["security_acl"] if a["role"] == "editor")
+        # Override: editor only gets read on fee.structure
+        assert editor_acl["perm_read"] == 1
+        assert editor_acl["perm_write"] == 0
+
+        # fee.line should still use defaults
+        fee_line = next(m for m in result["models"] if m["name"] == "fee.line")
+        editor_acl_line = next(a for a in fee_line["security_acl"] if a["role"] == "editor")
+        assert editor_acl_line["perm_write"] == 1
+
+
+class TestSecurityValidation:
+    def test_defaults_keys_mismatch_raises(self):
+        spec = _make_security_spec()
+        spec["security"]["defaults"] = {
+            "viewer": "r",
+            "admin": "crud",  # not in roles array
+        }
+        with pytest.raises(ValueError, match="defaults.*roles"):
+            _process_security_patterns(spec)
+
+
+class TestLegacySecurity:
+    def test_no_security_block_injects_legacy(self):
+        spec = _make_spec(models=[
+            {
+                "name": "test.model",
+                "fields": [{"name": "name", "type": "Char"}],
+            },
+        ])
+        result = _process_security_patterns(spec)
+        roles = result["security_roles"]
+        assert len(roles) == 2
+        assert roles[0]["name"] == "user"
+        assert roles[1]["name"] == "manager"
+
+    def test_legacy_user_implied_ids(self):
+        spec = _make_spec(models=[
+            {
+                "name": "test.model",
+                "fields": [{"name": "name", "type": "Char"}],
+            },
+        ])
+        result = _process_security_patterns(spec)
+        roles = result["security_roles"]
+        assert roles[0]["implied_ids"] == "base.group_user"
+        assert "group_test_module_user" in roles[1]["implied_ids"]
+
+    def test_legacy_acl_defaults(self):
+        spec = _make_spec(models=[
+            {
+                "name": "test.model",
+                "fields": [{"name": "name", "type": "Char"}],
+            },
+        ])
+        result = _process_security_patterns(spec)
+        model = result["models"][0]
+        user_acl = next(a for a in model["security_acl"] if a["role"] == "user")
+        manager_acl = next(a for a in model["security_acl"] if a["role"] == "manager")
+        # user: cru
+        assert user_acl["perm_unlink"] == 0
+        assert user_acl["perm_read"] == 1
+        # manager: crud
+        assert manager_acl["perm_unlink"] == 1
+
+
+class TestRecordRuleScopes:
+    def test_user_id_field_gives_ownership(self):
+        spec = _make_spec(models=[{
+            "name": "test.model",
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {"name": "user_id", "type": "Many2one", "comodel_name": "res.users"},
+            ],
+        }])
+        result = _process_security_patterns(spec)
+        assert "ownership" in result["models"][0]["record_rule_scopes"]
+
+    def test_department_id_gives_department(self):
+        spec = _make_spec(models=[{
+            "name": "test.model",
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {"name": "department_id", "type": "Many2one", "comodel_name": "hr.department"},
+            ],
+        }])
+        result = _process_security_patterns(spec)
+        assert "department" in result["models"][0]["record_rule_scopes"]
+
+    def test_company_id_gives_company(self):
+        spec = _make_spec(models=[{
+            "name": "test.model",
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {"name": "company_id", "type": "Many2one", "comodel_name": "res.company"},
+            ],
+        }])
+        result = _process_security_patterns(spec)
+        assert "company" in result["models"][0]["record_rule_scopes"]
+
+    def test_all_three_fields_all_scopes(self):
+        spec = _make_spec(models=[{
+            "name": "test.model",
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {"name": "user_id", "type": "Many2one", "comodel_name": "res.users"},
+                {"name": "department_id", "type": "Many2one", "comodel_name": "hr.department"},
+                {"name": "company_id", "type": "Many2one", "comodel_name": "res.company"},
+            ],
+        }])
+        result = _process_security_patterns(spec)
+        scopes = result["models"][0]["record_rule_scopes"]
+        assert "ownership" in scopes
+        assert "department" in scopes
+        assert "company" in scopes
+
+    def test_record_rules_override_replaces_auto(self):
+        spec = _make_spec(models=[{
+            "name": "test.model",
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {"name": "user_id", "type": "Many2one", "comodel_name": "res.users"},
+                {"name": "company_id", "type": "Many2one", "comodel_name": "res.company"},
+            ],
+            "record_rules": ["company"],
+        }])
+        result = _process_security_patterns(spec)
+        scopes = result["models"][0]["record_rule_scopes"]
+        assert scopes == ["company"]
+
+
+class TestSecuritySmoke:
+    def test_render_module_with_security_spec_no_errors(self):
+        spec = _make_security_spec()
+        spec["module_title"] = "Test Module"
+        spec["summary"] = "Test"
+        spec["author"] = "Test"
+        with tempfile.TemporaryDirectory() as tmp:
+            files, warnings = render_module(spec, get_template_dir(), Path(tmp))
+            assert len(files) > 0
+
+    def test_render_module_without_security_block_backward_compat(self):
+        spec = _make_spec(models=[{
+            "name": "test.model",
+            "description": "Test Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        with tempfile.TemporaryDirectory() as tmp:
+            files, warnings = render_module(spec, get_template_dir(), Path(tmp))
+            assert len(files) > 0

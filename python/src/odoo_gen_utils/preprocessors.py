@@ -628,6 +628,207 @@ def _process_production_patterns(spec: dict[str, Any]) -> dict[str, Any]:
     return {**spec, "models": new_models, "wizards": new_wizards, "cron_jobs": new_cron_jobs}
 
 
+def _parse_crud(crud_str: str) -> dict[str, int]:
+    """Convert a CRUD string like 'cru' to permission dict.
+
+    Characters: c=create, r=read, u=write/update, d=delete/unlink.
+    Normalizes to lowercase. Raises ValueError on invalid characters.
+
+    Returns:
+        Dict with perm_create, perm_read, perm_write, perm_unlink as 0/1.
+    """
+    normalized = crud_str.lower()
+    valid_chars = set("crud")
+    invalid = set(normalized) - valid_chars
+    if invalid:
+        msg = f"CRUD string '{crud_str}' contains invalid characters: {sorted(invalid)}"
+        raise ValueError(msg)
+    return {
+        "perm_create": int("c" in normalized),
+        "perm_read": int("r" in normalized),
+        "perm_write": int("u" in normalized),
+        "perm_unlink": int("d" in normalized),
+    }
+
+
+def _security_validate_spec(security: dict[str, Any]) -> None:
+    """Validate that defaults keys exactly match roles array.
+
+    Also validates CRUD strings contain only c, r, u, d.
+    Raises ValueError on mismatch.
+    """
+    roles_set = set(security.get("roles", []))
+    defaults_keys = set(security.get("defaults", {}).keys())
+    if roles_set != defaults_keys:
+        missing = roles_set - defaults_keys
+        extra = defaults_keys - roles_set
+        parts = []
+        if missing:
+            parts.append(f"missing from defaults: {sorted(missing)}")
+        if extra:
+            parts.append(f"extra in defaults: {sorted(extra)}")
+        msg = f"Security defaults keys must match roles array. {'; '.join(parts)}"
+        raise ValueError(msg)
+    # Validate CRUD strings
+    for role, crud in security.get("defaults", {}).items():
+        _parse_crud(crud)
+    # Validate per-model ACL overrides
+    for model_name, acl in security.get("acl", {}).items():
+        for role, crud in acl.items():
+            _parse_crud(crud)
+
+
+def _security_build_roles(
+    module_name: str, security: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Build list of role dicts with xml_id, implied_ids chain, labels.
+
+    Roles ordered lowest-to-highest per security['roles'] array order.
+    Lowest role implies base.group_user; each subsequent role implies the previous.
+    """
+    roles_list = security["roles"]
+    result: list[dict[str, Any]] = []
+    for i, role_name in enumerate(roles_list):
+        if i == 0:
+            implied_ids = "base.group_user"
+        else:
+            prev_role = roles_list[i - 1]
+            implied_ids = f"group_{module_name}_{prev_role}"
+        is_highest = i == len(roles_list) - 1
+        result.append({
+            "name": role_name,
+            "label": role_name.replace("_", " ").title(),
+            "xml_id": f"group_{module_name}_{role_name}",
+            "implied_ids": implied_ids,
+            "is_highest": is_highest,
+        })
+    return result
+
+
+def _security_build_acl_matrix(
+    spec: dict[str, Any], security: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Build security_acl list on each model from defaults with per-model overrides.
+
+    Returns new model list with security_acl injected on each model.
+    """
+    defaults = security.get("defaults", {})
+    acl_overrides = security.get("acl", {})
+    roles = security["roles"]
+
+    new_models = []
+    for model in spec.get("models", []):
+        model_acl_override = acl_overrides.get(model["name"], {})
+        acl_entries = []
+        for role in roles:
+            crud_str = model_acl_override.get(role, defaults.get(role, ""))
+            perms = _parse_crud(crud_str)
+            acl_entries.append({
+                "role": role,
+                **perms,
+            })
+        new_models.append({**model, "security_acl": acl_entries})
+    return new_models
+
+
+def _security_detect_record_rule_scopes(model: dict[str, Any]) -> list[str]:
+    """Auto-detect record rule scopes from model fields.
+
+    Scopes:
+    - 'ownership': if field named user_id (Many2one) or create_uid exists
+    - 'department': if field named department_id exists
+    - 'company': if field named company_id (Many2one) exists
+
+    If model has 'record_rules' key, use that instead (override).
+    """
+    if "record_rules" in model:
+        return list(model["record_rules"])
+
+    fields = model.get("fields", [])
+    scopes: list[str] = []
+
+    has_user_id = any(
+        f.get("name") == "user_id" and f.get("type") == "Many2one"
+        for f in fields
+    )
+    has_create_uid = any(f.get("name") == "create_uid" for f in fields)
+    if has_user_id or has_create_uid:
+        scopes.append("ownership")
+
+    if any(f.get("name") == "department_id" for f in fields):
+        scopes.append("department")
+
+    if any(
+        f.get("name") == "company_id" and f.get("type") == "Many2one"
+        for f in fields
+    ):
+        scopes.append("company")
+
+    return scopes
+
+
+def _inject_legacy_security(spec: dict[str, Any]) -> dict[str, Any]:
+    """Inject legacy User/Manager two-tier security when no security block exists.
+
+    Returns new spec with security_roles and enriched models.
+    """
+    module_name = spec["module_name"]
+    legacy_security = {
+        "roles": ["user", "manager"],
+        "defaults": {
+            "user": "cru",
+            "manager": "crud",
+        },
+    }
+    roles = _security_build_roles(module_name, legacy_security)
+    new_models = _security_build_acl_matrix(spec, legacy_security)
+
+    # Detect record rule scopes for each model
+    enriched_models = []
+    for model in new_models:
+        scopes = _security_detect_record_rule_scopes(model)
+        enriched_models.append({**model, "record_rule_scopes": scopes})
+
+    return {**spec, "security_roles": roles, "models": enriched_models}
+
+
+def _process_security_patterns(spec: dict[str, Any]) -> dict[str, Any]:
+    """Pre-process security section, building RBAC infrastructure.
+
+    If no security block: injects legacy User/Manager two-tier system.
+    If security block present: validates, builds role hierarchy, ACL matrix,
+    and record rule scopes.
+
+    Returns a new spec dict with:
+    - security_roles: list of role dicts with xml_id, implied_ids, etc.
+    - models enriched with security_acl and record_rule_scopes
+
+    Pure function -- does NOT mutate the input spec.
+    """
+    security = spec.get("security")
+    if not security:
+        return _inject_legacy_security(spec)
+
+    module_name = spec["module_name"]
+
+    # Validate
+    _security_validate_spec(security)
+
+    # Build roles
+    roles = _security_build_roles(module_name, security)
+
+    # Build ACL matrix
+    new_models = _security_build_acl_matrix(spec, security)
+
+    # Detect record rule scopes for each model
+    enriched_models = []
+    for model in new_models:
+        scopes = _security_detect_record_rule_scopes(model)
+        enriched_models.append({**model, "record_rule_scopes": scopes})
+
+    return {**spec, "security_roles": roles, "models": enriched_models}
+
+
 def _process_computation_chains(spec: dict[str, Any]) -> dict[str, Any]:
     """Enrich computed field specs from computation_chains section.
 
