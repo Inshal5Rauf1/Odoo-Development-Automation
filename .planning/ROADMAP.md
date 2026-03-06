@@ -116,8 +116,8 @@
 **Plans**: 2 plans
 
 Plans:
-- [ ] 36-01-PLAN.md — Extract renderer_utils.py and preprocessors.py, migrate override flags to set[str]
-- [ ] 36-02-PLAN.md — Extract renderer_context.py, slim renderer.py, add smoke test
+- [x] 36-01-PLAN.md — Extract renderer_utils.py and preprocessors.py, migrate override flags to set[str]
+- [x] 36-02-PLAN.md — Extract renderer_context.py, slim renderer.py, add smoke test
 
 ### Phase 37: Security Foundation
 **Goal**: Specs with custom security roles generate complete RBAC infrastructure -- group hierarchy XML, per-role ACL rows, field-level groups= attributes, and ownership/department record rules
@@ -128,10 +128,11 @@ Plans:
   2. Each custom role gets corresponding `ir.model.access` CSV entries with appropriate CRUD permissions (viewer: read-only, editor: read/write, manager: full)
   3. Fields marked `sensitive: true` or with explicit `groups` in spec render with `groups="module.group_name"` attribute in the generated model file
   4. The security preprocessor cross-references `groups=` fields against search view filters and computed field dependencies, warning if a restricted field is used in a context accessible to lower-privilege roles
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 37-01: TBD
+- [ ] 37-01-PLAN.md — Security preprocessor, group hierarchy, ACL matrix, record rules, template updates
+- [ ] 37-02-PLAN.md — Field-level groups= attribute, view auto-fix, model template groups= rendering
 
 ### Phase 38: Audit Trail
 **Goal**: Models with `audit: true` generate a companion audit log model, a write() override with context flag recursion guard, and audit-specific views and ACLs
@@ -231,8 +232,8 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 18-19 | v2.1 | 5/5 | Complete | 2026-03-04 |
 | 20-25 | v3.0 | 11/11 | Complete | 2026-03-05 |
 | 26-35 | v3.1 | 12/12 | Complete | 2026-03-05 |
-| 36. Renderer Extraction | 2/2 | Complete   | 2026-03-06 | - |
-| 37. Security Foundation | v3.2 | 0/? | Not started | - |
+| 36. Renderer Extraction | 2/2 | Complete    | 2026-03-06 | - |
+| 37. Security Foundation | v3.2 | 0/2 | Planning complete | - |
 | 38. Audit Trail | v3.2 | 0/? | Not started | - |
 | 39. Approval Workflows | v3.2 | 0/? | Not started | - |
 | 40. Notifications & Webhooks | v3.2 | 0/? | Not started | - |
