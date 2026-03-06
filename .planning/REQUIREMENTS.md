@@ -1,0 +1,90 @@
+# Requirements: Odoo Module Automation
+
+**Defined:** 2026-03-06
+**Core Value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
+
+## v3.2 Requirements
+
+Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap phases.
+
+### Security
+
+- [ ] **SECR-01**: Generator produces `res.groups` XML with `implied_ids` hierarchy and `ir.model.access` CSV entries for custom security roles defined in spec
+- [ ] **SECR-02**: Fields with `sensitive: true` or `groups` in spec render with `groups="module.group_name"` attribute for field-level access control
+- [ ] **SECR-03**: Models with `audit: true` generate a tracking mixin with `write()` override, context flag recursion guard, and structured audit log entries
+
+### Business Logic
+
+- [ ] **BIZL-01**: Models with `approval` in spec generate multi-level state field, action methods, group-gated header buttons, and `ir.rule` per approval stage
+- [ ] **BIZL-02**: State transitions with `notify: true` generate `mail.template` XML records and `send_mail()` calls in action methods
+- [ ] **BIZL-03**: Models with `webhooks` generate hook method stubs in `create()`/`write()` with configurable dispatch
+
+### Tooling
+
+- [ ] **TOOL-01**: CLI `diff-spec` command compares two spec versions and produces typed change objects (added/removed/modified fields, models, relations)
+- [ ] **TOOL-04**: CLI `gen-migration` command consumes spec diff output and generates Odoo migration scripts (`pre-migrate.py`, `post-migrate.py`)
+
+### Pipeline
+
+- [ ] **PIPE-01**: Context7 `query_docs` is called during render setup (pre-fetch) to enrich template context with relevant Odoo documentation hints
+
+### Infrastructure
+
+- [x] **INFR-01**: renderer.py preprocessors and context builders extracted into separate modules before new features
+- [ ] **INFR-02**: Multi-feature integration tests validate write() override stacking, non-admin field access, and full approval+notification flow
+
+## Future Requirements (v3.3+)
+
+### Domain/Localization
+
+- **DOMN-01**: Document management pattern with verification workflow
+- **DOMN-02**: Pakistan/HEC localization framework (CNIC, phone, PKR)
+- **DOMN-03**: Semester/academic calendar awareness
+
+### Architecture
+
+- **ARCH-01**: Project context / model registry for cross-module awareness
+- **ARCH-02**: Structured generation manifest for checker
+- **ARCH-03**: Semantic validation beyond pylint+Docker
+- **ARCH-04**: Human checkpoint hooks in generation pipeline
+- **ARCH-05**: Generation state persistence with resume
+
+### Tooling
+
+- **TOOL-02**: Dev environment generation (docker-compose.dev.yml, devcontainer)
+- **TOOL-03**: Module dependency visualization (Mermaid graph)
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Dynamic RBAC (runtime ACL sync) | Anti-feature: Odoo expects static XML/CSV security, not runtime ir.model.access manipulation |
+| Non-admin Docker testing | Infrastructure gap: Docker tests run as admin; field-level security validation deferred to manual testing |
+| Pydantic spec validation | May add in v3.3 if spec complexity warrants it |
+| QWeb PDF rendering validation | wkhtmltopdf testing too fragile for automated CI |
+| Odoo 18 discuss.channel support | Version gate needed but low priority for v3.2 |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| INFR-01 | Phase 36 | Complete |
+| SECR-01 | Phase 37 | Pending |
+| SECR-02 | Phase 37 | Pending |
+| SECR-03 | Phase 38 | Pending |
+| BIZL-01 | Phase 39 | Pending |
+| BIZL-02 | Phase 40 | Pending |
+| BIZL-03 | Phase 40 | Pending |
+| TOOL-01 | Phase 41 | Pending |
+| TOOL-04 | Phase 41 | Pending |
+| PIPE-01 | Phase 42 | Pending |
+| INFR-02 | Phase 43 | Pending |
+
+**Coverage:**
+- v3.2 requirements: 11 total
+- Mapped to phases: 11
+- Unmapped: 0
+
+---
+*Requirements defined: 2026-03-06*
+*Last updated: 2026-03-06 after roadmap creation*
