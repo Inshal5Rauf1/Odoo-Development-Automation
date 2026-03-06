@@ -92,7 +92,7 @@
 
 **Milestone Goal:** Add security patterns (RBAC, field-level, audit trail), business logic patterns (approval workflows, notifications, webhooks), developer tooling (spec diffing, migration scripts), and wire Context7 into the generation pipeline.
 
-- [ ] **Phase 36: Renderer Extraction** - Extract preprocessors and context builders from renderer.py into separate modules
+- [x] **Phase 36: Renderer Extraction** - Extract preprocessors and context builders from renderer.py into separate modules (completed 2026-03-06)
 - [ ] **Phase 37: Security Foundation** - RBAC group hierarchy, field-level groups= attribute, and per-role ACLs
 - [ ] **Phase 38: Audit Trail** - Structured audit log model with write() override stacking and context flag guards
 - [ ] **Phase 39: Approval Workflows** - Multi-level state field, group-gated action methods, and per-stage record rules
@@ -231,7 +231,7 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 18-19 | v2.1 | 5/5 | Complete | 2026-03-04 |
 | 20-25 | v3.0 | 11/11 | Complete | 2026-03-05 |
 | 26-35 | v3.1 | 12/12 | Complete | 2026-03-05 |
-| 36. Renderer Extraction | 1/2 | In Progress|  | - |
+| 36. Renderer Extraction | 2/2 | Complete   | 2026-03-06 | - |
 | 37. Security Foundation | v3.2 | 0/? | Not started | - |
 | 38. Audit Trail | v3.2 | 0/? | Not started | - |
 | 39. Approval Workflows | v3.2 | 0/? | Not started | - |
