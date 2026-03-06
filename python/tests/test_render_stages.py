@@ -2738,3 +2738,237 @@ class TestApprovalSmokeFullPipeline:
         model_py = (tmp_path / "test_module" / "models" / "test_request.py").read_text()
         # The rejected state should appear in the Selection field
         assert '"rejected"' in model_py or "'rejected'" in model_py
+
+
+# ---------------------------------------------------------------------------
+# Phase 40: Notification + Webhook smoke tests (Plan 02)
+# ---------------------------------------------------------------------------
+
+
+class TestNotificationWebhookSmokeFullPipeline:
+    """Smoke tests: spec with approval + notifications + webhooks through the complete render_module pipeline."""
+
+    NOTIFICATION_WEBHOOK_SPEC = {
+        "module_name": "test_notif_webhook",
+        "module_title": "Test Notifications and Webhooks",
+        "summary": "Test module",
+        "author": "Test",
+        "depends": ["base"],
+        "odoo_version": "17.0",
+        "security": {
+            "roles": ["user", "manager"],
+            "defaults": {"user": "crud", "manager": "crud"},
+        },
+        "models": [{
+            "name": "test.request",
+            "description": "Test Request",
+            "fields": [
+                {"name": "name", "type": "Char", "required": True, "string": "Name"},
+                {"name": "amount", "type": "Float", "string": "Amount"},
+                {"name": "description", "type": "Text", "string": "Description"},
+                {"name": "supervisor_id", "type": "Many2one", "comodel_name": "res.users", "string": "Supervisor"},
+            ],
+            "approval": {
+                "levels": [
+                    {
+                        "state": "submitted", "role": "user", "next": "approved",
+                        "label": "Submitted",
+                        "notify": {
+                            "template": "email_request_submitted",
+                            "recipients": "role:manager",
+                            "subject": "Request Submitted: {{ object.name }}",
+                        },
+                    },
+                    {"state": "approved", "role": "manager", "next": "done", "label": "Approved"},
+                ],
+                "on_reject": "draft",
+                "reject_allowed_from": ["submitted", "approved"],
+                "on_reject_notify": {
+                    "template": "email_request_rejected",
+                    "recipients": "creator",
+                    "subject": "Request Rejected: {{ object.name }}",
+                },
+            },
+            "webhooks": {
+                "on_create": True,
+                "on_write": ["state", "amount"],
+                "on_unlink": False,
+            },
+        }],
+    }
+
+    def _get_spec(self):
+        """Return a deep copy of the spec to prevent mutation across tests."""
+        import copy
+        return copy.deepcopy(self.NOTIFICATION_WEBHOOK_SPEC)
+
+    def test_full_pipeline_renders_without_error(self, tmp_path):
+        """render_module completes without exception."""
+        spec = self._get_spec()
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        assert len(files) > 0
+
+    def test_mail_template_data_xml_created(self, tmp_path):
+        """data/mail_template_data.xml exists in output."""
+        spec = self._get_spec()
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        mail_data = tmp_path / "test_notif_webhook" / "data" / "mail_template_data.xml"
+        assert mail_data.exists(), (
+            f"mail_template_data.xml not generated. Files: {[str(f) for f in files if 'data' in str(f)]}"
+        )
+
+    def test_mail_template_xml_has_noupdate(self, tmp_path):
+        """Rendered XML contains noupdate='1'."""
+        spec = self._get_spec()
+        render_module(spec, get_template_dir(), tmp_path)
+        xml = (tmp_path / "test_notif_webhook" / "data" / "mail_template_data.xml").read_text()
+        assert 'noupdate="1"' in xml
+
+    def test_mail_template_xml_has_subject(self, tmp_path):
+        """Rendered XML contains subject from spec."""
+        spec = self._get_spec()
+        render_module(spec, get_template_dir(), tmp_path)
+        xml = (tmp_path / "test_notif_webhook" / "data" / "mail_template_data.xml").read_text()
+        assert "Request Submitted" in xml or "subject" in xml.lower()
+
+    def test_mail_template_xml_has_email_to(self, tmp_path):
+        """Rendered XML contains resolved email_to expression."""
+        spec = self._get_spec()
+        render_module(spec, get_template_dir(), tmp_path)
+        xml = (tmp_path / "test_notif_webhook" / "data" / "mail_template_data.xml").read_text()
+        assert "email_to" in xml
+
+    def test_model_py_has_logger(self, tmp_path):
+        """Generated model.py has import logging and _logger."""
+        spec = self._get_spec()
+        render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_notif_webhook" / "models" / "test_request.py").read_text()
+        assert "import logging" in model_py
+        assert "_logger" in model_py
+
+    def test_model_py_has_send_mail(self, tmp_path):
+        """Generated model.py has send_mail in action method."""
+        spec = self._get_spec()
+        render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_notif_webhook" / "models" / "test_request.py").read_text()
+        assert "send_mail" in model_py
+
+    def test_model_py_send_mail_after_state_write(self, tmp_path):
+        """send_mail appears AFTER state write in action method."""
+        spec = self._get_spec()
+        render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_notif_webhook" / "models" / "test_request.py").read_text()
+        submit_pos = model_py.find("def action_submit(self):")
+        assert submit_pos > -1
+        state_write_pos = model_py.find("_force_state", submit_pos)
+        send_mail_pos = model_py.find("send_mail", submit_pos)
+        assert state_write_pos < send_mail_pos, "send_mail should come after state write"
+
+    def test_model_py_has_webhook_stubs(self, tmp_path):
+        """Generated model.py has _webhook_post_create and _webhook_post_write."""
+        spec = self._get_spec()
+        render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_notif_webhook" / "models" / "test_request.py").read_text()
+        assert "_webhook_post_create" in model_py
+        assert "_webhook_post_write" in model_py
+
+    def test_model_py_webhook_in_create(self, tmp_path):
+        """Generated model.py has _skip_webhooks guard in create()."""
+        spec = self._get_spec()
+        render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_notif_webhook" / "models" / "test_request.py").read_text()
+        create_pos = model_py.find("def create(")
+        assert create_pos > -1
+        create_body = model_py[create_pos:model_py.find("\n    def ", create_pos + 1)]
+        assert "_skip_webhooks" in create_body
+        assert "_webhook_post_create" in create_body
+
+    def test_model_py_webhook_in_write(self, tmp_path):
+        """Generated model.py has webhook dispatch in write()."""
+        spec = self._get_spec()
+        render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_notif_webhook" / "models" / "test_request.py").read_text()
+        write_pos = model_py.find("def write(self, vals):")
+        assert write_pos > -1
+        write_body = model_py[write_pos:]
+        assert "_webhook_post_write" in write_body
+        assert "_skip_webhooks" in write_body
+
+    def test_manifest_has_mail_dependency(self, tmp_path):
+        """Manifest.py has 'mail' in depends."""
+        spec = self._get_spec()
+        render_module(spec, get_template_dir(), tmp_path)
+        manifest = (tmp_path / "test_notif_webhook" / "__manifest__.py").read_text()
+        assert '"mail"' in manifest
+
+    def test_manifest_has_mail_template_data(self, tmp_path):
+        """Manifest.py has 'data/mail_template_data.xml' in data."""
+        spec = self._get_spec()
+        render_module(spec, get_template_dir(), tmp_path)
+        manifest = (tmp_path / "test_notif_webhook" / "__manifest__.py").read_text()
+        assert "mail_template_data.xml" in manifest
+
+    def test_no_feature_regression(self, tmp_path):
+        """Render a plain spec (no notifications, no webhooks) and confirm it still renders without error and without notification/webhook artifacts."""
+        spec = _make_spec(
+            models=[
+                {
+                    "name": "test.plain",
+                    "description": "Plain Model",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "value", "type": "Integer"},
+                    ],
+                },
+            ],
+        )
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        assert len(files) > 0
+        model_py = (tmp_path / "test_module" / "models" / "test_plain.py").read_text()
+        assert "import logging" not in model_py
+        assert "_logger" not in model_py
+        assert "send_mail" not in model_py
+        assert "_webhook_post_create" not in model_py
+        assert "_webhook_post_write" not in model_py
+        assert "_skip_webhooks" not in model_py
+        # No mail_template_data.xml should be generated
+        mail_data = tmp_path / "test_module" / "data" / "mail_template_data.xml"
+        assert not mail_data.exists()
+
+    def test_webhook_only_no_notifications(self, tmp_path):
+        """Render spec with webhooks but no approval/notifications -- webhook stubs present, no logger import, no send_mail."""
+        spec = _make_spec(
+            models=[
+                {
+                    "name": "test.hooked",
+                    "description": "Hooked Model",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "value", "type": "Integer"},
+                        {"name": "status", "type": "Selection", "selection": [("active", "Active"), ("inactive", "Inactive")]},
+                    ],
+                    "webhooks": {
+                        "on_create": True,
+                        "on_write": ["value", "status"],
+                        "on_unlink": False,
+                    },
+                },
+            ],
+        )
+        spec["security"] = {
+            "roles": ["user", "manager"],
+            "defaults": {"user": "crud", "manager": "crud"},
+        }
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        assert len(files) > 0
+        model_py = (tmp_path / "test_module" / "models" / "test_hooked.py").read_text()
+        # Webhook stubs present
+        assert "_webhook_post_create" in model_py
+        assert "_webhook_post_write" in model_py
+        assert "_skip_webhooks" in model_py
+        # No notifications artifacts
+        assert "import logging" not in model_py
+        assert "send_mail" not in model_py
+        # No mail template XML
+        mail_data = tmp_path / "test_module" / "data" / "mail_template_data.xml"
+        assert not mail_data.exists()
