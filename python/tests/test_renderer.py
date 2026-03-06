@@ -3988,3 +3988,120 @@ class TestSecuritySmoke:
         with tempfile.TemporaryDirectory() as tmp:
             files, warnings = render_module(spec, get_template_dir(), Path(tmp))
             assert len(files) > 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 37-02: Field-level groups enrichment tests
+# ---------------------------------------------------------------------------
+
+
+class TestSecurityFieldGroups:
+    """Tests for _security_enrich_fields helper."""
+
+    def test_sensitive_field_gets_highest_role_groups(self):
+        """Field with sensitive:true and no explicit groups gets groups set to highest role."""
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].append(
+            {"name": "ssn", "type": "Char", "sensitive": True},
+        )
+        result = _process_security_patterns(spec)
+        ssn_field = next(
+            f for m in result["models"] for f in m["fields"] if f["name"] == "ssn"
+        )
+        assert ssn_field["groups"] == "test_module.group_test_module_manager"
+
+    def test_explicit_groups_role_name_resolved(self):
+        """Field with explicit groups='manager' resolves to full external ID."""
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].append(
+            {"name": "salary", "type": "Float", "groups": "manager"},
+        )
+        result = _process_security_patterns(spec)
+        salary_field = next(
+            f for m in result["models"] for f in m["fields"] if f["name"] == "salary"
+        )
+        assert salary_field["groups"] == "test_module.group_test_module_manager"
+
+    def test_explicit_groups_editor_role_resolved(self):
+        """Field with explicit groups='editor' resolves to full external ID."""
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].append(
+            {"name": "notes", "type": "Text", "groups": "editor"},
+        )
+        result = _process_security_patterns(spec)
+        notes_field = next(
+            f for m in result["models"] for f in m["fields"] if f["name"] == "notes"
+        )
+        assert notes_field["groups"] == "test_module.group_test_module_editor"
+
+    def test_explicit_full_external_id_kept_asis(self):
+        """Field with groups containing a dot is kept as-is (full external ID)."""
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].append(
+            {"name": "payroll", "type": "Float", "groups": "other_module.some_group"},
+        )
+        result = _process_security_patterns(spec)
+        payroll_field = next(
+            f for m in result["models"] for f in m["fields"] if f["name"] == "payroll"
+        )
+        assert payroll_field["groups"] == "other_module.some_group"
+
+    def test_non_sensitive_no_groups_unchanged(self):
+        """Non-sensitive field without groups key is left unchanged."""
+        spec = _make_security_spec()
+        result = _process_security_patterns(spec)
+        name_field = next(
+            f for m in result["models"] for f in m["fields"] if f["name"] == "name"
+        )
+        assert "groups" not in name_field
+
+    def test_legacy_fallback_sensitive_field(self):
+        """Without security block, sensitive fields get legacy manager group."""
+        spec = _make_spec(models=[{
+            "name": "test.model",
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {"name": "secret", "type": "Char", "sensitive": True},
+            ],
+        }])
+        result = _process_security_patterns(spec)
+        secret_field = next(
+            f for m in result["models"] for f in m["fields"] if f["name"] == "secret"
+        )
+        assert secret_field["groups"] == "test_module.group_test_module_manager"
+
+
+class TestSecurityViewAutoFix:
+    """Tests for _security_auto_fix_views helper."""
+
+    def test_restricted_field_gets_view_groups(self):
+        """View field referencing a restricted field gets view_groups key."""
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].append(
+            {"name": "ssn", "type": "Char", "sensitive": True},
+        )
+        result = _process_security_patterns(spec)
+        ssn_field = next(
+            f for m in result["models"] for f in m["fields"] if f["name"] == "ssn"
+        )
+        assert ssn_field.get("view_groups") == "test_module.group_test_module_manager"
+
+    def test_non_restricted_field_no_view_groups(self):
+        """Non-restricted field does NOT get view_groups."""
+        spec = _make_security_spec()
+        result = _process_security_patterns(spec)
+        name_field = next(
+            f for m in result["models"] for f in m["fields"] if f["name"] == "name"
+        )
+        assert "view_groups" not in name_field
+
+    def test_auto_fix_logs_info_message(self, caplog):
+        """Auto-fix logs INFO for each field it enriches in views."""
+        import logging
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].append(
+            {"name": "ssn", "type": "Char", "sensitive": True},
+        )
+        with caplog.at_level(logging.INFO, logger="odoo_gen_utils.preprocessors"):
+            _process_security_patterns(spec)
+        assert any("Auto-applied groups=" in msg for msg in caplog.messages)

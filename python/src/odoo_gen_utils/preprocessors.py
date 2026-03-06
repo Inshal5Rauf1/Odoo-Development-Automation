@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from odoo_gen_utils.renderer_utils import (
     _to_class,
@@ -767,6 +770,90 @@ def _security_detect_record_rule_scopes(model: dict[str, Any]) -> list[str]:
     return scopes
 
 
+def _security_enrich_fields(
+    spec: dict[str, Any],
+    roles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Enrich model fields with groups= attribute for sensitive/restricted fields.
+
+    - sensitive:true fields without explicit groups get highest role group
+    - Bare role name in groups (e.g. 'manager') resolved to full external ID
+    - Full external IDs (containing '.') are left as-is
+    - Non-sensitive fields without groups are unchanged
+
+    Pure function -- does NOT mutate the input spec.
+    """
+    module_name = spec["module_name"]
+    role_names = {r["name"] for r in roles}
+    highest_role = next((r for r in roles if r.get("is_highest")), roles[-1] if roles else None)
+
+    new_models = []
+    for model in spec.get("models", []):
+        new_fields = []
+        for field in model.get("fields", []):
+            enriched = {**field}
+            groups_val = field.get("groups")
+
+            if field.get("sensitive") and not groups_val:
+                # Default to highest role group
+                if highest_role:
+                    enriched["groups"] = f"{module_name}.{highest_role['xml_id']}"
+            elif groups_val:
+                if "." in groups_val:
+                    # Full external ID -- keep as-is
+                    pass
+                elif groups_val in role_names:
+                    # Bare role name -- resolve to full external ID
+                    enriched["groups"] = f"{module_name}.group_{module_name}_{groups_val}"
+
+            new_fields.append(enriched)
+        new_models.append({**model, "fields": new_fields})
+
+    return {**spec, "models": new_models}
+
+
+def _security_auto_fix_views(spec: dict[str, Any]) -> dict[str, Any]:
+    """Auto-fix view fields referencing restricted fields by adding view_groups.
+
+    For each model, builds a set of restricted field names (those with 'groups' key),
+    then adds 'view_groups' key to each restricted field with the same groups value.
+    Logs INFO for each auto-fixed field.
+
+    Pure function -- does NOT mutate the input spec.
+    """
+    new_models = []
+    for model in spec.get("models", []):
+        fields = model.get("fields", [])
+        # Build restricted field lookup: name -> groups value
+        restricted = {
+            f["name"]: f["groups"]
+            for f in fields
+            if f.get("groups")
+        }
+
+        if not restricted:
+            new_models.append(model)
+            continue
+
+        new_fields = []
+        for field in fields:
+            fname = field.get("name", "")
+            if fname in restricted:
+                enriched = {**field, "view_groups": restricted[fname]}
+                logger.info(
+                    "Auto-applied groups='%s' to field '%s' in views for model '%s'",
+                    restricted[fname],
+                    fname,
+                    model.get("name", ""),
+                )
+                new_fields.append(enriched)
+            else:
+                new_fields.append(field)
+        new_models.append({**model, "fields": new_fields})
+
+    return {**spec, "models": new_models}
+
+
 def _inject_legacy_security(spec: dict[str, Any]) -> dict[str, Any]:
     """Inject legacy User/Manager two-tier security when no security block exists.
 
@@ -789,7 +876,10 @@ def _inject_legacy_security(spec: dict[str, Any]) -> dict[str, Any]:
         scopes = _security_detect_record_rule_scopes(model)
         enriched_models.append({**model, "record_rule_scopes": scopes})
 
-    return {**spec, "security_roles": roles, "models": enriched_models}
+    result = {**spec, "security_roles": roles, "models": enriched_models}
+    result = _security_enrich_fields(result, roles)
+    result = _security_auto_fix_views(result)
+    return result
 
 
 def _process_security_patterns(spec: dict[str, Any]) -> dict[str, Any]:
@@ -826,7 +916,10 @@ def _process_security_patterns(spec: dict[str, Any]) -> dict[str, Any]:
         scopes = _security_detect_record_rule_scopes(model)
         enriched_models.append({**model, "record_rule_scopes": scopes})
 
-    return {**spec, "security_roles": roles, "models": enriched_models}
+    result = {**spec, "security_roles": roles, "models": enriched_models}
+    result = _security_enrich_fields(result, roles)
+    result = _security_auto_fix_views(result)
+    return result
 
 
 def _process_computation_chains(spec: dict[str, Any]) -> dict[str, Any]:
