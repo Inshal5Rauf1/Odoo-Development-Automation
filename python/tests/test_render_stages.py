@@ -14,6 +14,7 @@ import pytest
 
 from odoo_gen_utils.renderer import (
     create_versioned_renderer,
+    get_template_dir,
     render_controllers,
     render_cron,
     render_manifest,
@@ -2101,3 +2102,31 @@ class TestRenderModelsArchival:
         assert "_cron_archive_old_records" in model_py
         assert "cr.commit()" in model_py
         assert "active = fields.Boolean" in model_py
+
+
+# ---------------------------------------------------------------------------
+# Minimal-spec smoke test (Phase 36 Plan 02)
+# ---------------------------------------------------------------------------
+
+
+def test_minimal_spec_smoke(tmp_path):
+    """Render a single-model, zero-features spec through full pipeline.
+
+    Guards against StrictUndefined regressions when new context keys
+    are added by future phases but not populated for minimal specs.
+    """
+    spec = {
+        "module_name": "smoke_test",
+        "depends": ["base"],
+        "models": [{
+            "name": "smoke.model",
+            "description": "Smoke Test",
+            "fields": [{"name": "name", "type": "Char"}],
+        }],
+        "wizards": [],
+    }
+    files, warnings = render_module(spec, get_template_dir(), tmp_path)
+    assert len(files) > 0
+    module_dir = tmp_path / "smoke_test"
+    assert (module_dir / "__manifest__.py").exists()
+    assert (module_dir / "models" / "smoke_model.py").exists()
