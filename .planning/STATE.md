@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.2
 milestone_name: Security, Business Logic & Context7
 status: in-progress
-stopped_at: Completed 40-01-PLAN.md
-last_updated: "2026-03-06T20:54:38.715Z"
-last_activity: 2026-03-07 — Phase 40 Plan 01 complete (notification/webhook preprocessors)
+stopped_at: Completed 40-02-PLAN.md
+last_updated: "2026-03-06T21:12:46Z"
+last_activity: 2026-03-07 — Phase 40 Plan 02 complete (notification/webhook template rendering)
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 10
-  completed_plans: 9
-  percent: 32
+  completed_plans: 10
+  percent: 36
 ---
 
 # Project State
@@ -22,21 +22,21 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v3.2 Phase 40 — Notifications & Webhooks (Plan 01 complete)
+**Current focus:** v3.2 Phase 40 — Notifications & Webhooks (COMPLETE)
 
 ## Current Position
 
 Phase: 40 of 43 (Notifications & Webhooks)
-Plan: 1 of 2 in current phase
-Status: in-progress
-Last activity: 2026-03-07 — Phase 40 Plan 01 complete (notification/webhook preprocessors)
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: phase-complete
+Last activity: 2026-03-07 — Phase 40 Plan 02 complete (notification/webhook template rendering)
 
-Progress: [███░░░░░░░] 32%
+Progress: [████░░░░░░] 36%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 66 (across all milestones)
+- Total plans completed: 67 (across all milestones)
 - Average duration: ~24 min
 - Total execution time: ~24.9 hours
 
@@ -77,6 +77,9 @@ Progress: [███░░░░░░░] 32%
 - [Phase 40]: Level 0 notify enriches submit action, not first approve action
 - [Phase 40]: Body field selection: name first, then required, then string-labeled, max 4
 - [Phase 40]: Recipient resolution returns raw Jinja2/Odoo template expressions for email_to
+- [Phase 40]: dict.get('notification') used in Jinja2 templates for StrictUndefined safety on optional action method keys
+- [Phase 40]: 18.0 webhook old_vals always uses standalone capture (audit not ported to 18.0)
+- [Phase 40]: auto_delete eval="True" added to mail.template XML for email cleanup
 
 ### Pending Todos
 
@@ -98,11 +101,11 @@ None yet.
 - v3.0 Bug Fixes & Tech Debt (6 phases, 11 plans) -- 2026-03-05
 - v3.1 Design Flaws & Feature Gaps (10 phases, 12 plans) -- 2026-03-05
 
-**Total:** 37 phases, 68 plans, 360+ commits, 950 tests, ~19,000+ LOC Python
+**Total:** 37 phases, 68 plans, 360+ commits, 1022 tests, ~19,000+ LOC Python
 
 ## Session Continuity
 
-Last session: 2026-03-06T20:54:38.713Z
-Stopped at: Completed 40-01-PLAN.md
+Last session: 2026-03-06T21:12:46Z
+Stopped at: Completed 40-02-PLAN.md
 Resume file: None
-Next step: Phase 39 complete. Ready for next phase.
+Next step: Phase 40 complete. Ready for next phase.
