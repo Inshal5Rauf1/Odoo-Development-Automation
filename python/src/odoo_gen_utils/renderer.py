@@ -32,10 +32,12 @@ from odoo_gen_utils.preprocessors import (
     _process_audit_patterns,
     _process_computation_chains,
     _process_constraints,
+    _process_notification_patterns,
     _process_performance,
     _process_production_patterns,
     _process_relationships,
     _process_security_patterns,
+    _process_webhook_patterns,
     _validate_no_cycles,
 )
 
@@ -643,6 +645,46 @@ def render_controllers(
         return Result.fail(f"render_controllers failed: {exc}")
 
 
+def render_mail_templates(
+    env: Environment,
+    spec: dict[str, Any],
+    module_dir: Path,
+    module_context: dict[str, Any],
+) -> "Result[list[Path]]":
+    """Render mail_template_data.xml when notifications are present.
+
+    Collects all notification_templates across all models into a flat list
+    and renders them via mail_template_data.xml.j2.
+
+    Returns Result.ok([]) when no notifications are present.
+    """
+    models = spec.get("models", [])
+    notification_models = [m for m in models if m.get("has_notifications")]
+    if not notification_models:
+        return Result.ok([])
+
+    try:
+        all_templates: list[dict[str, Any]] = []
+        for model in notification_models:
+            all_templates.extend(model.get("notification_templates", []))
+
+        if not all_templates:
+            return Result.ok([])
+
+        mail_ctx = {
+            **module_context,
+            "notification_templates": all_templates,
+        }
+        path = render_template(
+            env, "mail_template_data.xml.j2",
+            module_dir / "data" / "mail_template_data.xml",
+            mail_ctx,
+        )
+        return Result.ok([path])
+    except Exception as exc:
+        return Result.fail(f"render_mail_templates failed: {exc}")
+
+
 def _track_artifacts(state: Any, spec: dict[str, Any], module_dir: Path) -> Any:
     """Track artifact state transitions for all generated files."""
     try:
@@ -709,6 +751,10 @@ def render_module(
     spec = _process_audit_patterns(spec)
     # Phase 39: approval workflow patterns (state field, action methods, record rules)
     spec = _process_approval_patterns(spec)
+    # Phase 40: notification patterns (enriches approval action methods with send_mail)
+    spec = _process_notification_patterns(spec)
+    # Phase 40: webhook patterns (extension point stubs in create/write)
+    spec = _process_webhook_patterns(spec)
     module_name = spec["module_name"]
     module_dir = output_dir / module_name
     ctx = _build_module_context(spec, module_name)
@@ -726,6 +772,7 @@ def render_module(
         lambda: render_models(env, spec, module_dir, ctx, verifier=verifier, warnings_out=all_warnings),
         lambda: render_views(env, spec, module_dir, ctx),
         lambda: render_security(env, spec, module_dir, ctx),
+        lambda: render_mail_templates(env, spec, module_dir, ctx),
         lambda: render_wizards(env, spec, module_dir, ctx),
         lambda: render_tests(env, spec, module_dir, ctx),
         lambda: render_static(env, spec, module_dir, ctx),

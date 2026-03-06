@@ -209,6 +209,17 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     on_reject = model.get("on_reject", "draft")
     reject_allowed_from = model.get("reject_allowed_from", [])
 
+    # Phase 40: notification and webhook context keys (defaults prevent StrictUndefined crashes)
+    has_notifications = model.get("has_notifications", False)
+    notification_templates = model.get("notification_templates", [])
+    needs_logger = model.get("needs_logger", False)
+    has_webhooks = model.get("has_webhooks", False)
+    webhook_config = model.get("webhook_config", None)
+    webhook_watched_fields = model.get("webhook_watched_fields", [])
+    webhook_on_create = model.get("webhook_on_create", False)
+    webhook_on_write = bool(webhook_watched_fields)
+    webhook_on_unlink = model.get("webhook_on_unlink", False)
+
     # Phase 39: approval models need translate for UserError messages in action methods
     if has_approval:
         needs_translate = True
@@ -312,6 +323,16 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         "approval_record_rules": approval_record_rules,
         "on_reject": on_reject,
         "reject_allowed_from": reject_allowed_from,
+        # Phase 40 keys
+        "has_notifications": has_notifications,
+        "notification_templates": notification_templates,
+        "needs_logger": needs_logger,
+        "has_webhooks": has_webhooks,
+        "webhook_config": webhook_config,
+        "webhook_watched_fields": webhook_watched_fields,
+        "webhook_on_create": webhook_on_create,
+        "webhook_on_write": webhook_on_write,
+        "webhook_on_unlink": webhook_on_unlink,
     }
 
 
@@ -349,6 +370,10 @@ def _compute_manifest_data(
         manifest_files.append("security/record_rules.xml")
 
     manifest_files.extend(data_files)
+
+    # Phase 40: mail template data file (after data files, before views)
+    if any(m.get("has_notifications") for m in spec.get("models", [])):
+        manifest_files.append("data/mail_template_data.xml")
 
     for model in spec.get("models", []):
         model_var = _to_python_var(model["name"])
@@ -454,6 +479,9 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         "has_audit_log": spec.get("has_audit_log", False),
         # Phase 39 keys
         "has_approval_models": any(m.get("has_approval") for m in models),
+        # Phase 40 keys
+        "has_notification_models": any(m.get("has_notifications") for m in models),
+        "has_webhook_models": any(m.get("has_webhooks") for m in models),
     }
     if has_import_export:
         ctx["external_dependencies"] = {"python": ["openpyxl"]}

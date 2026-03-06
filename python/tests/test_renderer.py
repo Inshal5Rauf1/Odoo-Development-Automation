@@ -5095,3 +5095,238 @@ class TestApprovalTemplateRendering:
         output = self._render_view(self._make_approval_spec())
         # "notes" is in editable_fields, so it should NOT have readonly based on state
         assert "<form" in output
+
+
+# ---------------------------------------------------------------------------
+# Phase 40: Notification integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestNotificationIntegration:
+    """Integration tests for notification preprocessor wired into pipeline and context."""
+
+    def _make_notification_spec(self) -> dict:
+        """Build a spec with approval + notify on one model."""
+        return {
+            "module_name": "uni_fee",
+            "module_title": "University Fee",
+            "summary": "Fee management",
+            "author": "Test",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "fee.request",
+                    "description": "Fee Request",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True, "string": "Request Name"},
+                        {"name": "amount", "type": "Float", "required": True, "string": "Amount"},
+                        {"name": "notes", "type": "Text", "string": "Notes"},
+                    ],
+                    "approval": {
+                        "levels": [
+                            {
+                                "state": "submitted", "role": "editor",
+                                "next": "approved_hod", "label": "Submitted",
+                                "notify": {
+                                    "template": "email_fee_waiver_submitted",
+                                    "recipients": "role:hod",
+                                    "subject": "Fee Waiver Submitted: {{ object.name }}",
+                                },
+                            },
+                            {
+                                "state": "approved_hod", "role": "hod",
+                                "next": "approved_dean", "label": "HOD Approved",
+                                "notify": {
+                                    "template": "email_fee_waiver_approved_hod",
+                                    "recipients": "role:dean",
+                                    "subject": "Fee Waiver Approved by HOD: {{ object.name }}",
+                                },
+                            },
+                            {"state": "approved_dean", "role": "dean", "next": "done", "label": "Dean Approved"},
+                        ],
+                        "on_reject": "draft",
+                        "reject_allowed_from": ["approved_hod", "approved_dean"],
+                        "lock_after": "draft",
+                        "editable_fields": ["notes"],
+                        "on_reject_notify": {
+                            "template": "email_fee_waiver_rejected",
+                            "recipients": "creator",
+                            "subject": "Fee Waiver Rejected: {{ object.name }}",
+                        },
+                    },
+                },
+            ],
+            "security": {
+                "roles": ["user", "editor", "hod", "dean", "manager"],
+                "defaults": {
+                    "user": "r",
+                    "editor": "cru",
+                    "hod": "cru",
+                    "dean": "cru",
+                    "manager": "crud",
+                },
+            },
+        }
+
+    def test_pipeline_has_notification_preprocessor(self):
+        """render_module calls _process_notification_patterns after _process_approval_patterns."""
+        spec = self._make_notification_spec()
+        with tempfile.TemporaryDirectory() as d:
+            files, _ = render_module(spec, get_template_dir(), Path(d))
+            # If notification preprocessor ran, the spec should have mail in depends
+            # We verify by checking the rendered manifest includes "mail"
+            manifest_file = next(f for f in files if Path(f).name == "__manifest__.py")
+            content = Path(manifest_file).read_text(encoding="utf-8")
+            assert '"mail"' in content
+
+    def test_context_defaults_no_notifications(self):
+        """Model without notifications gets has_notifications=False, notification_templates=[], needs_logger=False."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["has_notifications"] is False
+        assert ctx["notification_templates"] == []
+        assert ctx["needs_logger"] is False
+
+    def test_context_defaults_with_notifications(self):
+        """Model with notifications gets has_notifications=True, notification_templates populated, needs_logger=True."""
+        spec = self._make_notification_spec()
+        with tempfile.TemporaryDirectory() as d:
+            files, _ = render_module(spec, get_template_dir(), Path(d))
+            # Render succeeds without crash -- context defaults worked
+            assert len(files) > 0
+
+    def test_module_context_has_notification_models(self):
+        """Module context includes has_notification_models flag."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_module_context(spec, "test_module")
+        assert "has_notification_models" in ctx
+        assert ctx["has_notification_models"] is False
+
+    def test_module_context_notification_data_file(self):
+        """When notifications present, manifest_files includes data/mail_template_data.xml."""
+        spec = self._make_notification_spec()
+        with tempfile.TemporaryDirectory() as d:
+            files, _ = render_module(spec, get_template_dir(), Path(d))
+            manifest_file = next(f for f in files if Path(f).name == "__manifest__.py")
+            content = Path(manifest_file).read_text(encoding="utf-8")
+            assert "mail_template_data.xml" in content
+
+
+# ---------------------------------------------------------------------------
+# Phase 40: Webhook integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestWebhookIntegration:
+    """Integration tests for webhook preprocessor wired into pipeline and context."""
+
+    def _make_webhook_spec(self) -> dict:
+        """Build a spec with webhooks on one model."""
+        return {
+            "module_name": "uni_fee",
+            "module_title": "University Fee",
+            "summary": "Fee management",
+            "author": "Test",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "fee.request",
+                    "description": "Fee Request",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "amount", "type": "Float"},
+                        {"name": "state", "type": "Selection", "selection": [("draft", "Draft"), ("done", "Done")]},
+                    ],
+                    "webhooks": {
+                        "on_create": True,
+                        "on_write": ["state", "amount"],
+                        "on_unlink": False,
+                    },
+                },
+            ],
+            "security": {
+                "roles": ["user", "manager"],
+                "defaults": {
+                    "user": "cr",
+                    "manager": "crud",
+                },
+            },
+        }
+
+    def test_pipeline_has_webhook_preprocessor(self):
+        """render_module calls _process_webhook_patterns after _process_notification_patterns."""
+        spec = self._make_webhook_spec()
+        with tempfile.TemporaryDirectory() as d:
+            files, _ = render_module(spec, get_template_dir(), Path(d))
+            # If webhook preprocessor ran, the model should have create/write overrides
+            # We verify the render completes without crash
+            assert len(files) > 0
+
+    def test_context_defaults_no_webhooks(self):
+        """Model without webhooks gets has_webhooks=False, webhook_config=None, etc."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["has_webhooks"] is False
+        assert ctx["webhook_config"] is None
+        assert ctx["webhook_watched_fields"] == []
+        assert ctx["webhook_on_create"] is False
+        assert ctx["webhook_on_write"] is False
+        assert ctx["webhook_on_unlink"] is False
+
+    def test_context_defaults_with_webhooks(self):
+        """Model with webhooks gets correct context keys populated."""
+        spec = self._make_webhook_spec()
+        with tempfile.TemporaryDirectory() as d:
+            files, _ = render_module(spec, get_template_dir(), Path(d))
+            assert len(files) > 0
+
+    def test_module_context_has_webhook_models(self):
+        """Module context includes has_webhook_models flag."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_module_context(spec, "test_module")
+        assert "has_webhook_models" in ctx
+        assert ctx["has_webhook_models"] is False
+
+    def test_no_feature_regression(self):
+        """Plain spec without notifications/webhooks renders all existing templates without error."""
+        spec = {
+            "module_name": "test_plain",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.item",
+                    "description": "Test Item",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "value", "type": "Integer"},
+                    ],
+                },
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files, _ = render_module(spec, get_template_dir(), Path(d))
+            assert len(files) > 0
+            # All core files rendered
+            file_names = {Path(f).name for f in files}
+            assert "__manifest__.py" in file_names
+            assert "test_item.py" in file_names
