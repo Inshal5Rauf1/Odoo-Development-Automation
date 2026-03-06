@@ -10,6 +10,12 @@ from odoo.exceptions import UserError
 {% if needs_translate %}
 from odoo.tools.translate import _
 {% endif %}
+{% if needs_logger %}
+
+import logging
+
+_logger = logging.getLogger(__name__)
+{% endif %}
 
 
 class {{ model_name | to_class }}(models.Model):
@@ -226,6 +232,11 @@ class {{ model_name | to_class }}(models.Model):
         for record in records:
             record._post_create_processing()
 {% endif %}
+{% if has_webhooks and webhook_on_create %}
+        if not self.env.context.get('_skip_webhooks'):
+            for record in records:
+                record._webhook_post_create(vals_list)
+{% endif %}
         return records
 {% endif %}
 {% if has_write_override %}
@@ -237,6 +248,14 @@ class {{ model_name | to_class }}(models.Model):
             if not self.env.is_superuser():
                 raise UserError(_("State transitions must use action buttons."))
 {% endif %}
+{% if has_webhooks and webhook_on_write %}
+        # Capture old values for webhook watched fields
+        _wh_watched = {{ webhook_watched_fields }}
+        _wh_old = {}
+        if not self.env.context.get('_skip_webhooks') and any(f in vals for f in _wh_watched):
+            for record in self:
+                _wh_old[record.id] = {f: record[f] for f in _wh_watched if f in vals}
+{% endif %}
 {% if is_cacheable %}
         self.clear_caches()
 {% endif %}
@@ -247,6 +266,12 @@ class {{ model_name | to_class }}(models.Model):
 {% endif %}
             self._check_{{ c.name }}()
 {% endfor %}
+{% if has_webhooks and webhook_on_write %}
+        if not self.env.context.get('_skip_webhooks') and any(f in vals for f in {{ webhook_watched_fields }}):
+            _wh_old_values = _wh_old
+            for record in self:
+                record._webhook_post_write(vals, _wh_old_values.get(record.id, {}))
+{% endif %}
         return result
 {% endif %}
 {% if has_approval %}
@@ -260,6 +285,17 @@ class {{ model_name | to_class }}(models.Model):
         self.with_context(_force_state=True).write({
             '{{ approval_state_field_name }}': '{{ approval_submit_action.to_state }}',
         })
+{% if approval_submit_action.get('notification') %}
+        # Notification -- AFTER successful state change
+        try:
+            template = self.env.ref('{{ module_name }}.{{ approval_submit_action.notification.template_xml_id }}')
+            template.send_mail(self.id, force_send=False)
+        except Exception:
+            _logger.warning(
+                "Failed to send notification for %s #%s",
+                self._name, self.id, exc_info=True,
+            )
+{% endif %}
 {% endif %}
 {% for action in approval_action_methods %}
 
@@ -275,6 +311,17 @@ class {{ model_name | to_class }}(models.Model):
         self.with_context(_force_state=True).write({
             '{{ approval_state_field_name }}': '{{ action.to_state }}',
         })
+{% if action.get('notification') %}
+        # Notification -- AFTER successful state change
+        try:
+            template = self.env.ref('{{ module_name }}.{{ action.notification.template_xml_id }}')
+            template.send_mail(self.id, force_send=False)
+        except Exception:
+            _logger.warning(
+                "Failed to send notification for %s #%s",
+                self._name, self.id, exc_info=True,
+            )
+{% endif %}
 {% endfor %}
 {% if approval_reject_action %}
 
@@ -286,6 +333,17 @@ class {{ model_name | to_class }}(models.Model):
         self.with_context(_force_state=True).write({
             '{{ approval_state_field_name }}': '{{ on_reject }}',
         })
+{% if approval_reject_action.get('notification') %}
+        # Notification -- AFTER successful state change
+        try:
+            template = self.env.ref('{{ module_name }}.{{ approval_reject_action.notification.template_xml_id }}')
+            template.send_mail(self.id, force_send=False)
+        except Exception:
+            _logger.warning(
+                "Failed to send notification for %s #%s",
+                self._name, self.id, exc_info=True,
+            )
+{% endif %}
 {% endif %}
 {% if approval_reset_action %}
 
@@ -303,6 +361,39 @@ class {{ model_name | to_class }}(models.Model):
         """Post-creation logic executed for each record in batch."""
         # TODO: implement post-create processing
         pass
+{% endif %}
+{% if has_webhooks %}
+{% if webhook_on_create %}
+
+    def _webhook_post_create(self, vals):
+        """Extension point: called after record creation.
+
+        Override via _inherit to implement webhook dispatch.
+        Context flag _skip_webhooks can suppress this call.
+        """
+        pass
+{% endif %}
+{% if webhook_on_write %}
+
+    def _webhook_post_write(self, vals, old_vals):
+        """Extension point: called after write when watched fields change.
+
+        Watched fields: {{ webhook_watched_fields | join(', ') }}
+        Override via _inherit to implement webhook dispatch.
+        Context flag _skip_webhooks can suppress this call.
+        """
+        pass
+{% endif %}
+{% if webhook_on_unlink %}
+
+    def _webhook_pre_unlink(self):
+        """Extension point: called before record deletion.
+
+        Override via _inherit to implement webhook dispatch.
+        Context flag _skip_webhooks can suppress this call.
+        """
+        pass
+{% endif %}
 {% endif %}
 {% if cron_methods is defined and cron_methods %}
 {% for cron in cron_methods %}

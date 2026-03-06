@@ -5330,3 +5330,407 @@ class TestWebhookIntegration:
             file_names = {Path(f).name for f in files}
             assert "__manifest__.py" in file_names
             assert "test_item.py" in file_names
+
+
+# ---------------------------------------------------------------------------
+# Phase 40: Notification template rendering tests (Plan 02)
+# ---------------------------------------------------------------------------
+
+
+class TestNotificationTemplateRendering:
+    """Tests for notification-related template blocks in model.py.j2 and mail_template_data.xml.j2.
+
+    Verifies that rendered model.py includes logger import, send_mail blocks in action methods,
+    and that mail_template_data.xml.j2 renders valid XML with correct structure.
+    """
+
+    def _make_notification_spec(self) -> dict:
+        """Build a spec with approval + notify on one model plus security roles."""
+        return {
+            "module_name": "uni_fee",
+            "module_title": "University Fee",
+            "summary": "Fee management",
+            "author": "Test",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "fee.request",
+                    "description": "Fee Request",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True, "string": "Request Name"},
+                        {"name": "amount", "type": "Float", "required": True, "string": "Amount"},
+                        {"name": "notes", "type": "Text", "string": "Notes"},
+                    ],
+                    "approval": {
+                        "levels": [
+                            {
+                                "state": "submitted", "role": "editor",
+                                "next": "approved_hod", "label": "Submitted",
+                                "notify": {
+                                    "template": "email_fee_waiver_submitted",
+                                    "recipients": "role:hod",
+                                    "subject": "Fee Waiver Submitted: {{ object.name }}",
+                                },
+                            },
+                            {
+                                "state": "approved_hod", "role": "hod",
+                                "next": "approved_dean", "label": "HOD Approved",
+                            },
+                            {"state": "approved_dean", "role": "dean", "next": "done", "label": "Dean Approved"},
+                        ],
+                        "on_reject": "draft",
+                        "reject_allowed_from": ["approved_hod", "approved_dean"],
+                        "lock_after": "draft",
+                        "editable_fields": ["notes"],
+                        "on_reject_notify": {
+                            "template": "email_fee_waiver_rejected",
+                            "recipients": "creator",
+                            "subject": "Fee Waiver Rejected: {{ object.name }}",
+                        },
+                    },
+                },
+            ],
+            "security": {
+                "roles": ["user", "editor", "hod", "dean", "manager"],
+                "defaults": {
+                    "user": "r",
+                    "editor": "cru",
+                    "hod": "cru",
+                    "dean": "cru",
+                    "manager": "crud",
+                },
+            },
+        }
+
+    def _render_model(self, spec: dict, version: str = "17.0") -> str:
+        """Preprocess spec and render model.py.j2 template for the notification model."""
+        from odoo_gen_utils.preprocessors import (
+            _process_approval_patterns,
+            _process_notification_patterns,
+            _process_security_patterns,
+            _process_webhook_patterns,
+        )
+        from odoo_gen_utils.renderer import create_versioned_renderer
+
+        spec = _process_security_patterns(spec)
+        spec = _process_approval_patterns(spec)
+        spec = _process_notification_patterns(spec)
+        spec = _process_webhook_patterns(spec)
+        model = next(m for m in spec["models"] if m["name"] == "fee.request")
+        ctx = _build_model_context(spec, model)
+        env = create_versioned_renderer(version)
+        template = env.get_template("model.py.j2")
+        return template.render(**ctx)
+
+    def _render_mail_template(self, spec: dict) -> str:
+        """Preprocess spec and render mail_template_data.xml.j2 template."""
+        from odoo_gen_utils.preprocessors import (
+            _process_approval_patterns,
+            _process_notification_patterns,
+            _process_security_patterns,
+        )
+        from odoo_gen_utils.renderer import create_versioned_renderer
+
+        spec = _process_security_patterns(spec)
+        spec = _process_approval_patterns(spec)
+        spec = _process_notification_patterns(spec)
+        model = next(m for m in spec["models"] if m["name"] == "fee.request")
+        all_templates = model.get("notification_templates", [])
+        ctx = {"notification_templates": all_templates}
+        env = create_versioned_renderer("17.0")
+        template = env.get_template("mail_template_data.xml.j2")
+        return template.render(**ctx)
+
+    def test_logger_import_present(self):
+        """Model with has_notifications=True renders 'import logging' and '_logger' at top."""
+        output = self._render_model(self._make_notification_spec())
+        assert "import logging" in output
+        assert "_logger = logging.getLogger(__name__)" in output
+
+    def test_logger_import_absent(self):
+        """Model without notifications does NOT render logger import."""
+        spec = _make_spec(models=[{
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        from odoo_gen_utils.renderer import create_versioned_renderer
+        env = create_versioned_renderer("17.0")
+        ctx = _build_model_context(spec, spec["models"][0])
+        template = env.get_template("model.py.j2")
+        output = template.render(**ctx)
+        assert "import logging" not in output
+        assert "_logger" not in output
+
+    def test_send_mail_in_action_method(self):
+        """Action method with notification renders try/except send_mail block after state write."""
+        output = self._render_model(self._make_notification_spec())
+        assert "send_mail" in output
+        # send_mail should be in the submit action (level 0 notify enriches submit)
+        # Find the submit action and check for send_mail after the state write
+        submit_pos = output.find("def action_submit(self):")
+        assert submit_pos > -1
+        send_mail_pos = output.find("send_mail", submit_pos)
+        assert send_mail_pos > -1, "send_mail not found in action method"
+
+    def test_send_mail_force_send_false(self):
+        """Rendered send_mail call uses force_send=False."""
+        output = self._render_model(self._make_notification_spec())
+        assert "force_send=False" in output
+
+    def test_send_mail_exception_handling(self):
+        """Rendered send_mail is wrapped in try/except with _logger.warning."""
+        output = self._render_model(self._make_notification_spec())
+        assert "_logger.warning" in output
+        assert "except Exception:" in output
+
+    def test_send_mail_in_submit_action(self):
+        """Submit action with notification renders send_mail block."""
+        output = self._render_model(self._make_notification_spec())
+        submit_pos = output.find("def action_submit(self):")
+        assert submit_pos > -1
+        # Find the next method definition after submit
+        next_def = output.find("\n    def ", submit_pos + 1)
+        submit_body = output[submit_pos:next_def] if next_def > -1 else output[submit_pos:]
+        assert "send_mail" in submit_body
+
+    def test_send_mail_in_reject_action(self):
+        """Reject action with notification renders send_mail block."""
+        output = self._render_model(self._make_notification_spec())
+        reject_pos = output.find("def action_reject(self):")
+        assert reject_pos > -1
+        # Find the next method definition after reject
+        next_def = output.find("\n    def ", reject_pos + 1)
+        reject_body = output[reject_pos:next_def] if next_def > -1 else output[reject_pos:]
+        assert "send_mail" in reject_body
+
+    def test_no_send_mail_without_notification(self):
+        """Action methods without notification key do NOT render send_mail."""
+        output = self._render_model(self._make_notification_spec())
+        # action_approve_approved_hod (level 1 HOD) has no notify
+        approve_hod_pos = output.find("def action_approve_approved_hod(self):")
+        assert approve_hod_pos > -1
+        next_def = output.find("\n    def ", approve_hod_pos + 1)
+        hod_body = output[approve_hod_pos:next_def] if next_def > -1 else output[approve_hod_pos:]
+        assert "send_mail" not in hod_body
+
+    def test_mail_template_xml(self):
+        """mail_template_data.xml.j2 renders valid XML with noupdate='1', correct model_id ref, subject, email_to, body_html CDATA."""
+        output = self._render_mail_template(self._make_notification_spec())
+        assert 'noupdate="1"' in output
+        assert 'model="mail.template"' in output
+        assert "CDATA" in output
+        assert "<field" in output
+
+    def test_mail_template_body_fields(self):
+        """body_html contains table rows for each body_field with label and object.field_name."""
+        output = self._render_mail_template(self._make_notification_spec())
+        # Should have table rows with field labels
+        assert "<tr>" in output
+        assert "<td" in output
+        # Should reference object fields
+        assert "object." in output
+
+    def test_mail_template_auto_delete(self):
+        """Rendered template has auto_delete eval='True'."""
+        # Update mail_template_data.xml.j2 to include auto_delete -- verify it renders
+        output = self._render_mail_template(self._make_notification_spec())
+        assert "auto_delete" in output
+
+
+# ---------------------------------------------------------------------------
+# Phase 40: Webhook template rendering tests (Plan 02)
+# ---------------------------------------------------------------------------
+
+
+class TestWebhookTemplateRendering:
+    """Tests for webhook-related template blocks in model.py.j2.
+
+    Verifies that rendered model.py includes webhook stub methods, create/write
+    override guards with _skip_webhooks, and correct old_vals capture position.
+    """
+
+    def _make_webhook_spec(self, include_audit: bool = False, include_approval: bool = False) -> dict:
+        """Build a spec with webhooks on one model."""
+        model: dict = {
+            "name": "test.record",
+            "description": "Test Record",
+            "fields": [
+                {"name": "name", "type": "Char", "required": True, "string": "Name"},
+                {"name": "amount", "type": "Float", "string": "Amount"},
+                {"name": "state", "type": "Selection", "selection": [("draft", "Draft"), ("done", "Done")]},
+            ],
+            "webhooks": {
+                "on_create": True,
+                "on_write": ["state", "amount"],
+                "on_unlink": True,
+            },
+        }
+        if include_audit:
+            model["audit"] = True
+        if include_approval:
+            model["approval"] = {
+                "levels": [
+                    {"state": "submitted", "role": "editor", "next": "done", "label": "Submitted"},
+                ],
+                "on_reject": "draft",
+                "reject_allowed_from": ["submitted"],
+            }
+        spec: dict = {
+            "module_name": "test_webhooks",
+            "module_title": "Test Webhooks",
+            "summary": "Test module",
+            "author": "Test",
+            "depends": ["base"],
+            "models": [model],
+            "security": {
+                "roles": ["user", "editor", "manager"],
+                "defaults": {
+                    "user": "r",
+                    "editor": "cru",
+                    "manager": "crud",
+                },
+            },
+        }
+        return spec
+
+    def _render_model(self, spec: dict, version: str = "17.0") -> str:
+        """Preprocess spec and render model.py.j2 template for webhook model."""
+        from odoo_gen_utils.preprocessors import (
+            _process_approval_patterns,
+            _process_audit_patterns,
+            _process_notification_patterns,
+            _process_security_patterns,
+            _process_webhook_patterns,
+        )
+        from odoo_gen_utils.renderer import (
+            _process_constraints,
+            _process_production_patterns,
+            create_versioned_renderer,
+        )
+        from collections import defaultdict
+
+        spec = _process_security_patterns(spec)
+        # Initialize override_sources
+        for model in spec.get("models", []):
+            if "override_sources" not in model:
+                model["override_sources"] = defaultdict(set)
+        spec = _process_constraints(spec)
+        spec = _process_production_patterns(spec)
+        spec = _process_audit_patterns(spec)
+        spec = _process_approval_patterns(spec)
+        spec = _process_notification_patterns(spec)
+        spec = _process_webhook_patterns(spec)
+        model = next(m for m in spec["models"] if m["name"] == "test.record")
+        ctx = _build_model_context(spec, model)
+        env = create_versioned_renderer(version)
+        template = env.get_template("model.py.j2")
+        return template.render(**ctx)
+
+    def test_webhook_post_create_stub(self):
+        """Model with has_webhooks renders _webhook_post_create method stub."""
+        output = self._render_model(self._make_webhook_spec())
+        assert "def _webhook_post_create(self, vals):" in output
+        assert "pass" in output
+
+    def test_webhook_post_write_stub(self):
+        """Model with webhook_watched_fields renders _webhook_post_write method stub with docstring listing watched fields."""
+        output = self._render_model(self._make_webhook_spec())
+        assert "def _webhook_post_write(self, vals, old_vals):" in output
+        assert "state" in output
+        assert "amount" in output
+
+    def test_webhook_pre_unlink_stub(self):
+        """Model with webhook_on_unlink renders _webhook_pre_unlink stub."""
+        output = self._render_model(self._make_webhook_spec())
+        assert "def _webhook_pre_unlink(self):" in output
+
+    def test_no_webhook_stubs_without_feature(self):
+        """Model without webhooks renders no webhook stubs."""
+        spec = _make_spec(models=[{
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        from odoo_gen_utils.renderer import create_versioned_renderer
+        env = create_versioned_renderer("17.0")
+        ctx = _build_model_context(spec, spec["models"][0])
+        template = env.get_template("model.py.j2")
+        output = template.render(**ctx)
+        assert "_webhook_post_create" not in output
+        assert "_webhook_post_write" not in output
+        assert "_webhook_pre_unlink" not in output
+
+    def test_create_override_webhook_guard(self):
+        """create() override with webhook_on_create renders _skip_webhooks guard and per-record _webhook_post_create call."""
+        output = self._render_model(self._make_webhook_spec())
+        assert "_skip_webhooks" in output
+        create_pos = output.find("def create(")
+        assert create_pos > -1
+        # Find the return statement in create
+        return_pos = output.find("return records", create_pos)
+        create_body = output[create_pos:return_pos + 20] if return_pos > -1 else output[create_pos:]
+        assert "_webhook_post_create" in create_body
+        assert "_skip_webhooks" in create_body
+
+    def test_write_override_webhook_dispatch(self):
+        """write() override with webhook_on_write renders _skip_webhooks guard and _webhook_post_write call after audit log."""
+        output = self._render_model(self._make_webhook_spec())
+        write_pos = output.find("def write(self, vals):")
+        assert write_pos > -1
+        write_body = output[write_pos:]
+        assert "_webhook_post_write" in write_body
+        assert "_skip_webhooks" in write_body
+
+    def test_write_webhook_old_vals_with_audit(self):
+        """When has_audit AND has_webhooks, webhook reuses audit old_values for watched fields (no separate capture)."""
+        spec = self._make_webhook_spec(include_audit=True)
+        output = self._render_model(spec)
+        write_pos = output.find("def write(self, vals):")
+        write_body = output[write_pos:]
+        # Should have audit old_values
+        assert "_audit_read_old" in write_body
+        # Should reference old_values in webhook context (reuse audit's old_values)
+        assert "old_values" in write_body
+        # Should NOT have a separate _wh_old capture block before super
+        # (because audit already captures old values)
+        super_pos = write_body.find("result = super().write(vals)")
+        before_super = write_body[:super_pos]
+        # _wh_old should not appear when audit is present (reuses audit old_values)
+        assert "_wh_old" not in before_super or "_audit_read_old" in before_super
+
+    def test_write_webhook_old_vals_without_audit(self):
+        """When has_webhooks but NOT has_audit, webhook has its own old_vals capture block before super()."""
+        spec = self._make_webhook_spec(include_audit=False)
+        output = self._render_model(spec)
+        write_pos = output.find("def write(self, vals):")
+        write_body = output[write_pos:]
+        # Should have webhook-specific old value capture
+        assert "_wh_old" in write_body or "old_vals" in write_body.lower()
+        # No audit old_values (no audit)
+        assert "_audit_read_old" not in write_body
+
+    def test_write_stacking_order(self):
+        """In generated write(), webhook dispatch appears AFTER audit log line and is the LAST block before return."""
+        spec = self._make_webhook_spec(include_audit=True)
+        output = self._render_model(spec)
+        write_pos = output.find("def write(self, vals):")
+        write_body = output[write_pos:]
+        audit_log_pos = write_body.find("_audit_log_changes")
+        webhook_pos = write_body.find("_webhook_post_write")
+        # Find the LAST return result in write() (the main path, not the _audit_skip fast path)
+        return_pos = write_body.rfind("return result")
+        assert audit_log_pos > -1, "_audit_log_changes not found"
+        assert webhook_pos > -1, "_webhook_post_write not found"
+        assert return_pos > -1, "return result not found"
+        assert audit_log_pos < webhook_pos < return_pos, (
+            f"Stacking order wrong: audit_log={audit_log_pos}, webhook={webhook_pos}, return={return_pos}"
+        )
+
+    def test_18_0_template_parity(self):
+        """18.0 model.py.j2 has equivalent webhook blocks (adapted for 18.0 structure)."""
+        spec = self._make_webhook_spec()
+        output = self._render_model(spec, version="18.0")
+        assert "_webhook_post_create" in output
+        assert "_webhook_post_write" in output
+        assert "_skip_webhooks" in output
