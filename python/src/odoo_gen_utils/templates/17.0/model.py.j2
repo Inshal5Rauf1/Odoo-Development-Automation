@@ -50,6 +50,9 @@ class {{ model_name | to_class }}(models.Model):
 {% if field.help is defined %}
         help="{{ field.help }}",
 {% endif %}
+{% if field.groups is defined and field.groups %}
+        groups="{{ field.groups }}",
+{% endif %}
     )
 {% elif field.name == 'parent_path' and is_hierarchical is defined and is_hierarchical %}
     parent_path = fields.Char(
@@ -80,6 +83,9 @@ class {{ model_name | to_class }}(models.Model):
 {% if field.help is defined %}
         help="{{ field.help }}",
 {% endif %}
+{% if field.groups is defined and field.groups %}
+        groups="{{ field.groups }}",
+{% endif %}
     )
 {% elif field.type == 'Char' and field.name in sequence_field_names and field.required %}
     {{ field.name }} = fields.Char(
@@ -88,6 +94,9 @@ class {{ model_name | to_class }}(models.Model):
         default=_default_{{ field.name }},
         readonly=True,
         copy=False,
+{% if field.groups is defined and field.groups %}
+        groups="{{ field.groups }}",
+{% endif %}
     )
 {% elif field.type == 'Monetary' %}
     {{ field.name }} = fields.Monetary(
@@ -108,6 +117,9 @@ class {{ model_name | to_class }}(models.Model):
 {% if field.help is defined %}
         help="{{ field.help }}",
 {% endif %}
+{% if field.groups is defined and field.groups %}
+        groups="{{ field.groups }}",
+{% endif %}
     )
 {% elif field.compute is defined and field.compute %}
     {{ field.name }} = fields.{{ field.type }}(
@@ -121,6 +133,9 @@ class {{ model_name | to_class }}(models.Model):
 {% endif %}
 {% if field.help is defined %}
         help="{{ field.help }}",
+{% endif %}
+{% if field.groups is defined and field.groups %}
+        groups="{{ field.groups }}",
 {% endif %}
     )
 {% else %}
@@ -137,6 +152,9 @@ class {{ model_name | to_class }}(models.Model):
 {% endif %}
 {% if field.help is defined %}
         help="{{ field.help }}",
+{% endif %}
+{% if field.groups is defined and field.groups %}
+        groups="{{ field.groups }}",
 {% endif %}
     )
 {% endif %}

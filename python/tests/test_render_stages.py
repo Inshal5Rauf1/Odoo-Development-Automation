@@ -2251,3 +2251,117 @@ class TestRenderSecuritySpecDriven:
         assert (module_dir / "security" / "security.xml").exists()
         assert (module_dir / "security" / "ir.model.access.csv").exists()
         assert (module_dir / "security" / "record_rules.xml").exists()
+
+
+# ---------------------------------------------------------------------------
+# Phase 37-02: Field-level groups= rendering tests
+# ---------------------------------------------------------------------------
+
+
+class TestRenderModelsFieldGroups:
+    """Tests that model.py.j2 renders groups= on fields that have it."""
+
+    def test_field_with_groups_renders_groups_attr(self, env, tmp_module):
+        """Field with groups key renders groups= parameter in output .py."""
+        model = _make_model("test.model", fields=[
+            {"name": "name", "type": "Char", "required": True},
+            {"name": "salary", "type": "Float", "groups": "test_module.group_test_module_manager"},
+        ])
+        spec = _make_spec(models=[model])
+        ctx = _make_module_context(spec)
+        result = render_models(env, spec, tmp_module, ctx)
+        assert result.success
+        model_py = (tmp_module / "models" / "test_model.py").read_text()
+        assert 'groups="test_module.group_test_module_manager"' in model_py
+
+    def test_field_without_groups_no_groups_attr(self, env, tmp_module):
+        """Field without groups key does NOT render groups= line."""
+        model = _make_model("test.model", fields=[
+            {"name": "name", "type": "Char", "required": True},
+            {"name": "value", "type": "Integer"},
+        ])
+        spec = _make_spec(models=[model])
+        ctx = _make_module_context(spec)
+        result = render_models(env, spec, tmp_module, ctx)
+        assert result.success
+        model_py = (tmp_module / "models" / "test_model.py").read_text()
+        assert "groups=" not in model_py
+
+    def test_sensitive_field_renders_groups_after_preprocessing(self, env, tmp_module):
+        """Full pipeline: sensitive field -> preprocessor -> template -> groups= in output."""
+        from odoo_gen_utils.preprocessors import _process_security_patterns
+        from odoo_gen_utils.renderer_context import _build_model_context
+
+        model = {
+            "name": "test.model",
+            "description": "Test Model",
+            "fields": [
+                {"name": "name", "type": "Char", "required": True},
+                {"name": "ssn", "type": "Char", "sensitive": True},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        spec["security"] = {
+            "roles": ["viewer", "editor", "manager"],
+            "defaults": {"viewer": "r", "editor": "cru", "manager": "crud"},
+        }
+        spec = _process_security_patterns(spec)
+        model_ctx = _build_model_context(spec, spec["models"][0])
+        (tmp_module / "models").mkdir(parents=True, exist_ok=True)
+        output = env.get_template("model.py.j2").render(model_ctx)
+        assert 'groups="test_module.group_test_module_manager"' in output
+
+    def test_backward_compat_no_security_no_groups(self, env, tmp_module):
+        """Module without security block: no groups= on any field (backward compat)."""
+        model = _make_model("test.model")
+        spec = _make_spec(models=[model])
+        ctx = _make_module_context(spec)
+        result = render_models(env, spec, tmp_module, ctx)
+        assert result.success
+        model_py = (tmp_module / "models" / "test_model.py").read_text()
+        assert "groups=" not in model_py
+
+
+class TestRenderSecurityFullIntegration:
+    """Full integration test: render_module with security spec and sensitive field."""
+
+    def test_full_module_with_security_and_sensitive_field(self, tmp_path):
+        """Complete security spec produces all security files and groups= on sensitive field."""
+        spec = _make_security_spec_for_render(
+            models=[
+                {
+                    "name": "fee.structure",
+                    "description": "Fee Structure",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "company_id", "type": "Many2one", "comodel_name": "res.company"},
+                        {"name": "department_id", "type": "Many2one", "comodel_name": "hr.department"},
+                        {"name": "secret_code", "type": "Char", "sensitive": True},
+                    ],
+                },
+                {
+                    "name": "fee.line",
+                    "description": "Fee Line",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "amount", "type": "Float"},
+                    ],
+                },
+            ],
+        )
+        spec["module_title"] = "Test Module"
+        spec["summary"] = "Test"
+        spec["author"] = "Test"
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        assert len(files) > 0
+        module_dir = tmp_path / "test_module"
+        # Security files exist
+        assert (module_dir / "security" / "security.xml").exists()
+        assert (module_dir / "security" / "ir.model.access.csv").exists()
+        assert (module_dir / "security" / "record_rules.xml").exists()
+        # Model file has groups= on sensitive field
+        fee_structure_py = (module_dir / "models" / "fee_structure.py").read_text()
+        assert 'groups="test_module.group_test_module_manager"' in fee_structure_py
+        # Non-sensitive model file has no groups=
+        fee_line_py = (module_dir / "models" / "fee_line.py").read_text()
+        assert "groups=" not in fee_line_py
