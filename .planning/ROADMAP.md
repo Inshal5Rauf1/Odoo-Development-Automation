@@ -239,7 +239,7 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 37. Security Foundation | 2/2 | Complete   | 2026-03-06 | - |
 | 38. Audit Trail | 1/2 | Complete    | 2026-03-06 | - |
 | 39. Approval Workflows | 2/2 | Complete    | 2026-03-06 | - |
-| 40. Notifications & Webhooks | v3.2 | 0/2 | Planned | - |
+| 40. Notifications & Webhooks | 1/2 | In Progress|  | - |
 | 41. Spec Diffing & Migration | v3.2 | 0/? | Not started | - |
 | 42. Context7 Pipeline | v3.2 | 0/? | Not started | - |
 | 43. Integration Testing | v3.2 | 0/? | Not started | - |

@@ -16,8 +16,8 @@ Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap 
 ### Business Logic
 
 - [x] **BIZL-01**: Models with `approval` in spec generate multi-level state field, action methods, group-gated header buttons, and `ir.rule` per approval stage
-- [ ] **BIZL-02**: State transitions with `notify: true` generate `mail.template` XML records and `send_mail()` calls in action methods
-- [ ] **BIZL-03**: Models with `webhooks` generate hook method stubs in `create()`/`write()` with configurable dispatch
+- [x] **BIZL-02**: State transitions with `notify: true` generate `mail.template` XML records and `send_mail()` calls in action methods
+- [x] **BIZL-03**: Models with `webhooks` generate hook method stubs in `create()`/`write()` with configurable dispatch
 
 ### Tooling
 
@@ -73,8 +73,8 @@ Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap 
 | SECR-02 | Phase 37 | Complete |
 | SECR-03 | Phase 38 | Complete |
 | BIZL-01 | Phase 39 | Complete |
-| BIZL-02 | Phase 40 | Pending |
-| BIZL-03 | Phase 40 | Pending |
+| BIZL-02 | Phase 40 | Complete |
+| BIZL-03 | Phase 40 | Complete |
 | TOOL-01 | Phase 41 | Pending |
 | TOOL-04 | Phase 41 | Pending |
 | PIPE-01 | Phase 42 | Pending |

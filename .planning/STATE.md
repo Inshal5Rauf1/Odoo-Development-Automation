@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v3.2
 milestone_name: Security, Business Logic & Context7
 status: in-progress
-stopped_at: Phase 39 Plan 02 complete
-last_updated: "2026-03-06T19:52:36Z"
-last_activity: 2026-03-06 — Phase 39 Plan 02 complete (approval template rendering)
+stopped_at: Completed 40-01-PLAN.md
+last_updated: "2026-03-06T20:54:38.715Z"
+last_activity: 2026-03-07 — Phase 40 Plan 01 complete (notification/webhook preprocessors)
 progress:
   total_phases: 8
   completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 10
+  completed_plans: 9
   percent: 32
 ---
 
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v3.2 Phase 39 — Approval Workflows (COMPLETE)
+**Current focus:** v3.2 Phase 40 — Notifications & Webhooks (Plan 01 complete)
 
 ## Current Position
 
-Phase: 39 of 43 (Approval Workflows)
-Plan: 2 of 2 in current phase (COMPLETE)
-Status: phase-complete
-Last activity: 2026-03-06 — Phase 39 Plan 02 complete (approval template rendering)
+Phase: 40 of 43 (Notifications & Webhooks)
+Plan: 1 of 2 in current phase
+Status: in-progress
+Last activity: 2026-03-07 — Phase 40 Plan 01 complete (notification/webhook preprocessors)
 
 Progress: [███░░░░░░░] 32%
 
@@ -73,6 +73,10 @@ Progress: [███░░░░░░░] 32%
 - [Phase 39]: Record rules use conditional global/group-scoped rendering based on rule dict contents
 - [Phase 39]: 18.0 approval guard placed directly in write() since audit not yet ported to 18.0
 - [Phase 39]: Approval state guard stacks after audit capture, before cache clear in 17.0 write()
+- [Phase 40]: Notification enrichment modifies approval_action_methods in-place (shallow copies) rather than separate list
+- [Phase 40]: Level 0 notify enriches submit action, not first approve action
+- [Phase 40]: Body field selection: name first, then required, then string-labeled, max 4
+- [Phase 40]: Recipient resolution returns raw Jinja2/Odoo template expressions for email_to
 
 ### Pending Todos
 
@@ -98,7 +102,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T19:52:36Z
-Stopped at: Completed 39-02-PLAN.md
-Resume file: .planning/phases/39-approval-workflows/39-02-SUMMARY.md
+Last session: 2026-03-06T20:54:38.713Z
+Stopped at: Completed 40-01-PLAN.md
+Resume file: None
 Next step: Phase 39 complete. Ready for next phase.
