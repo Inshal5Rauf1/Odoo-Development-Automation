@@ -95,7 +95,7 @@
 - [x] **Phase 36: Renderer Extraction** - Extract preprocessors and context builders from renderer.py into separate modules (completed 2026-03-06)
 - [x] **Phase 37: Security Foundation** - RBAC group hierarchy, field-level groups= attribute, and per-role ACLs (completed 2026-03-06)
 - [x] **Phase 38: Audit Trail** - Structured audit log model with write() override stacking and context flag guards (completed 2026-03-06)
-- [ ] **Phase 39: Approval Workflows** - Multi-level state field, group-gated action methods, and per-stage record rules
+- [x] **Phase 39: Approval Workflows** - Multi-level state field, group-gated action methods, and per-stage record rules (completed 2026-03-06)
 - [ ] **Phase 40: Notifications & Webhooks** - mail.template generation for state transitions and hook method stubs in create()/write()
 - [ ] **Phase 41: Spec Diffing & Migration** - CLI diff-spec command and gen-migration for pre/post migration scripts
 - [ ] **Phase 42: Context7 Pipeline** - Pre-fetch Context7 docs during render setup to enrich template context
@@ -237,7 +237,7 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 36. Renderer Extraction | 2/2 | Complete    | 2026-03-06 | - |
 | 37. Security Foundation | 2/2 | Complete   | 2026-03-06 | - |
 | 38. Audit Trail | 1/2 | Complete    | 2026-03-06 | - |
-| 39. Approval Workflows | 1/2 | In Progress|  | - |
+| 39. Approval Workflows | 2/2 | Complete   | 2026-03-06 | - |
 | 40. Notifications & Webhooks | v3.2 | 0/? | Not started | - |
 | 41. Spec Diffing & Migration | v3.2 | 0/? | Not started | - |
 | 42. Context7 Pipeline | v3.2 | 0/? | Not started | - |

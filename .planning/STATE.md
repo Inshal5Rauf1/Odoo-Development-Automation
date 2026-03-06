@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.2
 milestone_name: Security, Business Logic & Context7
 status: in-progress
-stopped_at: Phase 39 Plan 01 complete
-last_updated: "2026-03-06T19:33:19Z"
-last_activity: 2026-03-06 — Phase 39 Plan 01 complete (approval preprocessor + context keys)
+stopped_at: Phase 39 Plan 02 complete
+last_updated: "2026-03-06T19:52:36Z"
+last_activity: 2026-03-06 — Phase 39 Plan 02 complete (approval template rendering)
 progress:
   total_phases: 8
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 8
-  completed_plans: 7
-  percent: 29
+  completed_plans: 8
+  percent: 32
 ---
 
 # Project State
@@ -22,16 +22,16 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v3.2 Phase 39 — Approval Workflows (Plan 01 complete)
+**Current focus:** v3.2 Phase 39 — Approval Workflows (COMPLETE)
 
 ## Current Position
 
 Phase: 39 of 43 (Approval Workflows)
-Plan: 1 of 2 in current phase
-Status: in-progress
-Last activity: 2026-03-06 — Phase 39 Plan 01 complete (approval preprocessor + context keys)
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: phase-complete
+Last activity: 2026-03-06 — Phase 39 Plan 02 complete (approval template rendering)
 
-Progress: [██░░░░░░░░] 29%
+Progress: [███░░░░░░░] 32%
 
 ## Performance Metrics
 
@@ -69,6 +69,10 @@ Progress: [██░░░░░░░░] 29%
 - [Phase 39]: Submit action is separate metadata (approval_submit_action), not in approval_action_methods
 - [Phase 39]: Two-tier record rules: draft-owner uses OR domain, manager uses global [(1,'=',1)]
 - [Phase 39]: needs_translate set True for approval models (action methods use _() for UserError)
+- [Phase 39]: UserError import added as separate conditional block in template (not merged with ValidationError)
+- [Phase 39]: Record rules use conditional global/group-scoped rendering based on rule dict contents
+- [Phase 39]: 18.0 approval guard placed directly in write() since audit not yet ported to 18.0
+- [Phase 39]: Approval state guard stacks after audit capture, before cache clear in 17.0 write()
 
 ### Pending Todos
 
@@ -90,11 +94,11 @@ None yet.
 - v3.0 Bug Fixes & Tech Debt (6 phases, 11 plans) -- 2026-03-05
 - v3.1 Design Flaws & Feature Gaps (10 phases, 12 plans) -- 2026-03-05
 
-**Total:** 37 phases, 66 plans, 360+ commits, 898 tests, ~19,000+ LOC Python
+**Total:** 37 phases, 68 plans, 360+ commits, 950 tests, ~19,000+ LOC Python
 
 ## Session Continuity
 
-Last session: 2026-03-06T19:33:19Z
-Stopped at: Completed 39-01-PLAN.md
-Resume file: .planning/phases/39-approval-workflows/39-01-SUMMARY.md
-Next step: Execute 39-02-PLAN.md (approval templates)
+Last session: 2026-03-06T19:52:36Z
+Stopped at: Completed 39-02-PLAN.md
+Resume file: .planning/phases/39-approval-workflows/39-02-SUMMARY.md
+Next step: Phase 39 complete. Ready for next phase.
