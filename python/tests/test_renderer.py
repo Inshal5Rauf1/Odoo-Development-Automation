@@ -4105,3 +4105,90 @@ class TestSecurityViewAutoFix:
         with caplog.at_level(logging.INFO, logger="odoo_gen_utils.preprocessors"):
             _process_security_patterns(spec)
         assert any("Auto-applied groups=" in msg for msg in caplog.messages)
+
+    def test_restricted_char_field_warns_search_view(self, caplog):
+        """Restricted Char field triggers search view warning."""
+        import logging
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].append(
+            {"name": "ssn", "type": "Char", "sensitive": True},
+        )
+        with caplog.at_level(logging.WARNING, logger="odoo_gen_utils.preprocessors"):
+            _process_security_patterns(spec)
+        assert any(
+            "may appear in search view" in msg and "ssn" in msg
+            for msg in caplog.messages
+        )
+
+    def test_restricted_many2one_field_warns_search_view(self, caplog):
+        """Restricted Many2one field triggers search view warning."""
+        import logging
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].append(
+            {"name": "secret_partner_id", "type": "Many2one", "comodel": "res.partner", "sensitive": True},
+        )
+        with caplog.at_level(logging.WARNING, logger="odoo_gen_utils.preprocessors"):
+            _process_security_patterns(spec)
+        assert any(
+            "may appear in search view" in msg and "secret_partner_id" in msg
+            for msg in caplog.messages
+        )
+
+    def test_restricted_integer_field_no_search_warning(self, caplog):
+        """Restricted Integer field does NOT trigger search view warning (not a search type)."""
+        import logging
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].append(
+            {"name": "salary", "type": "Integer", "sensitive": True},
+        )
+        with caplog.at_level(logging.WARNING, logger="odoo_gen_utils.preprocessors"):
+            _process_security_patterns(spec)
+        assert not any(
+            "may appear in search view" in msg and "salary" in msg
+            for msg in caplog.messages
+        )
+
+    def test_computed_field_depending_on_restricted_warns(self, caplog):
+        """Computed field depending on a restricted field triggers warning."""
+        import logging
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].extend([
+            {"name": "salary", "type": "Float", "sensitive": True},
+            {"name": "salary_display", "type": "Char", "compute": "_compute_salary_display", "depends": ["salary"]},
+        ])
+        with caplog.at_level(logging.WARNING, logger="odoo_gen_utils.preprocessors"):
+            _process_security_patterns(spec)
+        assert any(
+            "depends on restricted field" in msg and "salary_display" in msg
+            for msg in caplog.messages
+        )
+
+    def test_computed_field_depending_on_unrestricted_no_warning(self, caplog):
+        """Computed field depending on unrestricted fields does not warn."""
+        import logging
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].extend([
+            {"name": "qty", "type": "Integer"},
+            {"name": "total", "type": "Float", "compute": "_compute_total", "depends": ["qty"]},
+        ])
+        with caplog.at_level(logging.WARNING, logger="odoo_gen_utils.preprocessors"):
+            _process_security_patterns(spec)
+        assert not any(
+            "depends on restricted field" in msg
+            for msg in caplog.messages
+        )
+
+    def test_computed_field_dotted_dep_on_restricted_warns(self, caplog):
+        """Computed field with dotted dependency path on restricted field warns."""
+        import logging
+        spec = _make_security_spec()
+        spec["models"][0]["fields"].extend([
+            {"name": "salary", "type": "Float", "sensitive": True},
+            {"name": "annual_salary", "type": "Float", "compute": "_compute_annual", "depends": ["salary.amount"]},
+        ])
+        with caplog.at_level(logging.WARNING, logger="odoo_gen_utils.preprocessors"):
+            _process_security_patterns(spec)
+        assert any(
+            "depends on restricted field 'salary'" in msg and "annual_salary" in msg
+            for msg in caplog.messages
+        )

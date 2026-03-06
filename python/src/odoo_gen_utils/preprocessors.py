@@ -819,11 +819,19 @@ def _security_auto_fix_views(spec: dict[str, Any]) -> dict[str, Any]:
     then adds 'view_groups' key to each restricted field with the same groups value.
     Logs INFO for each auto-fixed field.
 
+    Also cross-references restricted fields against:
+    1. Search view candidates (Char/Many2one/Selection) -- warns if restricted field
+       would appear in search view accessible to lower-privilege roles.
+    2. Computed field dependencies -- warns if a non-restricted computed field depends
+       on a restricted field, exposing the value through the computed chain.
+
     Pure function -- does NOT mutate the input spec.
     """
     new_models = []
     for model in spec.get("models", []):
         fields = model.get("fields", [])
+        model_name = model.get("name", "")
+
         # Build restricted field lookup: name -> groups value
         restricted = {
             f["name"]: f["groups"]
@@ -835,6 +843,40 @@ def _security_auto_fix_views(spec: dict[str, Any]) -> dict[str, Any]:
             new_models.append(model)
             continue
 
+        # Cross-reference: search view candidates
+        search_field_types = ("Char", "Many2one", "Selection")
+        for field in fields:
+            fname = field.get("name", "")
+            if fname in restricted and field.get("type") in search_field_types:
+                logger.warning(
+                    "Restricted field '%s' (groups='%s') is a %s field that may "
+                    "appear in search view for model '%s'. Lower-privilege roles "
+                    "will not see this field in search filters.",
+                    fname,
+                    restricted[fname],
+                    field.get("type"),
+                    model_name,
+                )
+
+        # Cross-reference: computed field dependencies
+        for field in fields:
+            fname = field.get("name", "")
+            deps = field.get("depends", [])
+            if fname not in restricted and deps:
+                # Check if any dependency is a restricted field
+                for dep in deps:
+                    dep_base = dep.split(".")[0]  # handle dotted paths
+                    if dep_base in restricted:
+                        logger.warning(
+                            "Computed field '%s' in model '%s' depends on "
+                            "restricted field '%s' (groups='%s'). The computed "
+                            "value may expose restricted data to lower-privilege roles.",
+                            fname,
+                            model_name,
+                            dep_base,
+                            restricted[dep_base],
+                        )
+
         new_fields = []
         for field in fields:
             fname = field.get("name", "")
@@ -844,7 +886,7 @@ def _security_auto_fix_views(spec: dict[str, Any]) -> dict[str, Any]:
                     "Auto-applied groups='%s' to field '%s' in views for model '%s'",
                     restricted[fname],
                     fname,
-                    model.get("name", ""),
+                    model_name,
                 )
                 new_fields.append(enriched)
             else:
