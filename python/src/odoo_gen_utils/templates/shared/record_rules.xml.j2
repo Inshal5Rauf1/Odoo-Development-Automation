@@ -26,5 +26,19 @@
         <field name="domain_force">[('company_id', 'in', company_ids)]</field>
     </record>
 {% endif %}
+{% if "approval" in model.record_rule_scopes %}
+{% for rule in model.get("approval_record_rules", []) %}
+    <record id="{{ rule.xml_id }}" model="ir.rule">
+        <field name="name">{{ rule.name }}</field>
+        <field name="model_id" ref="{{ model.name | model_ref }}"/>
+{% if rule.get("group_xml_id") %}
+        <field name="groups" eval="[(4, ref('{{ rule.group_xml_id }}'))]"/>
+{% else %}
+        <field name="global" eval="True"/>
+{% endif %}
+        <field name="domain_force">{{ rule.domain_force }}</field>
+    </record>
+{% endfor %}
+{% endif %}
 {% endfor %}
 </odoo>
