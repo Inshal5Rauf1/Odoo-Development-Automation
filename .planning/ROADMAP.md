@@ -171,12 +171,13 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. State transitions with `notify: true` generate `mail.template` XML records with `noupdate="1"`, subject/body referencing the model fields, and `email_to` targeting relevant users
   2. Action methods for notifiable transitions include `self.env.ref('module.template_name').send_mail(self.id)` calls after the state change
-  3. Models with `webhooks` in spec generate `_post_create_hook(self, vals)` and `_post_write_hook(self, vals)` stub methods called from `create()` and `write()` overrides
-  4. Webhook hooks use `self.env.context.get('_skip_webhook')` guard to prevent recursion, consistent with the audit trail pattern from Phase 38
-**Plans**: TBD
+  3. Models with `webhooks` in spec generate `_webhook_post_create(self, vals)` and `_webhook_post_write(self, vals, old_vals)` stub methods called from `create()` and `write()` overrides
+  4. Webhook hooks use `self.env.context.get('_skip_webhooks')` guard to prevent recursion, consistent with the audit trail pattern from Phase 38
+**Plans**: 2 plans
 
 Plans:
-- [ ] 40-01: TBD
+- [ ] 40-01-PLAN.md — Notification and webhook preprocessors, renderer context defaults, pipeline wiring, unit tests
+- [ ] 40-02-PLAN.md — Template rendering (mail_template_data.xml.j2, model.py.j2 notification/webhook blocks), smoke tests
 
 ### Phase 41: Spec Diffing & Migration
 **Goal**: CLI commands compare spec versions and generate Odoo migration scripts from the structural differences
@@ -237,8 +238,8 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 36. Renderer Extraction | 2/2 | Complete    | 2026-03-06 | - |
 | 37. Security Foundation | 2/2 | Complete   | 2026-03-06 | - |
 | 38. Audit Trail | 1/2 | Complete    | 2026-03-06 | - |
-| 39. Approval Workflows | 2/2 | Complete   | 2026-03-06 | - |
-| 40. Notifications & Webhooks | v3.2 | 0/? | Not started | - |
+| 39. Approval Workflows | 2/2 | Complete    | 2026-03-06 | - |
+| 40. Notifications & Webhooks | v3.2 | 0/2 | Planned | - |
 | 41. Spec Diffing & Migration | v3.2 | 0/? | Not started | - |
 | 42. Context7 Pipeline | v3.2 | 0/? | Not started | - |
 | 43. Integration Testing | v3.2 | 0/? | Not started | - |
