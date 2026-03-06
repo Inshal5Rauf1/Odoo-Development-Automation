@@ -131,8 +131,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 37-01-PLAN.md — Security preprocessor, group hierarchy, ACL matrix, record rules, template updates
-- [ ] 37-02-PLAN.md — Field-level groups= attribute, view auto-fix, model template groups= rendering
+- [x] 37-01-PLAN.md — Security preprocessor, group hierarchy, ACL matrix, record rules, template updates
+- [x] 37-02-PLAN.md — Field-level groups= attribute, view auto-fix, model template groups= rendering
 
 ### Phase 38: Audit Trail
 **Goal**: Models with `audit: true` generate a companion audit log model, a write() override with context flag recursion guard, and audit-specific views and ACLs
@@ -143,10 +143,11 @@ Plans:
   2. The audited model gets a `write()` override that logs changed fields to the audit model, guarded by `self.env.context.get('_skip_audit')` to prevent infinite recursion
   3. Audit log entries are only writable by the audit system (create-only ACL for the audit model, no write/unlink for regular users)
   4. The write() override stacking pattern (context flag guard, super() call ordering) is established as a reusable template block for Phase 39 and 40 to extend
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 38-01: TBD
+- [ ] 38-01-PLAN.md — Audit preprocessor, renderer context defaults, auditor role injection, ACL
+- [ ] 38-02-PLAN.md — Model template audit write() wrapper, helper methods, smoke test
 
 ### Phase 39: Approval Workflows
 **Goal**: Models with `approval` in spec generate a complete multi-level approval workflow with state field, group-gated action methods, header buttons, and per-stage record rules
@@ -234,7 +235,7 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 26-35 | v3.1 | 12/12 | Complete | 2026-03-05 |
 | 36. Renderer Extraction | 2/2 | Complete    | 2026-03-06 | - |
 | 37. Security Foundation | 2/2 | Complete   | 2026-03-06 | - |
-| 38. Audit Trail | v3.2 | 0/? | Not started | - |
+| 38. Audit Trail | v3.2 | 0/2 | Planning complete | - |
 | 39. Approval Workflows | v3.2 | 0/? | Not started | - |
 | 40. Notifications & Webhooks | v3.2 | 0/? | Not started | - |
 | 41. Spec Diffing & Migration | v3.2 | 0/? | Not started | - |
