@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v3.2
 milestone_name: Security, Business Logic & Context7
-status: executing
-stopped_at: Phase 38 Plan 01 complete
-last_updated: "2026-03-06T10:30:00Z"
-last_activity: 2026-03-06 — Phase 37 verified and complete
+status: completed
+stopped_at: Completed 38-02-PLAN.md
+last_updated: "2026-03-06T18:21:16.693Z"
+last_activity: 2026-03-06 — Phase 38 Plan 02 complete (audit template rendering + smoke tests)
 progress:
   total_phases: 8
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 3
+  total_plans: 6
+  completed_plans: 6
   percent: 25
 ---
 
@@ -27,9 +27,9 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 ## Current Position
 
 Phase: 38 of 43 (Audit Trail)
-Plan: 1 of 2 in current phase
-Status: executing
-Last activity: 2026-03-06 — Phase 38 Plan 01 complete (audit preprocessor + context defaults)
+Plan: 2 of 2 in current phase
+Status: phase-complete
+Last activity: 2026-03-06 — Phase 38 Plan 02 complete (audit template rendering + smoke tests)
 
 Progress: [██░░░░░░░░] 25%
 
@@ -62,6 +62,9 @@ Progress: [██░░░░░░░░] 25%
 - [Phase 38]: Auditor role injected as sibling of lowest role (implies base.group_user, not in hierarchy chain)
 - [Phase 38]: Audit log ACL: read-only for auditor + highest role, zero access for all others
 - [Phase 38]: Auto-exclude set: One2many, Many2many, Binary, message_ids, activity_ids, write_date, write_uid
+- [Phase 38]: needs_api extended to include has_audit for @api.model on _audit_tracked_fields
+- [Phase 38]: Write stacking pattern: audit guard -> old value capture -> cache clear -> super() -> constraints -> audit log
+- [Phase 38]: Audit skip path duplicates full non-audit write path for recursion safety
 
 ### Pending Todos
 
@@ -87,7 +90,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T15:14:25Z
-Stopped at: Phase 38 Plan 01 complete
+Last session: 2026-03-06T17:58:32.639Z
+Stopped at: Completed 38-02-PLAN.md
 Resume file: None
 Next step: Execute 38-02-PLAN.md (audit trail templates)
