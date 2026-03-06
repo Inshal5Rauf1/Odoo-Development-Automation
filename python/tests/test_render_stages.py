@@ -72,7 +72,10 @@ def _make_model(name: str = "test.model", fields: list[dict] | None = None) -> d
 def _make_module_context(spec: dict) -> dict:
     """Build shared module context from spec (mirrors render_module setup)."""
     from odoo_gen_utils.renderer import _compute_view_files, _to_python_var, _to_xml_id
+    from odoo_gen_utils.preprocessors import _process_security_patterns
 
+    # Run security preprocessor to enrich models with security_acl/record_rule_scopes
+    spec = _process_security_patterns(spec)
     module_name = spec["module_name"]
     models = spec.get("models", [])
     spec_wizards = spec.get("wizards", [])
@@ -142,6 +145,8 @@ def _make_module_context(spec: dict) -> dict:
         "has_controllers": bool(spec.get("controllers")),
         "has_import_export": has_import_export,
         "import_export_wizards": import_export_wizards,
+        "security_roles": spec.get("security_roles", []),
+        "has_record_rules": any(m.get("record_rule_scopes") for m in models),
     }
     if has_import_export:
         ctx["external_dependencies"] = {"python": ["openpyxl"]}
@@ -2130,3 +2135,119 @@ def test_minimal_spec_smoke(tmp_path):
     module_dir = tmp_path / "smoke_test"
     assert (module_dir / "__manifest__.py").exists()
     assert (module_dir / "models" / "smoke_model.py").exists()
+
+
+# ---------------------------------------------------------------------------
+# Phase 37: Spec-driven security render tests
+# ---------------------------------------------------------------------------
+
+
+def _make_security_spec_for_render(
+    roles: list[str] | None = None,
+    defaults: dict[str, str] | None = None,
+    models: list[dict] | None = None,
+) -> dict:
+    """Build a spec with security block for render stage testing."""
+    if roles is None:
+        roles = ["viewer", "editor", "manager"]
+    if defaults is None:
+        defaults = {"viewer": "r", "editor": "cru", "manager": "crud"}
+    if models is None:
+        models = [
+            {
+                "name": "fee.structure",
+                "description": "Fee Structure",
+                "fields": [
+                    {"name": "name", "type": "Char", "required": True},
+                    {"name": "company_id", "type": "Many2one", "comodel_name": "res.company"},
+                    {"name": "department_id", "type": "Many2one", "comodel_name": "hr.department"},
+                ],
+            },
+            {
+                "name": "fee.line",
+                "description": "Fee Line",
+                "fields": [
+                    {"name": "name", "type": "Char", "required": True},
+                    {"name": "amount", "type": "Float"},
+                ],
+            },
+        ]
+    spec = _make_spec(models=models)
+    spec["security"] = {"roles": roles, "defaults": defaults}
+    return spec
+
+
+class TestRenderSecuritySpecDriven:
+    def test_three_roles_in_security_xml(self, env, tmp_module):
+        spec = _make_security_spec_for_render()
+        # Run preprocessor to enrich
+        from odoo_gen_utils.preprocessors import _process_security_patterns
+        spec = _process_security_patterns(spec)
+        from odoo_gen_utils.renderer_context import _build_module_context
+        ctx = _build_module_context(spec, spec["module_name"])
+        result = render_security(env, spec, tmp_module, ctx)
+        assert result.success
+        security_xml = (tmp_module / "security" / "security.xml").read_text()
+        assert "group_test_module_viewer" in security_xml
+        assert "group_test_module_editor" in security_xml
+        assert "group_test_module_manager" in security_xml
+        # Check implied_ids chain
+        assert "base.group_user" in security_xml
+        assert "group_test_module_viewer" in security_xml
+
+    def test_acl_csv_has_role_x_model_rows(self, env, tmp_module):
+        spec = _make_security_spec_for_render()
+        from odoo_gen_utils.preprocessors import _process_security_patterns
+        spec = _process_security_patterns(spec)
+        from odoo_gen_utils.renderer_context import _build_module_context
+        ctx = _build_module_context(spec, spec["module_name"])
+        result = render_security(env, spec, tmp_module, ctx)
+        assert result.success
+        csv_content = (tmp_module / "security" / "ir.model.access.csv").read_text()
+        lines = [l.strip() for l in csv_content.strip().split("\n") if l.strip()]
+        # Header + 3 roles x 2 models = 7 lines
+        assert len(lines) == 7
+
+    def test_record_rules_with_company_and_department(self, env, tmp_module):
+        spec = _make_security_spec_for_render()
+        from odoo_gen_utils.preprocessors import _process_security_patterns
+        spec = _process_security_patterns(spec)
+        from odoo_gen_utils.renderer_context import _build_module_context
+        ctx = _build_module_context(spec, spec["module_name"])
+        result = render_security(env, spec, tmp_module, ctx)
+        assert result.success
+        rules_path = tmp_module / "security" / "record_rules.xml"
+        assert rules_path.exists()
+        rules_xml = rules_path.read_text()
+        assert "rule_fee_structure_company" in rules_xml
+        assert "rule_fee_structure_department" in rules_xml
+        assert "company_ids" in rules_xml
+        assert "department_id" in rules_xml
+
+    def test_no_security_block_renders_legacy_groups(self, env, tmp_module):
+        spec = _make_spec(models=[{
+            "name": "test.model",
+            "description": "Test Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        from odoo_gen_utils.preprocessors import _process_security_patterns
+        spec = _process_security_patterns(spec)
+        from odoo_gen_utils.renderer_context import _build_module_context
+        ctx = _build_module_context(spec, spec["module_name"])
+        result = render_security(env, spec, tmp_module, ctx)
+        assert result.success
+        security_xml = (tmp_module / "security" / "security.xml").read_text()
+        assert "group_test_module_user" in security_xml
+        assert "group_test_module_manager" in security_xml
+
+    def test_full_render_module_with_security(self, tmp_path):
+        spec = _make_security_spec_for_render()
+        spec["module_title"] = "Test Module"
+        spec["summary"] = "Test"
+        spec["author"] = "Test"
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        assert len(files) > 0
+        module_dir = tmp_path / "test_module"
+        assert (module_dir / "security" / "security.xml").exists()
+        assert (module_dir / "security" / "ir.model.access.csv").exists()
+        assert (module_dir / "security" / "record_rules.xml").exists()

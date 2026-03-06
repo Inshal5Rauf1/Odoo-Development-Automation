@@ -1568,11 +1568,12 @@ class TestWizardAclEntries:
         }
         files, _ = render_module(spec, get_template_dir(), tmp_path)
         csv_content = (tmp_path / "test_module" / "security" / "ir.model.access.csv").read_text()
-        # Count wizard lines -- should be exactly 1
+        # Count wizard lines -- should be 2 (one per legacy role: user + manager)
         wizard_lines = [line for line in csv_content.splitlines() if "test_wizard" in line]
-        assert len(wizard_lines) == 1, f"Expected 1 wizard ACL line, got {len(wizard_lines)}: {wizard_lines}"
-        # That one line should have 1,1,1,1
-        assert wizard_lines[0].endswith("1,1,1,1")
+        assert len(wizard_lines) == 2, f"Expected 2 wizard ACL lines, got {len(wizard_lines)}: {wizard_lines}"
+        # Both lines should have 1,1,1,1 (full CRUD for wizards)
+        for wl in wizard_lines:
+            assert wl.endswith("1,1,1,1")
 
     def test_wizard_acl_multiple_wizards(self, tmp_path):
         """Multiple wizards each get their own ACL line."""
@@ -1601,7 +1602,9 @@ class TestWizardAclEntries:
         files, _ = render_module(spec, get_template_dir(), tmp_path)
         csv_content = (tmp_path / "test_module" / "security" / "ir.model.access.csv").read_text()
         assert "access_test_wizard_a_user" in csv_content
+        assert "access_test_wizard_a_manager" in csv_content
         assert "access_test_wizard_b_user" in csv_content
+        assert "access_test_wizard_b_manager" in csv_content
 
 
 # ---------------------------------------------------------------------------

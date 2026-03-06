@@ -297,7 +297,6 @@ def render_security(
         Result containing list of created file Paths on success.
     """
     try:
-        models = spec.get("models", [])
         created: list[Path] = []
         created.append(
             render_template(env, "security_group.xml.j2", module_dir / "security" / "security.xml", module_context)
@@ -305,20 +304,12 @@ def render_security(
         created.append(
             render_template(env, "access_csv.j2", module_dir / "security" / "ir.model.access.csv", module_context)
         )
-        has_company = any(
-            any(f.get("name") == "company_id" and f.get("type") == "Many2one" for f in m.get("fields", []))
-            for m in models
-        )
-        if has_company:
-            enriched = [
-                {**m, "has_company_field": any(
-                    f.get("name") == "company_id" and f.get("type") == "Many2one" for f in m.get("fields", [])
-                )}
-                for m in models
-            ]
+        # Phase 37: render record_rules.xml when any model has record_rule_scopes
+        has_record_rules = module_context.get("has_record_rules", False)
+        if has_record_rules:
             created.append(render_template(
                 env, "record_rules.xml.j2", module_dir / "security" / "record_rules.xml",
-                {**module_context, "models": enriched},
+                module_context,
             ))
         return Result.ok(created)
     except Exception as exc:
