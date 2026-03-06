@@ -4580,3 +4580,245 @@ class TestAuditTemplateRendering:
         """Audited model .py file contains 'from odoo import api, fields, models'."""
         content = self._render_audit_model()
         assert "from odoo import api, fields, models" in content
+
+
+# ---------------------------------------------------------------------------
+# Phase 39 Plan 01: Approval context builder tests
+# ---------------------------------------------------------------------------
+
+
+class TestApprovalIntegration:
+    """Integration tests for approval preprocessor wired into context builder."""
+
+    def _make_approval_spec(self) -> dict:
+        """Build a spec with approval on one model plus security roles."""
+        return {
+            "module_name": "uni_fee",
+            "module_title": "University Fee",
+            "summary": "Fee management",
+            "author": "Test",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "fee.request",
+                    "description": "Fee Request",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "amount", "type": "Float"},
+                        {"name": "notes", "type": "Text"},
+                    ],
+                    "approval": {
+                        "levels": [
+                            {"state": "submitted", "role": "editor", "next": "approved_hod", "label": "Submitted"},
+                            {"state": "approved_hod", "role": "hod", "next": "approved_dean", "label": "HOD Approved"},
+                            {"state": "approved_dean", "role": "dean", "next": "done", "label": "Dean Approved"},
+                        ],
+                        "on_reject": "draft",
+                        "reject_allowed_from": ["approved_hod", "approved_dean"],
+                        "lock_after": "draft",
+                        "editable_fields": ["notes"],
+                    },
+                },
+            ],
+            "security": {
+                "roles": ["user", "editor", "hod", "dean", "manager"],
+                "defaults": {
+                    "user": "r",
+                    "editor": "cru",
+                    "hod": "cru",
+                    "dean": "cru",
+                    "manager": "crud",
+                },
+            },
+        }
+
+    def test_non_approval_model_has_approval_false(self):
+        """Non-approval model gets has_approval=False default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["has_approval"] is False
+
+    def test_non_approval_model_approval_levels_empty(self):
+        """Non-approval model gets approval_levels=[] default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["approval_levels"] == []
+
+    def test_non_approval_model_approval_action_methods_empty(self):
+        """Non-approval model gets approval_action_methods=[] default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["approval_action_methods"] == []
+
+    def test_non_approval_model_approval_reject_action_none(self):
+        """Non-approval model gets approval_reject_action=None default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["approval_reject_action"] is None
+
+    def test_non_approval_model_approval_reset_action_none(self):
+        """Non-approval model gets approval_reset_action=None default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["approval_reset_action"] is None
+
+    def test_non_approval_model_approval_submit_action_none(self):
+        """Non-approval model gets approval_submit_action=None default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["approval_submit_action"] is None
+
+    def test_non_approval_model_state_field_name_default(self):
+        """Non-approval model gets approval_state_field_name='state' default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["approval_state_field_name"] == "state"
+
+    def test_non_approval_model_lock_after_default(self):
+        """Non-approval model gets lock_after='draft' default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["lock_after"] == "draft"
+
+    def test_non_approval_model_editable_fields_default(self):
+        """Non-approval model gets editable_fields=[] default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["editable_fields"] == []
+
+    def test_non_approval_model_on_reject_default(self):
+        """Non-approval model gets on_reject='draft' default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["on_reject"] == "draft"
+
+    def test_non_approval_model_reject_allowed_from_default(self):
+        """Non-approval model gets reject_allowed_from=[] default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["reject_allowed_from"] == []
+
+    def test_non_approval_model_approval_record_rules_default(self):
+        """Non-approval model gets approval_record_rules=[] default."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["approval_record_rules"] == []
+
+    def test_approval_model_context_propagates_enriched_keys(self):
+        """Approval model context propagates all enriched keys from preprocessor."""
+        from odoo_gen_utils.preprocessors import _process_approval_patterns, _process_security_patterns
+        spec = self._make_approval_spec()
+        spec = _process_security_patterns(spec)
+        spec = _process_approval_patterns(spec)
+        model = next(m for m in spec["models"] if m["name"] == "fee.request")
+        ctx = _build_model_context(spec, model)
+        assert ctx["has_approval"] is True
+        assert len(ctx["approval_levels"]) == 3
+        assert len(ctx["approval_action_methods"]) == 3
+        assert ctx["approval_submit_action"] is not None
+        assert ctx["approval_reject_action"] is not None
+        assert ctx["approval_reset_action"] is not None
+        assert ctx["approval_state_field_name"] == "state"
+        assert ctx["lock_after"] == "draft"
+        assert ctx["editable_fields"] == ["notes"]
+        assert ctx["on_reject"] == "draft"
+        assert ctx["reject_allowed_from"] == ["approved_hod", "approved_dean"]
+        assert len(ctx["approval_record_rules"]) == 2
+
+    def test_needs_translate_true_when_has_approval(self):
+        """needs_translate is True when has_approval is True."""
+        from odoo_gen_utils.preprocessors import _process_approval_patterns, _process_security_patterns
+        spec = self._make_approval_spec()
+        spec = _process_security_patterns(spec)
+        spec = _process_approval_patterns(spec)
+        model = next(m for m in spec["models"] if m["name"] == "fee.request")
+        ctx = _build_model_context(spec, model)
+        assert ctx["needs_translate"] is True
+
+    def test_module_context_has_approval_models_true(self):
+        """Module context has has_approval_models=True when any model has approval."""
+        from odoo_gen_utils.preprocessors import _process_approval_patterns, _process_security_patterns
+        spec = self._make_approval_spec()
+        spec = _process_security_patterns(spec)
+        spec = _process_approval_patterns(spec)
+        ctx = _build_module_context(spec, spec["module_name"])
+        assert ctx["has_approval_models"] is True
+
+    def test_module_context_has_approval_models_false_without_approval(self):
+        """Module context has has_approval_models=False when no approval models."""
+        spec = _make_spec(models=[{
+            "name": "test.plain",
+            "description": "Plain",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        ctx = _build_module_context(spec, spec["module_name"])
+        assert ctx["has_approval_models"] is False
+
+    def test_module_context_has_record_rules_with_approval(self):
+        """Module context has_record_rules is True when approval models have record_rule_scopes."""
+        from odoo_gen_utils.preprocessors import _process_approval_patterns, _process_security_patterns
+        spec = self._make_approval_spec()
+        spec = _process_security_patterns(spec)
+        spec = _process_approval_patterns(spec)
+        ctx = _build_module_context(spec, spec["module_name"])
+        assert ctx["has_record_rules"] is True

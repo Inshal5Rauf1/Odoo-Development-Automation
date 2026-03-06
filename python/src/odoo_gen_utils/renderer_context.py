@@ -195,6 +195,24 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     audit_field_names = {f["name"] for f in audit_fields}
     audit_exclude = model.get("audit_exclude", [])
 
+    # Phase 39: approval workflow context keys (defaults prevent StrictUndefined crashes)
+    has_approval = model.get("has_approval", False)
+    approval_levels = model.get("approval_levels", [])
+    approval_action_methods = model.get("approval_action_methods", [])
+    approval_submit_action = model.get("approval_submit_action", None)
+    approval_reject_action = model.get("approval_reject_action", None)
+    approval_reset_action = model.get("approval_reset_action", None)
+    approval_state_field_name = model.get("approval_state_field_name", "state")
+    lock_after = model.get("lock_after", "draft")
+    editable_fields = model.get("editable_fields", [])
+    approval_record_rules = model.get("approval_record_rules", [])
+    on_reject = model.get("on_reject", "draft")
+    reject_allowed_from = model.get("reject_allowed_from", [])
+
+    # Phase 39: approval models need translate for UserError messages in action methods
+    if has_approval:
+        needs_translate = True
+
     # Phase 12: conditional api import (TMPL-02)
     # Phase 29: also need api when temporal constraints exist (@api.constrains)
     # or create/write overrides exist (@api.model_create_multi)
@@ -281,6 +299,19 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         "audit_fields": audit_fields,
         "audit_field_names": audit_field_names,
         "audit_exclude": audit_exclude,
+        # Phase 39 keys
+        "has_approval": has_approval,
+        "approval_levels": approval_levels,
+        "approval_action_methods": approval_action_methods,
+        "approval_submit_action": approval_submit_action,
+        "approval_reject_action": approval_reject_action,
+        "approval_reset_action": approval_reset_action,
+        "approval_state_field_name": approval_state_field_name,
+        "lock_after": lock_after,
+        "editable_fields": editable_fields,
+        "approval_record_rules": approval_record_rules,
+        "on_reject": on_reject,
+        "reject_allowed_from": reject_allowed_from,
     }
 
 
@@ -421,6 +452,8 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         "has_record_rules": has_record_rules,
         # Phase 38 keys
         "has_audit_log": spec.get("has_audit_log", False),
+        # Phase 39 keys
+        "has_approval_models": any(m.get("has_approval") for m in models),
     }
     if has_import_export:
         ctx["external_dependencies"] = {"python": ["openpyxl"]}
