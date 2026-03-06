@@ -4980,12 +4980,14 @@ class TestApprovalTemplateRendering:
         spec = self._make_approval_spec()
         spec["models"][0]["audit"] = True
         output = self._render_model(spec)
-        # The stacking order should be: audit old_values -> approval guard -> cache clear -> super()
+        # The stacking order should be: audit old_values -> approval guard -> super()
+        # NOTE: The first super().write() is inside the _audit_skip fast path.
+        # The main-path super().write() comes AFTER the approval guard.
         audit_pos = output.find("_audit_read_old")
         approval_pos = output.find("_force_state")
-        super_pos = output.find("result = super().write(vals)")
-        assert audit_pos < approval_pos < super_pos, (
-            f"Stacking order wrong: audit={audit_pos}, approval={approval_pos}, super={super_pos}"
+        main_super_pos = output.find("result = super().write(vals)", approval_pos)
+        assert audit_pos < approval_pos < main_super_pos, (
+            f"Stacking order wrong: audit={audit_pos}, approval={approval_pos}, super={main_super_pos}"
         )
 
     # --- Reject and reset tests ---

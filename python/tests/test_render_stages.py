@@ -2561,3 +2561,180 @@ class TestAuditSmokeFullPipeline:
         assert "line_ids" not in method_text  # One2many auto-excluded
         assert "attachment" not in method_text  # Binary auto-excluded
         assert "start_date" not in method_text  # manually excluded
+
+
+class TestApprovalSmokeFullPipeline:
+    """Smoke tests: approval specs through the complete render_module pipeline."""
+
+    def _make_approval_spec(self):
+        """Build a spec with approval on one model plus security roles."""
+        spec = _make_spec(
+            models=[
+                {
+                    "name": "test.request",
+                    "description": "Test Request",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "amount", "type": "Float"},
+                        {"name": "notes", "type": "Text"},
+                        {"name": "partner_id", "type": "Many2one", "comodel_name": "res.partner"},
+                    ],
+                    "approval": {
+                        "levels": [
+                            {"state": "submitted", "role": "editor", "next": "approved_mgr", "label": "Submitted"},
+                            {"state": "approved_mgr", "role": "manager", "next": "done", "label": "Manager Approved"},
+                        ],
+                        "on_reject": "draft",
+                        "reject_allowed_from": ["submitted", "approved_mgr"],
+                        "lock_after": "draft",
+                        "editable_fields": ["notes"],
+                    },
+                },
+            ],
+        )
+        spec["module_title"] = "Test Module"
+        spec["summary"] = "Test"
+        spec["author"] = "Test"
+        spec["security"] = {
+            "roles": ["editor", "manager"],
+            "defaults": {"editor": "crud", "manager": "crud"},
+        }
+        return spec
+
+    def test_approval_full_pipeline_no_crash(self, tmp_path):
+        """render_module() completes without raising for approval spec."""
+        spec = self._make_approval_spec()
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        assert len(files) > 0
+
+    def test_approval_model_py_contains_action_methods(self, tmp_path):
+        """Generated model .py has action_submit, action_approve_submitted, action_approve_approved_mgr."""
+        spec = self._make_approval_spec()
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "test_request.py").read_text()
+        assert "def action_submit(self):" in model_py
+        assert "def action_approve_submitted(self):" in model_py
+        assert "def action_approve_approved_mgr(self):" in model_py
+
+    def test_approval_model_py_contains_write_guard(self, tmp_path):
+        """Generated model .py has _force_state guard."""
+        spec = self._make_approval_spec()
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "test_request.py").read_text()
+        assert "_force_state" in model_py
+
+    def test_approval_model_py_has_group_check(self, tmp_path):
+        """Generated model .py has has_group call."""
+        spec = self._make_approval_spec()
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "test_request.py").read_text()
+        assert "has_group" in model_py
+
+    def test_approval_model_py_user_error_not_access_error(self, tmp_path):
+        """Generated model .py uses UserError, not AccessError."""
+        spec = self._make_approval_spec()
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "test_request.py").read_text()
+        assert "UserError" in model_py
+        assert "AccessError" not in model_py
+
+    def test_approval_model_py_with_context_force_state(self, tmp_path):
+        """Generated model .py uses with_context(_force_state=True).write."""
+        spec = self._make_approval_spec()
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "test_request.py").read_text()
+        assert "with_context(_force_state=True).write" in model_py
+
+    def test_approval_view_xml_has_buttons(self, tmp_path):
+        """Generated form view XML has approval button elements."""
+        spec = self._make_approval_spec()
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        view_xml = (tmp_path / "test_module" / "views" / "test_request_views.xml").read_text()
+        assert 'name="action_submit"' in view_xml
+        assert 'name="action_approve_submitted"' in view_xml
+        assert 'name="action_approve_approved_mgr"' in view_xml
+        assert 'name="action_reject"' in view_xml
+        assert 'name="action_reset_to_draft"' in view_xml
+
+    def test_approval_view_xml_invisible_not_states(self, tmp_path):
+        """Generated view XML uses invisible= NOT states=."""
+        spec = self._make_approval_spec()
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        view_xml = (tmp_path / "test_module" / "views" / "test_request_views.xml").read_text()
+        assert "invisible=" in view_xml
+        # Check approval button lines don't use deprecated states=
+        lines = view_xml.split("\n")
+        approval_lines = [
+            l for l in lines
+            if 'name="action_submit"' in l
+            or 'name="action_approve' in l
+            or 'name="action_reject"' in l
+            or 'name="action_reset_to_draft"' in l
+        ]
+        for line in approval_lines:
+            assert "states=" not in line
+
+    def test_approval_record_rules_generated(self, tmp_path):
+        """Record rules XML file exists and contains approval ir.rule entries."""
+        spec = self._make_approval_spec()
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        rr_path = tmp_path / "test_module" / "security" / "record_rules.xml"
+        assert rr_path.exists(), (
+            f"record_rules.xml not generated. Files: {[str(f) for f in files if 'security' in str(f)]}"
+        )
+        rr_xml = rr_path.read_text()
+        assert "rule_test_request_draft" in rr_xml
+        assert "rule_test_request_manager" in rr_xml
+
+    def test_approval_no_regression_without_approval(self, tmp_path):
+        """render_module() with non-approval spec still works (no regression)."""
+        spec = _make_spec(
+            models=[
+                {
+                    "name": "test.plain",
+                    "description": "Plain Model",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "value", "type": "Integer"},
+                    ],
+                },
+            ],
+        )
+        spec["module_title"] = "Test Module"
+        spec["summary"] = "Test"
+        spec["author"] = "Test"
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        assert len(files) > 0
+        # Verify no approval content leaked
+        model_py = (tmp_path / "test_module" / "models" / "test_plain.py").read_text()
+        assert "action_submit" not in model_py
+        assert "_force_state" not in model_py
+
+    def test_approval_with_audit_combined(self, tmp_path):
+        """Spec with BOTH audit:true AND approval block renders correctly with proper write() stacking."""
+        spec = self._make_approval_spec()
+        spec["models"][0]["audit"] = True
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "test_request.py").read_text()
+        # Both audit and approval should be present
+        assert "_audit_skip" in model_py
+        assert "_force_state" in model_py
+        # Stacking order: audit old_values BEFORE approval guard BEFORE main super()
+        # NOTE: The first super().write() call is inside the _audit_skip fast path,
+        # so we need to find the main-path super().write() which comes AFTER the approval guard.
+        audit_pos = model_py.find("_audit_read_old")
+        approval_pos = model_py.find("_force_state")
+        # Find the main-path super() after the approval guard
+        main_super_pos = model_py.find("result = super().write(vals)", approval_pos)
+        assert audit_pos < approval_pos < main_super_pos, (
+            f"Stacking order wrong: audit={audit_pos}, approval={approval_pos}, super={main_super_pos}"
+        )
+
+    def test_approval_rejected_state_generated(self, tmp_path):
+        """Spec with on_reject: 'rejected' generates rejected state in Selection."""
+        spec = self._make_approval_spec()
+        spec["models"][0]["approval"]["on_reject"] = "rejected"
+        files, warnings = render_module(spec, get_template_dir(), tmp_path)
+        model_py = (tmp_path / "test_module" / "models" / "test_request.py").read_text()
+        # The rejected state should appear in the Selection field
+        assert '"rejected"' in model_py or "'rejected'" in model_py
