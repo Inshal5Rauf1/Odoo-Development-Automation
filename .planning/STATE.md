@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.2
 milestone_name: Security, Business Logic & Context7
-status: planning
-stopped_at: Completed 36-02-PLAN.md
-last_updated: "2026-03-06T07:52:12.011Z"
-last_activity: 2026-03-06 — Roadmap created
+status: executing
+stopped_at: Phase 38 Plan 01 complete
+last_updated: "2026-03-06T10:30:00Z"
+last_activity: 2026-03-06 — Phase 37 verified and complete
 progress:
   total_phases: 8
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 3
-  percent: 0
+  completed_phases: 2
+  total_plans: 5
+  completed_plans: 5
+  percent: 25
 ---
 
 # Project State
@@ -22,23 +22,23 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v3.2 Phase 37 — Security Foundation
+**Current focus:** v3.2 Phase 38 — Audit Trail (Plan 01 complete)
 
 ## Current Position
 
-Phase: 37 of 43 (Security Foundation)
-Plan: 2 of 2 in current phase
-Status: Plan 37-02 complete
-Last activity: 2026-03-06 — Completed 37-02 field-level groups enrichment
+Phase: 38 of 43 (Audit Trail)
+Plan: 1 of 2 in current phase
+Status: executing
+Last activity: 2026-03-06 — Phase 38 Plan 01 complete (audit preprocessor + context defaults)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 60 (across all milestones)
+- Total plans completed: 65 (across all milestones)
 - Average duration: ~24 min
-- Total execution time: ~23.2 hours
+- Total execution time: ~24.7 hours
 
 ## Accumulated Context
 
@@ -56,7 +56,12 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 37]: Spec-driven RBAC preprocessor normalizes both legacy and spec-driven to unified security_roles + security_acl structure
 - [Phase 37]: Wizards get full CRUD for all roles (transient, gated by parent model access)
 - [Phase 37]: Record rule ownership uses create_uid domain for Odoo convention alignment
-- [Phase 37]: Sensitive fields default to highest role group; full external IDs kept as-is; view auto-fix logs at INFO level
+- [Phase 37]: Sensitive fields default to highest role group; view auto-fix logs at INFO level
+- [Phase 37]: Security spec format: security.roles (array), security.defaults (role->CRUD), security.acl (per-model overrides)
+- [Phase 37]: Cross-referencing: restricted fields in search views warn, computed deps on restricted fields warn
+- [Phase 38]: Auditor role injected as sibling of lowest role (implies base.group_user, not in hierarchy chain)
+- [Phase 38]: Audit log ACL: read-only for auditor + highest role, zero access for all others
+- [Phase 38]: Auto-exclude set: One2many, Many2many, Binary, message_ids, activity_ids, write_date, write_uid
 
 ### Pending Todos
 
@@ -78,11 +83,11 @@ None yet.
 - v3.0 Bug Fixes & Tech Debt (6 phases, 11 plans) -- 2026-03-05
 - v3.1 Design Flaws & Feature Gaps (10 phases, 12 plans) -- 2026-03-05
 
-**Total:** 35 phases, 60 plans, 350+ commits, 494 tests, ~18,400+ LOC Python
+**Total:** 37 phases, 65 plans, 360+ commits, 851 tests, ~19,000+ LOC Python
 
 ## Session Continuity
 
-Last session: 2026-03-06T10:01:50Z
-Stopped at: Completed 37-02-PLAN.md
+Last session: 2026-03-06T15:14:25Z
+Stopped at: Phase 38 Plan 01 complete
 Resume file: None
-Next step: Advance to phase 38
+Next step: Execute 38-02-PLAN.md (audit trail templates)

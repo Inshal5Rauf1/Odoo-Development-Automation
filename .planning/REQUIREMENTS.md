@@ -11,7 +11,7 @@ Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap 
 
 - [x] **SECR-01**: Generator produces `res.groups` XML with `implied_ids` hierarchy and `ir.model.access` CSV entries for custom security roles defined in spec
 - [x] **SECR-02**: Fields with `sensitive: true` or `groups` in spec render with `groups="module.group_name"` attribute for field-level access control
-- [ ] **SECR-03**: Models with `audit: true` generate a tracking mixin with `write()` override, context flag recursion guard, and structured audit log entries
+- [x] **SECR-03**: Models with `audit: true` generate a tracking mixin with `write()` override, context flag recursion guard, and structured audit log entries
 
 ### Business Logic
 
@@ -71,7 +71,7 @@ Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap 
 | INFR-01 | Phase 36 | Complete |
 | SECR-01 | Phase 37 | Complete |
 | SECR-02 | Phase 37 | Complete |
-| SECR-03 | Phase 38 | Pending |
+| SECR-03 | Phase 38 | Complete |
 | BIZL-01 | Phase 39 | Pending |
 | BIZL-02 | Phase 40 | Pending |
 | BIZL-03 | Phase 40 | Pending |
