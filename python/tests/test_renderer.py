@@ -4335,3 +4335,248 @@ class TestAuditIntegration:
             assert security_xml.exists()
             content = security_xml.read_text()
             assert "auditor" in content
+
+
+# ---------------------------------------------------------------------------
+# Phase 38 Plan 02: Audit template rendering tests
+# ---------------------------------------------------------------------------
+
+
+class TestAuditTemplateRendering:
+    """Integration tests for audit write() wrapper and helper methods in model.py.j2."""
+
+    def _make_audit_spec(self) -> dict:
+        """Build a spec with audit:true on one model plus security roles."""
+        return {
+            "module_name": "test_module",
+            "module_title": "Test Module",
+            "summary": "Test",
+            "author": "Test",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.record",
+                    "description": "Test Record",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "value", "type": "Integer"},
+                        {"name": "notes", "type": "Text"},
+                        {"name": "partner_id", "type": "Many2one", "comodel_name": "res.partner"},
+                        {"name": "start_date", "type": "Date"},
+                        {"name": "status", "type": "Selection", "selection": [("draft", "Draft"), ("done", "Done")]},
+                    ],
+                    "audit": True,
+                },
+            ],
+            "security": {
+                "roles": ["viewer", "editor", "manager"],
+                "defaults": {
+                    "viewer": "r",
+                    "editor": "cru",
+                    "manager": "crud",
+                },
+            },
+        }
+
+    def _render_audit_model(self) -> str:
+        """Render the audited model and return its .py file content."""
+        spec = self._make_audit_spec()
+        with tempfile.TemporaryDirectory() as tmp:
+            files, warnings = render_module(spec, get_template_dir(), Path(tmp))
+            model_file = Path(tmp) / "test_module" / "models" / "test_record.py"
+            assert model_file.exists(), f"test_record.py not generated. Files: {files}"
+            return model_file.read_text()
+
+    def _render_non_audit_model(self) -> str:
+        """Render a non-audited model with write override (via constraint) and return its .py content."""
+        spec = {
+            "module_name": "test_module",
+            "module_title": "Test Module",
+            "summary": "Test",
+            "author": "Test",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.plain",
+                    "description": "Plain Model",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "qty", "type": "Integer"},
+                    ],
+                },
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            files, warnings = render_module(spec, get_template_dir(), Path(tmp))
+            model_file = Path(tmp) / "test_module" / "models" / "test_plain.py"
+            assert model_file.exists(), f"test_plain.py not generated. Files: {files}"
+            return model_file.read_text()
+
+    def test_audit_write_starts_with_audit_skip_guard(self):
+        """Audited model's write() has _audit_skip context guard as the first check."""
+        content = self._render_audit_model()
+        assert "def write(self, vals):" in content
+        # The _audit_skip guard should appear in the write method
+        assert "_audit_skip" in content
+        # Find write method and verify _audit_skip is the first conditional inside it
+        lines = content.split("\n")
+        write_idx = next(i for i, line in enumerate(lines) if "def write(self, vals):" in line)
+        # The very first non-blank line after write() def should be the _audit_skip guard
+        first_body_lines = [
+            line.strip() for line in lines[write_idx + 1:write_idx + 5]
+            if line.strip()
+        ]
+        assert any("_audit_skip" in line for line in first_body_lines), (
+            f"_audit_skip should be the outermost check in write(). "
+            f"First body lines: {first_body_lines}"
+        )
+
+    def test_audit_write_captures_old_values_before_super(self):
+        """Audited model's write() calls _audit_read_old(vals) BEFORE super().write(vals)."""
+        content = self._render_audit_model()
+        # Both _audit_read_old and super().write should be present
+        assert "_audit_read_old" in content
+        assert "super().write(vals)" in content
+        # In the main (non-skip) path, _audit_read_old must appear before super().write
+        lines = content.split("\n")
+        write_idx = next(i for i, line in enumerate(lines) if "def write(self, vals):" in line)
+        write_body = "\n".join(lines[write_idx:])
+        # Find old_values assignment and first non-skip super() call
+        # The main path old_values must come before the main path super()
+        main_path_lines = []
+        in_skip_block = False
+        indent_level = None
+        for line in lines[write_idx + 1:]:
+            stripped = line.lstrip()
+            if "_audit_skip" in line:
+                in_skip_block = True
+                indent_level = len(line) - len(stripped)
+                continue
+            if in_skip_block:
+                if stripped and (len(line) - len(stripped)) <= indent_level:
+                    in_skip_block = False
+                else:
+                    continue
+            main_path_lines.append(line)
+        main_path = "\n".join(main_path_lines)
+        old_pos = main_path.find("_audit_read_old")
+        super_pos = main_path.find("super().write(vals)")
+        assert old_pos < super_pos, (
+            "_audit_read_old must appear before super().write(vals) in the main path"
+        )
+
+    def test_audit_write_logs_changes_after_super(self):
+        """Audited model's write() calls _audit_log_changes AFTER super().write(vals) succeeds."""
+        content = self._render_audit_model()
+        assert "_audit_log_changes" in content
+        # _audit_log_changes must appear after the main super().write call
+        lines = content.split("\n")
+        write_idx = next(i for i, line in enumerate(lines) if "def write(self, vals):" in line)
+        write_body = "\n".join(lines[write_idx:])
+        # In the full write body (main path), _audit_log_changes must come after super().write
+        # We look for the LAST super().write and _audit_log_changes
+        super_positions = [i for i, line in enumerate(lines[write_idx:]) if "super().write(vals)" in line]
+        log_positions = [i for i, line in enumerate(lines[write_idx:]) if "_audit_log_changes" in line]
+        assert len(log_positions) >= 1
+        # The _audit_log_changes should come after the last super().write
+        assert log_positions[-1] > super_positions[-1], (
+            "_audit_log_changes must appear after the last super().write(vals)"
+        )
+
+    def test_audit_skip_path_has_super_and_return(self):
+        """Non-audit early-return path still executes super() and returns result."""
+        content = self._render_audit_model()
+        lines = content.split("\n")
+        write_idx = next(i for i, line in enumerate(lines) if "def write(self, vals):" in line)
+        # Find the _audit_skip block
+        skip_block_lines = []
+        in_skip_block = False
+        skip_indent = None
+        for line in lines[write_idx + 1:]:
+            stripped = line.lstrip()
+            if "_audit_skip" in line and "if " in line:
+                in_skip_block = True
+                skip_indent = len(line) - len(stripped) + 4  # inside the if block
+                continue
+            if in_skip_block:
+                current_indent = len(line) - len(stripped) if stripped else skip_indent + 1
+                if stripped and current_indent < skip_indent:
+                    break
+                skip_block_lines.append(line)
+        skip_content = "\n".join(skip_block_lines)
+        assert "super().write(vals)" in skip_content, (
+            "The _audit_skip early-return path must call super().write(vals)"
+        )
+        assert "return" in skip_content, (
+            "The _audit_skip early-return path must return"
+        )
+
+    def test_audit_helper_methods_present(self):
+        """Generated model contains _audit_read_old, _audit_log_changes, _audit_tracked_fields method definitions."""
+        content = self._render_audit_model()
+        assert "def _audit_read_old(self, vals):" in content
+        assert "def _audit_log_changes(self, old_values, vals):" in content
+        assert "def _audit_tracked_fields(self):" in content
+
+    def test_audit_tracked_fields_returns_field_names(self):
+        """_audit_tracked_fields returns a list/set containing auditable field names."""
+        content = self._render_audit_model()
+        lines = content.split("\n")
+        tracked_idx = next(
+            i for i, line in enumerate(lines) if "_audit_tracked_fields" in line and "def " in line
+        )
+        # Look at the return statement in the method body
+        method_body = []
+        for line in lines[tracked_idx + 1:tracked_idx + 10]:
+            if line.strip():
+                method_body.append(line)
+        method_text = "\n".join(method_body)
+        # Should contain the auditable field names (name, value, notes, partner_id, start_date, status)
+        assert "name" in method_text
+        assert "value" in method_text
+        assert "notes" in method_text
+
+    def test_audit_log_changes_uses_sudo_with_audit_skip(self):
+        """_audit_log_changes creates entries via audit.trail.log with sudo() and _audit_skip=True."""
+        content = self._render_audit_model()
+        assert "audit.trail.log" in content
+        assert "sudo()" in content
+        assert "_audit_skip=True" in content
+
+    def test_audit_read_old_uses_sudo(self):
+        """_audit_read_old uses self.sudo() for safe reads (especially Many2one display_name)."""
+        content = self._render_audit_model()
+        # Find the _audit_read_old method
+        lines = content.split("\n")
+        method_idx = next(
+            i for i, line in enumerate(lines) if "def _audit_read_old" in line
+        )
+        method_body = "\n".join(lines[method_idx:method_idx + 30])
+        assert "sudo()" in method_body, (
+            "_audit_read_old must use sudo() for safe reads"
+        )
+
+    def test_non_audit_model_write_unchanged(self):
+        """Non-audited model write() renders identically to before (no regression)."""
+        content = self._render_non_audit_model()
+        # A plain model without audit should NOT contain any audit-specific code
+        assert "_audit_skip" not in content
+        assert "_audit_read_old" not in content
+        assert "_audit_log_changes" not in content
+        assert "_audit_tracked_fields" not in content
+        assert "audit.trail.log" not in content
+
+    def test_audit_model_has_needs_api_true(self):
+        """Audited model sets needs_api=True (for @api.model on _audit_tracked_fields)."""
+        from odoo_gen_utils.preprocessors import _process_audit_patterns, _process_security_patterns
+        spec = self._make_audit_spec()
+        spec = _process_security_patterns(spec)
+        spec = _process_audit_patterns(spec)
+        audited = next(m for m in spec["models"] if m["name"] == "test.record")
+        ctx = _build_model_context(spec, audited)
+        assert ctx["needs_api"] is True
+
+    def test_audit_model_imports_api(self):
+        """Audited model .py file contains 'from odoo import api, fields, models'."""
+        content = self._render_audit_model()
+        assert "from odoo import api, fields, models" in content

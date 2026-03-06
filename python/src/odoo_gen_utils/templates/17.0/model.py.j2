@@ -245,6 +245,22 @@ class {{ model_name | to_class }}(models.Model):
 {% if has_write_override %}
 
     def write(self, vals):
+{% if has_audit %}
+        if self.env.context.get('_audit_skip'):
+{% if is_cacheable %}
+            self.clear_caches()
+{% endif %}
+            result = super().write(vals)
+{% for c in write_constraints %}
+{% if c.write_trigger_fields %}
+            if any(f in vals for f in {{ c.write_trigger_fields }}):
+{% endif %}
+                self._check_{{ c.name }}()
+{% endfor %}
+            return result
+        # Capture old values BEFORE super()
+        old_values = self._audit_read_old(vals)
+{% endif %}
 {% if is_cacheable %}
         self.clear_caches()
 {% endif %}
@@ -255,7 +271,72 @@ class {{ model_name | to_class }}(models.Model):
 {% endif %}
             self._check_{{ c.name }}()
 {% endfor %}
+{% if has_audit %}
+        # Log AFTER super() succeeds
+        self._audit_log_changes(old_values, vals)
+{% endif %}
         return result
+{% endif %}
+{% if has_audit %}
+
+    @api.model
+    def _audit_tracked_fields(self):
+        """Return set of field names tracked for audit."""
+        return {{ audit_field_names | sort | list }}
+
+    def _audit_read_old(self, vals):
+        """Read current values for fields about to be written."""
+        audit_fields = [f for f in vals if f in self._audit_tracked_fields()]
+        if not audit_fields:
+            return {}
+        old_data = {}
+        for record in self.sudo():
+            record_old = {}
+            for fname in audit_fields:
+                field = self._fields.get(fname)
+                if not field:
+                    continue
+                value = record[fname]
+                if field.type == 'many2one':
+                    record_old[fname] = [value.id, value.display_name] if value else False
+                elif field.type in ('date', 'datetime'):
+                    record_old[fname] = str(value) if value else False
+                elif field.type == 'selection':
+                    record_old[fname] = str(value) if value else False
+                else:
+                    record_old[fname] = value
+            old_data[record.id] = record_old
+        return old_data
+
+    def _audit_log_changes(self, old_values, vals):
+        """Create audit.trail.log entries for changed fields."""
+        AuditLog = self.env['audit.trail.log'].sudo().with_context(_audit_skip=True)
+        for record in self:
+            old = old_values.get(record.id, {})
+            changes = {}
+            for fname, new_val in vals.items():
+                if fname not in old:
+                    continue
+                old_val = old[fname]
+                field = self._fields.get(fname)
+                if field and field.type == 'many2one':
+                    new_serialized = [record[fname].id, record[fname].display_name] if record[fname] else False
+                elif field and field.type in ('date', 'datetime'):
+                    new_serialized = str(record[fname]) if record[fname] else False
+                elif field and field.type == 'selection':
+                    new_serialized = str(record[fname]) if record[fname] else False
+                else:
+                    new_serialized = new_val
+                if old_val != new_serialized:
+                    changes[fname] = {'old': old_val, 'new': new_serialized}
+            if changes:
+                AuditLog.create({
+                    'res_model': self._name,
+                    'res_id': record.id,
+                    'changes': changes,
+                    'user_id': self.env.uid,
+                    'operation': 'write',
+                })
 {% endif %}
 {% if is_bulk %}
 
