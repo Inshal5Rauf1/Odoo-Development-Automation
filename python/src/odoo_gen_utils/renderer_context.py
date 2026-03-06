@@ -189,6 +189,12 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     if is_archival:
         cron_methods = [c for c in cron_methods if c.get("method") != "_cron_archive_old_records"]
 
+    # Phase 38: audit trail context keys (defaults prevent StrictUndefined crashes)
+    has_audit = model.get("has_audit", False)
+    audit_fields = model.get("audit_fields", [])
+    audit_field_names = {f["name"] for f in audit_fields}
+    audit_exclude = model.get("audit_exclude", [])
+
     # Phase 12: conditional api import (TMPL-02)
     # Phase 29: also need api when temporal constraints exist (@api.constrains)
     # or create/write overrides exist (@api.model_create_multi)
@@ -268,6 +274,11 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         "is_archival": is_archival,
         "archival_batch_size": archival_batch_size,
         "archival_days": archival_days,
+        # Phase 38 keys
+        "has_audit": has_audit,
+        "audit_fields": audit_fields,
+        "audit_field_names": audit_field_names,
+        "audit_exclude": audit_exclude,
     }
 
 
@@ -406,6 +417,8 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         "import_export_wizards": import_export_wizards,
         "security_roles": spec.get("security_roles", []),
         "has_record_rules": has_record_rules,
+        # Phase 38 keys
+        "has_audit_log": spec.get("has_audit_log", False),
     }
     if has_import_export:
         ctx["external_dependencies"] = {"python": ["openpyxl"]}

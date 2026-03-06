@@ -4192,3 +4192,146 @@ class TestSecurityViewAutoFix:
             "depends on restricted field 'salary'" in msg and "annual_salary" in msg
             for msg in caplog.messages
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 38: Audit trail integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestAuditIntegration:
+    """Integration tests for audit preprocessor wired into render pipeline."""
+
+    def _make_audit_spec(self) -> dict:
+        """Build a spec with audit:true on one model plus security block."""
+        return {
+            "module_name": "test_module",
+            "module_title": "Test Module",
+            "summary": "Test",
+            "author": "Test",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.record",
+                    "description": "Test Record",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                        {"name": "value", "type": "Integer"},
+                        {"name": "notes", "type": "Text"},
+                    ],
+                    "audit": True,
+                },
+            ],
+            "security": {
+                "roles": ["viewer", "editor", "manager"],
+                "defaults": {
+                    "viewer": "r",
+                    "editor": "cru",
+                    "manager": "crud",
+                },
+            },
+        }
+
+    def test_audit_context_defaults_on_non_audit_model(self):
+        """Non-audit model gets has_audit=False and empty audit_fields from context builder."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [
+                {"name": "name", "type": "Char", "required": True},
+            ],
+        }
+        spec = _make_spec(models=[model])
+        ctx = _build_model_context(spec, model)
+        assert ctx["has_audit"] is False
+        assert ctx["audit_fields"] == []
+        assert ctx["audit_field_names"] == set()
+        assert ctx["audit_exclude"] == []
+
+    def test_audit_context_keys_on_audit_model(self):
+        """Audit model gets has_audit=True and populated audit_fields from context builder."""
+        from odoo_gen_utils.preprocessors import _process_audit_patterns, _process_security_patterns
+        spec = self._make_audit_spec()
+        spec = _process_security_patterns(spec)
+        spec = _process_audit_patterns(spec)
+
+        audited = next(m for m in spec["models"] if m["name"] == "test.record")
+        ctx = _build_model_context(spec, audited)
+        assert ctx["has_audit"] is True
+        assert len(ctx["audit_fields"]) > 0
+        assert "name" in ctx["audit_field_names"]
+        assert "value" in ctx["audit_field_names"]
+
+    def test_module_context_has_audit_log_key(self):
+        """Module context includes has_audit_log=True when audit models present."""
+        from odoo_gen_utils.preprocessors import _process_audit_patterns, _process_security_patterns
+        spec = self._make_audit_spec()
+        spec = _process_security_patterns(spec)
+        spec = _process_audit_patterns(spec)
+        ctx = _build_module_context(spec, spec["module_name"])
+        assert ctx["has_audit_log"] is True
+
+    def test_module_context_has_audit_log_false_without_audit(self):
+        """Module context has has_audit_log=False when no audit models."""
+        spec = _make_spec(models=[{
+            "name": "test.plain",
+            "description": "Plain",
+            "fields": [{"name": "name", "type": "Char", "required": True}],
+        }])
+        ctx = _build_module_context(spec, spec["module_name"])
+        assert ctx["has_audit_log"] is False
+
+    def test_render_module_with_audit_generates_audit_log_model_file(self):
+        """render_module with audit:true generates audit_trail_log.py model file."""
+        spec = self._make_audit_spec()
+        with tempfile.TemporaryDirectory() as tmp:
+            files, warnings = render_module(spec, get_template_dir(), Path(tmp))
+            module_dir = Path(tmp) / "test_module"
+            audit_model_file = module_dir / "models" / "audit_trail_log.py"
+            assert audit_model_file.exists(), (
+                f"audit_trail_log.py not generated. Files: {[str(f) for f in files if 'models' in str(f)]}"
+            )
+
+    def test_render_module_with_audit_generates_acl_rows(self):
+        """render_module with audit:true produces ir.model.access.csv with audit.trail.log rows."""
+        spec = self._make_audit_spec()
+        with tempfile.TemporaryDirectory() as tmp:
+            files, warnings = render_module(spec, get_template_dir(), Path(tmp))
+            module_dir = Path(tmp) / "test_module"
+            acl_file = module_dir / "security" / "ir.model.access.csv"
+            assert acl_file.exists()
+            acl_content = acl_file.read_text()
+            # Should have rows for audit.trail.log
+            assert "audit_trail_log" in acl_content
+
+    def test_render_module_with_audit_no_strict_undefined_crash(self):
+        """Full render with audit:true completes without StrictUndefined errors."""
+        spec = self._make_audit_spec()
+        with tempfile.TemporaryDirectory() as tmp:
+            files, warnings = render_module(spec, get_template_dir(), Path(tmp))
+            assert len(files) > 0
+
+    def test_render_module_without_audit_still_works(self):
+        """Full render without audit:true still succeeds (no regression)."""
+        spec = _make_spec(models=[{
+            "name": "test.simple",
+            "description": "Simple",
+            "fields": [
+                {"name": "name", "type": "Char", "required": True},
+                {"name": "qty", "type": "Integer"},
+            ],
+        }])
+        with tempfile.TemporaryDirectory() as tmp:
+            files, warnings = render_module(spec, get_template_dir(), Path(tmp))
+            assert len(files) > 0
+
+    def test_render_module_with_audit_auditor_role_in_security_xml(self):
+        """render_module with audit:true includes auditor group in security.xml."""
+        spec = self._make_audit_spec()
+        with tempfile.TemporaryDirectory() as tmp:
+            files, warnings = render_module(spec, get_template_dir(), Path(tmp))
+            module_dir = Path(tmp) / "test_module"
+            security_xml = module_dir / "security" / "security.xml"
+            assert security_xml.exists()
+            content = security_xml.read_text()
+            assert "auditor" in content
