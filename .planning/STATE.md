@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v3.2
 milestone_name: Security, Business Logic & Context7
 status: completed
-stopped_at: Completed 42-02-PLAN.md (Phase 42 complete)
-last_updated: "2026-03-07T01:16:53.151Z"
+stopped_at: Completed 41-02-PLAN.md (migration generator and gen-migration CLI)
+last_updated: "2026-03-07T01:21:40.786Z"
 last_activity: 2026-03-07 — Phase 42 Plan 02 complete (pipeline integration, CLI flags, renderer wiring)
 progress:
   total_phases: 8
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
   percent: 39
 ---
 
@@ -90,6 +90,8 @@ Progress: [████░░░░░░] 39%
 - [Phase 42]: Token truncation is application-side (~500 tokens = ~2000 chars) since Context7 REST API has no maxTokens parameter
 - [Phase 42]: render_module() new params are keyword-only with defaults for full backward compatibility
 - [Phase 42]: context7_enrich() called AFTER preprocessors and BEFORE _build_module_context() for complete spec flag visibility
+- [Phase 41]: String formatting (f-strings) for migration script generation instead of Jinja2 templates
+- [Phase 41]: PostgreSQL type mapping for backup columns using proper PG types based on Odoo field type
 
 ### Pending Todos
 
@@ -115,7 +117,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T01:16:47.106Z
-Stopped at: Completed 42-02-PLAN.md (Phase 42 complete)
+Last session: 2026-03-07T01:21:40.784Z
+Stopped at: Completed 41-02-PLAN.md (migration generator and gen-migration CLI)
 Resume file: None
 Next step: Phase 42 complete. Ready for Phase 43 or milestone v3.2 completion.

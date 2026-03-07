@@ -22,7 +22,7 @@ Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap 
 ### Tooling
 
 - [x] **TOOL-01**: CLI `diff-spec` command compares two spec versions and produces typed change objects (added/removed/modified fields, models, relations)
-- [ ] **TOOL-04**: CLI `gen-migration` command consumes spec diff output and generates Odoo migration scripts (`pre-migrate.py`, `post-migrate.py`)
+- [x] **TOOL-04**: CLI `gen-migration` command consumes spec diff output and generates Odoo migration scripts (`pre-migrate.py`, `post-migrate.py`)
 
 ### Pipeline
 
@@ -76,7 +76,7 @@ Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap 
 | BIZL-02 | Phase 40 | Complete |
 | BIZL-03 | Phase 40 | Complete |
 | TOOL-01 | Phase 41 | Complete |
-| TOOL-04 | Phase 41 | Pending |
+| TOOL-04 | Phase 41 | Complete |
 | PIPE-01 | Phase 42 | Complete |
 | INFR-02 | Phase 43 | Pending |
 

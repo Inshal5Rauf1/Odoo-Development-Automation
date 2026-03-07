@@ -97,7 +97,7 @@
 - [x] **Phase 38: Audit Trail** - Structured audit log model with write() override stacking and context flag guards (completed 2026-03-06)
 - [x] **Phase 39: Approval Workflows** - Multi-level state field, group-gated action methods, and per-stage record rules (completed 2026-03-06)
 - [x] **Phase 40: Notifications & Webhooks** - mail.template generation for state transitions and hook method stubs in create()/write() (completed 2026-03-06)
-- [ ] **Phase 41: Spec Diffing & Migration** - CLI diff-spec command and gen-migration for pre/post migration scripts
+- [x] **Phase 41: Spec Diffing & Migration** - CLI diff-spec command and gen-migration for pre/post migration scripts (completed 2026-03-07)
 - [x] **Phase 42: Context7 Pipeline** - Pre-fetch Context7 docs during render setup to enrich template context (completed 2026-03-07)
 - [ ] **Phase 43: Integration Testing** - Multi-feature integration tests validating write() stacking, field access, and full approval+notification flow
 
@@ -242,8 +242,8 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 38. Audit Trail | 1/2 | Complete    | 2026-03-06 | - |
 | 39. Approval Workflows | 2/2 | Complete    | 2026-03-06 | - |
 | 40. Notifications & Webhooks | 2/2 | Complete    | 2026-03-06 | - |
-| 41. Spec Diffing & Migration | 1/2 | In Progress|  | - |
-| 42. Context7 Pipeline | 2/2 | Complete   | 2026-03-07 | - |
+| 41. Spec Diffing & Migration | 2/2 | Complete   | 2026-03-07 | - |
+| 42. Context7 Pipeline | 2/2 | Complete    | 2026-03-07 | - |
 | 43. Integration Testing | v3.2 | 0/? | Not started | - |
 
 ---
