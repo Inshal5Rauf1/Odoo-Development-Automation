@@ -99,7 +99,7 @@
 - [x] **Phase 40: Notifications & Webhooks** - mail.template generation for state transitions and hook method stubs in create()/write() (completed 2026-03-06)
 - [x] **Phase 41: Spec Diffing & Migration** - CLI diff-spec command and gen-migration for pre/post migration scripts (completed 2026-03-07)
 - [x] **Phase 42: Context7 Pipeline** - Pre-fetch Context7 docs during render setup to enrich template context (completed 2026-03-07)
-- [ ] **Phase 43: Integration Testing** - Multi-feature integration tests validating write() stacking, field access, and full approval+notification flow
+- [x] **Phase 43: Integration Testing** - Multi-feature integration tests validating write() stacking, field access, and full approval+notification flow (completed 2026-03-07)
 
 ## Phase Details
 
@@ -244,7 +244,7 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 40. Notifications & Webhooks | 2/2 | Complete    | 2026-03-06 | - |
 | 41. Spec Diffing & Migration | 2/2 | Complete    | 2026-03-07 | - |
 | 42. Context7 Pipeline | 2/2 | Complete    | 2026-03-07 | - |
-| 43. Integration Testing | v3.2 | 0/1 | Not started | - |
+| 43. Integration Testing | 1/1 | Complete   | 2026-03-07 | - |
 
 ---
 *Roadmap created: 2026-03-01*

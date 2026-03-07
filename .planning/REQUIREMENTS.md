@@ -31,7 +31,7 @@ Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap 
 ### Infrastructure
 
 - [x] **INFR-01**: renderer.py preprocessors and context builders extracted into separate modules before new features
-- [ ] **INFR-02**: Multi-feature integration tests validate write() override stacking, non-admin field access, and full approval+notification flow
+- [x] **INFR-02**: Multi-feature integration tests validate write() override stacking, non-admin field access, and full approval+notification flow
 
 ## Future Requirements (v3.3+)
 
@@ -78,7 +78,7 @@ Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap 
 | TOOL-01 | Phase 41 | Complete |
 | TOOL-04 | Phase 41 | Complete |
 | PIPE-01 | Phase 42 | Complete |
-| INFR-02 | Phase 43 | Pending |
+| INFR-02 | Phase 43 | Complete |
 
 **Coverage:**
 - v3.2 requirements: 11 total
