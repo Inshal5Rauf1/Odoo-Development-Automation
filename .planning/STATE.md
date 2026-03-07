@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.3
 milestone_name: Test Fixes, Domain Patterns & Architecture
 status: active
-stopped_at: Completed 45-01-PLAN.md
+stopped_at: Completed 45-02-PLAN.md (Phase 45 complete)
 last_updated: "2026-03-07T11:22:07.510Z"
-last_activity: 2026-03-07 — Phase 45 Plan 01 executed (preprocessor split into 13-file package)
+last_activity: 2026-03-07 — Phase 45 Plan 02 executed (renderer wired to run_preprocessors, monolith deleted)
 progress:
   total_phases: 10
   completed_phases: 0
   total_plans: 2
-  completed_plans: 1
-  percent: 50
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 45 — first of 10 phases in v3.3 (Preprocessor Split)
-Plan: 1 of 2 in current phase
-Status: Plan 01 complete, Plan 02 next
-Last activity: 2026-03-07 — Phase 45 Plan 01 executed (preprocessor split into 13-file package)
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase 45 complete, ready for Phase 46
+Last activity: 2026-03-07 — Phase 45 Plan 02 executed (renderer wired to run_preprocessors, monolith deleted)
 
-Progress: [█████░░░░░] 50% (Phase 45)
+Progress: [██████████] 100% (Phase 45)
 
 ## Performance Metrics
 
@@ -43,6 +43,7 @@ Progress: [█████░░░░░] 50% (Phase 45)
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 45-preprocessor-split | 01 | 9min | 2 | 15 |
+| 45-preprocessor-split | 02 | 22min | 1 | 4 |
 
 ## Accumulated Context
 
@@ -56,6 +57,9 @@ Progress: [█████░░░░░] 50% (Phase 45)
 - Pydantic v2 added as core dependency; phonenumbers as optional `pakistan` extra
 - Preprocessor registry: decorator+list pattern (not class-based), pkgutil auto-discovery, order=N explicit pipeline ordering
 - _validate_no_cycles not registered (raises, not transforms); called separately before pipeline
+- Backward-compatible re-exports in renderer.py for test imports of preprocessor functions
+- _init_override_sources uses in-place mutation (not immutable) to match original renderer behavior
+- run_preprocessors() auto-recovers cleared registry via _rediscover()
 
 ### Pending Todos
 
@@ -64,7 +68,7 @@ None yet.
 ### Blockers/Concerns
 
 - 36 broken tests in CI -- Phase 46 addresses this
-- preprocessors.py at 1,715 lines -- RESOLVED: Phase 45 Plan 01 split into 13-file package
+- preprocessors.py at 1,715 lines -- RESOLVED: Phase 45 complete (split into package + renderer wired + monolith deleted)
 - AskUserQuestion tool unreliable -- use plain text questions instead
 
 ## Shipped Milestones
@@ -82,7 +86,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T11:22:07.509Z
-Stopped at: Completed 45-01-PLAN.md
+Last session: 2026-03-07T11:45:52Z
+Stopped at: Completed 45-02-PLAN.md (Phase 45 complete)
 Resume file: None
-Next step: `/gsd:execute-phase 45` (Plan 02)
+Next step: `/gsd:execute-phase 46` (Test Infrastructure)

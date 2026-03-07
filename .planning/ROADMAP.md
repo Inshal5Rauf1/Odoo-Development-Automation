@@ -91,7 +91,7 @@
 
 **Parallel execution:** Two-track git worktree strategy (infra track + features track) with strict file ownership.
 
-- [ ] **Phase 45: Preprocessor Split** - Extract 1,715-line preprocessors.py into preprocessors/ package with decorator-based registry
+- [x] **Phase 45: Preprocessor Split** - Extract 1,715-line preprocessors.py into preprocessors/ package with decorator-based registry (completed 2026-03-07)
 - [ ] **Phase 46: Test Infrastructure** - Fix 36 broken tests and pin dependency upper bounds
 - [ ] **Phase 47: Pydantic Spec Validation** - Pydantic v2 spec schema with protected_namespaces, backward-compatible defaults, JSON Schema export
 - [ ] **Phase 48: Model Registry** - Cross-module model registry with JSON persistence, comodel validation, cycle detection
@@ -113,7 +113,7 @@
   2. A decorator-based registry (`@register_preprocessor`) controls preprocessor discovery and ordering without manual import lists
   3. All existing tests pass without modification -- zero behavior change for the render pipeline
   4. Adding a new preprocessor requires only creating a new file with the decorator -- no edits to `__init__.py` or registry configuration
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 45-01-PLAN.md — Create registry infrastructure, split preprocessors into domain files with decorators
 - [ ] 45-02-PLAN.md — Wire renderer to use run_preprocessors(), delete old monolith, full regression
@@ -240,7 +240,7 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 20-25 | v3.0 | 11/11 | Complete | 2026-03-05 |
 | 26-35 | v3.1 | 12/12 | Complete | 2026-03-05 |
 | 36-44 | v3.2 | 15/15 | Complete | 2026-03-07 |
-| 45. Preprocessor Split | 1/2 | In Progress|  | - |
+| 45. Preprocessor Split | 2/2 | Complete   | 2026-03-07 | - |
 | 46. Test Infrastructure | v3.3 | 0/TBD | Not started | - |
 | 47. Pydantic Spec Validation | v3.3 | 0/TBD | Not started | - |
 | 48. Model Registry | v3.3 | 0/TBD | Not started | - |
