@@ -193,11 +193,12 @@ def _resolve_comodel(
 
 @register_preprocessor(order=15, name="init_override_sources")
 def _init_override_sources(spec: dict[str, Any]) -> dict[str, Any]:
-    """Initialize override_sources on all models after relationship processing."""
-    new_models = []
+    """Initialize override_sources on all models after relationship processing.
+
+    Mutates models in-place to match the original inline behavior in
+    renderer.py, which callers (and tests) depend on.
+    """
     for model in spec.get("models", []):
         if "override_sources" not in model:
-            new_models.append({**model, "override_sources": defaultdict(set)})
-        else:
-            new_models.append(model)
-    return {**spec, "models": new_models}
+            model["override_sources"] = defaultdict(set)
+    return spec

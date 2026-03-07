@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import json
 import re
-from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from odoo_gen_utils.validation.types import Result
-
-from collections import defaultdict
 
 from odoo_gen_utils.renderer_utils import (
     _is_monetary_field,
@@ -27,18 +24,17 @@ from odoo_gen_utils.renderer_utils import (
     SEQUENCE_FIELD_NAMES,
 )
 
-from odoo_gen_utils.preprocessors import (
-    _process_approval_patterns,
-    _process_audit_patterns,
+from odoo_gen_utils.preprocessors import run_preprocessors
+from odoo_gen_utils.preprocessors.validation import _validate_no_cycles
+
+# Backward-compatible re-exports: tests import these from renderer
+from odoo_gen_utils.preprocessors import (  # noqa: F401
     _process_computation_chains,
     _process_constraints,
-    _process_notification_patterns,
     _process_performance,
     _process_production_patterns,
     _process_relationships,
     _process_security_patterns,
-    _process_webhook_patterns,
-    _validate_no_cycles,
 )
 
 from odoo_gen_utils.context7 import build_context7_from_env, context7_enrich
@@ -733,33 +729,12 @@ def render_module(
     Returns:
         Tuple of (created_files, verification_warnings).
     """
-    # Phase 28: validate no circular dependencies FIRST
+    # Phase 28: validate no circular dependencies BEFORE any preprocessing
     _validate_no_cycles(spec)
 
     env = create_versioned_renderer(spec.get("odoo_version", "17.0"))
-    spec = _process_relationships(spec)
-    # Phase 36: initialize override_sources for all models
-    for model in spec.get("models", []):
-        if "override_sources" not in model:
-            model["override_sources"] = defaultdict(set)
-    # Phase 28: process computation chains
-    spec = _process_computation_chains(spec)
-    # Phase 29: process complex constraints
-    spec = _process_constraints(spec)
-    # Phase 33: performance optimization (index, store, sql_constraints, transient config)
-    spec = _process_performance(spec)
-    # Phase 34: production patterns (bulk create, ORM cache)
-    spec = _process_production_patterns(spec)
-    # Phase 37: security patterns (RBAC groups, ACL matrix, record rules)
-    spec = _process_security_patterns(spec)
-    # Phase 38: audit trail patterns (audit metadata, audit.trail.log model, auditor role)
-    spec = _process_audit_patterns(spec)
-    # Phase 39: approval workflow patterns (state field, action methods, record rules)
-    spec = _process_approval_patterns(spec)
-    # Phase 40: notification patterns (enriches approval action methods with send_mail)
-    spec = _process_notification_patterns(spec)
-    # Phase 40: webhook patterns (extension point stubs in create/write)
-    spec = _process_webhook_patterns(spec)
+    # Phase 45: single call replaces 10 individual preprocessor calls + override_sources loop
+    spec = run_preprocessors(spec)
     # Phase 42: Context7 documentation enrichment
     if no_context7:
         c7_hints: dict[str, str] = {}
