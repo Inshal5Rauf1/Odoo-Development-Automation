@@ -201,6 +201,25 @@ def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_
         sys.exit(1)
 
 
+@main.command("export-schema")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Output file path (default: stdout)")
+def export_schema(output: str | None) -> None:
+    """Export the module spec JSON Schema for IDE autocomplete."""
+    import json as json_mod
+
+    from odoo_gen_utils.spec_schema import ModuleSpec
+
+    schema = ModuleSpec.model_json_schema()
+    schema_json = json_mod.dumps(schema, indent=2)
+
+    if output:
+        Path(output).write_text(schema_json, encoding="utf-8")
+        click.echo(f"Schema written to {output}")
+    else:
+        click.echo(schema_json)
+
+
 def _resolve_kb_path() -> Path:
     """Resolve the knowledge base directory path.
 

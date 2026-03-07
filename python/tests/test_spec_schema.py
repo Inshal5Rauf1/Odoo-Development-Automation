@@ -313,3 +313,104 @@ class TestSubModels:
         assert webhook.on_create is False
         assert webhook.on_write == []
         assert webhook.on_unlink is False
+
+
+# ---------------------------------------------------------------------------
+# TestExportSchema (CLI integration)
+# ---------------------------------------------------------------------------
+class TestExportSchema:
+    """Test export-schema CLI command outputs valid JSON Schema."""
+
+    def test_export_schema_stdout(self):
+        """export-schema outputs valid JSON Schema to stdout."""
+        from click.testing import CliRunner
+        from odoo_gen_utils.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["export-schema"])
+        assert result.exit_code == 0, f"exit_code={result.exit_code}, output={result.output}"
+        schema = json.loads(result.output)
+        assert "properties" in schema
+        assert "type" in schema
+        assert schema["type"] == "object"
+        assert "module_name" in schema["properties"]
+
+    def test_export_schema_contains_defs(self):
+        """export-schema JSON contains $defs with nested model schemas."""
+        from click.testing import CliRunner
+        from odoo_gen_utils.cli import main
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["export-schema"])
+        assert result.exit_code == 0
+        schema = json.loads(result.output)
+        assert "$defs" in schema
+        # Should include sub-model definitions
+        defs = schema["$defs"]
+        assert "FieldSpec" in defs
+        assert "ModelSpec" in defs
+
+
+class TestExportSchemaFile:
+    """Test export-schema --output writes JSON Schema to file."""
+
+    def test_export_schema_to_file(self, tmp_path):
+        """export-schema --output writes valid JSON Schema to specified file."""
+        from click.testing import CliRunner
+        from odoo_gen_utils.cli import main
+
+        out_file = tmp_path / "schema.json"
+        runner = CliRunner()
+        result = runner.invoke(main, ["export-schema", "--output", str(out_file)])
+        assert result.exit_code == 0, f"exit_code={result.exit_code}, output={result.output}"
+        assert out_file.exists()
+        schema = json.loads(out_file.read_text(encoding="utf-8"))
+        assert "properties" in schema
+        assert "module_name" in schema["properties"]
+        assert "$defs" in schema
+
+
+# ---------------------------------------------------------------------------
+# TestRendererIntegration (validate_spec wired into render_module)
+# ---------------------------------------------------------------------------
+class TestRendererIntegration:
+    """Test that validate_spec() is called during render_module()."""
+
+    def test_invalid_spec_raises_validation_error(self):
+        """render_module() raises ValidationError on invalid field type."""
+        from odoo_gen_utils.renderer import get_template_dir, render_module
+
+        invalid_spec = {
+            "module_name": "test_invalid",
+            "models": [
+                {
+                    "name": "test.model",
+                    "fields": [{"name": "x", "type": "InvalidType"}],
+                }
+            ],
+        }
+        with pytest.raises(ValidationError):
+            render_module(invalid_spec, get_template_dir(), Path("/tmp/test_out"))
+
+    def test_valid_spec_passes_validation(self):
+        """render_module() does not raise ValidationError for a valid minimal spec."""
+        import tempfile
+
+        from odoo_gen_utils.renderer import get_template_dir, render_module
+
+        valid_spec = {
+            "module_name": "test_valid",
+            "depends": ["base"],
+            "models": [
+                {
+                    "name": "test.order",
+                    "description": "Test Order",
+                    "fields": [
+                        {"name": "name", "type": "Char", "required": True},
+                    ],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as d:
+            files, warnings = render_module(valid_spec, get_template_dir(), Path(d), no_context7=True)
+            assert len(files) > 0
