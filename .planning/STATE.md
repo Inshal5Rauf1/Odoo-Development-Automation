@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v3.2
 milestone_name: Security, Business Logic & Context7
 status: in-progress
-stopped_at: Completed 42-01-PLAN.md
-last_updated: "2026-03-07T01:07:24.537Z"
+stopped_at: Completed 41-01-PLAN.md (spec differ module and diff-spec CLI)
+last_updated: "2026-03-07T01:08:38.172Z"
 last_activity: 2026-03-07 — Phase 42 Plan 01 complete (Context7 enrichment pipeline)
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
   percent: 39
 ---
 
@@ -80,6 +80,9 @@ Progress: [████░░░░░░] 39%
 - [Phase 40]: dict.get('notification') used in Jinja2 templates for StrictUndefined safety on optional action method keys
 - [Phase 40]: 18.0 webhook old_vals always uses standalone capture (audit not ported to 18.0)
 - [Phase 40]: auto_delete eval="True" added to mail.template XML for email cleanup
+- [Phase 41]: Direct dict comparison after _spec_to_diffable() conversion instead of DeepDiff raw path parsing for cleaner hierarchical output
+- [Phase 41]: Float->Monetary classified as possibly_destructive (precision change) not always_destructive
+- [Phase 41]: Selection change detection uses key-based set difference for precise added/removed tracking
 - [Phase 42]: Token truncation is application-side (~500 tokens = ~2000 chars) since Context7 REST API has no maxTokens parameter
 - [Phase 42]: Float fields with 'amount' in name detected as monetary in addition to type==Monetary
 - [Phase 42]: Cache key uses SHA256(query|odoo_version) for deterministic, version-aware caching
@@ -110,7 +113,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T01:07:19.668Z
-Stopped at: Completed 42-01-PLAN.md
+Last session: 2026-03-07T01:08:38.170Z
+Stopped at: Completed 41-01-PLAN.md (spec differ module and diff-spec CLI)
 Resume file: None
 Next step: Execute Phase 42 Plan 02 (pipeline integration, CLI flags, renderer wiring).
