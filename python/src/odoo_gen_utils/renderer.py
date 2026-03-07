@@ -26,6 +26,7 @@ from odoo_gen_utils.renderer_utils import (
 
 from odoo_gen_utils.preprocessors import run_preprocessors
 from odoo_gen_utils.preprocessors.validation import _validate_no_cycles
+from odoo_gen_utils.spec_schema import validate_spec
 
 # Backward-compatible re-exports: tests import these from renderer
 from odoo_gen_utils.preprocessors import (  # noqa: F401
@@ -729,6 +730,10 @@ def render_module(
     Returns:
         Tuple of (created_files, verification_warnings).
     """
+    # Phase 47: Validate spec against Pydantic schema BEFORE any processing
+    validated = validate_spec(spec)
+    spec = validated.model_dump()  # Convert back to dict for preprocessor pipeline
+
     # Phase 28: validate no circular dependencies BEFORE any preprocessing
     _validate_no_cycles(spec)
 

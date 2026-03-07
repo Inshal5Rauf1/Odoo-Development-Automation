@@ -125,7 +125,7 @@ def _security_detect_record_rule_scopes(model: dict[str, Any]) -> list[str]:
 
     If model has 'record_rules' key, use that instead (override).
     """
-    if "record_rules" in model:
+    if model.get("record_rules") is not None:
         return list(model["record_rules"])
 
     fields = model.get("fields", [])

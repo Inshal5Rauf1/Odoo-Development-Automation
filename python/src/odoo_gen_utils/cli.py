@@ -7,8 +7,10 @@ import sys
 from pathlib import Path
 
 import click
+from pydantic import ValidationError as PydanticValidationError
 
 from odoo_gen_utils import __version__
+from odoo_gen_utils.spec_schema import format_validation_errors
 
 
 @click.group()
@@ -190,6 +192,10 @@ def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_
             click.echo(f"WARN [{w.check_type}] {w.subject}: {w.message}", err=True)
             if w.suggestion:
                 click.echo(f"  Suggestion: {w.suggestion}", err=True)
+    except PydanticValidationError as exc:
+        formatted = format_validation_errors(exc, spec.get("module_name", "unknown"))
+        click.echo(formatted, err=True)
+        sys.exit(1)
     except Exception as exc:
         click.echo(f"Error rendering module: {exc}", err=True)
         sys.exit(1)

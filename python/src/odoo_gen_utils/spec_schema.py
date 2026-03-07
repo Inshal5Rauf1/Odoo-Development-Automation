@@ -112,7 +112,7 @@ class ApprovalLevelSpec(BaseModel):
 
     model_config = ConfigDict(extra="allow", protected_namespaces=())
 
-    name: str
+    name: str = ""
     role: str = ""
     state: str = ""
     group: str | None = None
