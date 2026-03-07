@@ -92,7 +92,7 @@
 **Parallel execution:** Two-track git worktree strategy (infra track + features track) with strict file ownership.
 
 - [x] **Phase 45: Preprocessor Split** - Extract 1,715-line preprocessors.py into preprocessors/ package with decorator-based registry (completed 2026-03-07)
-- [ ] **Phase 46: Test Infrastructure** - Fix 36 broken tests and pin dependency upper bounds
+- [x] **Phase 46: Test Infrastructure** - Fix 36 broken tests and pin dependency upper bounds (completed 2026-03-07)
 - [ ] **Phase 47: Pydantic Spec Validation** - Pydantic v2 spec schema with protected_namespaces, backward-compatible defaults, JSON Schema export
 - [ ] **Phase 48: Model Registry** - Cross-module model registry with JSON persistence, comodel validation, cycle detection
 - [ ] **Phase 49: Pakistan/HEC Localization** - CNIC, phone, PKR, NTN/STRN, HEC fields as generation patterns
@@ -128,7 +128,7 @@ Plans:
   3. Verifier integration tests skip cleanly when Docker is not running (via `conftest.py` fixture), and pass when Docker is available
   4. `pyproject.toml` pins `mcp>=1.9,<2.0`, `pytest-asyncio>=1.0,<2.0`, and `chromadb>=1.5,<2.0` with upper bounds
   5. `pytest` run with no Docker reports 0 failures and 0 errors (skips are acceptable)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 46-01-PLAN.md — Fix import guards, add pytest.importorskip to test files, create conftest.py Docker skip fixture, pin dependency upper bounds
 
@@ -243,7 +243,7 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 26-35 | v3.1 | 12/12 | Complete | 2026-03-05 |
 | 36-44 | v3.2 | 15/15 | Complete | 2026-03-07 |
 | 45. Preprocessor Split | 2/2 | Complete    | 2026-03-07 | - |
-| 46. Test Infrastructure | v3.3 | 0/1 | Not started | - |
+| 46. Test Infrastructure | 1/1 | Complete   | 2026-03-07 | - |
 | 47. Pydantic Spec Validation | v3.3 | 0/TBD | Not started | - |
 | 48. Model Registry | v3.3 | 0/TBD | Not started | - |
 | 49. Pakistan/HEC Localization | v3.3 | 0/TBD | Not started | - |

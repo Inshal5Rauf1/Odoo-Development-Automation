@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v3.3
 milestone_name: Test Fixes, Domain Patterns & Architecture
-status: active
-stopped_at: Completed 45-02-PLAN.md (Phase 45 complete)
-last_updated: "2026-03-07T11:22:07.510Z"
-last_activity: 2026-03-07 — Phase 45 Plan 02 executed (renderer wired to run_preprocessors, monolith deleted)
+status: completed
+stopped_at: Completed 46-01-PLAN.md (Phase 46 complete)
+last_updated: "2026-03-07T19:34:41.526Z"
+last_activity: 2026-03-07 — Phase 46 Plan 01 executed (import guards, conftest Docker skip fixture, dependency pinning)
 progress:
   total_phases: 10
-  completed_phases: 0
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 3
   percent: 100
 ---
 
@@ -22,21 +22,21 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** Phase 45 — Preprocessor Split (v3.3)
+**Current focus:** Phase 46 — Test Infrastructure (v3.3)
 
 ## Current Position
 
-Phase: 45 — first of 10 phases in v3.3 (Preprocessor Split)
-Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase 45 complete, ready for Phase 46
-Last activity: 2026-03-07 — Phase 45 Plan 02 executed (renderer wired to run_preprocessors, monolith deleted)
+Phase: 46 — second of 10 phases in v3.3 (Test Infrastructure)
+Plan: 1 of 1 in current phase (COMPLETE)
+Status: Phase 46 complete, ready for Phase 47
+Last activity: 2026-03-07 — Phase 46 Plan 01 executed (import guards, conftest Docker skip fixture, dependency pinning)
 
-Progress: [██████████] 100% (Phase 45)
+Progress: [██████████] 100% (Phase 46)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 68 (across all milestones)
+- Total plans completed: 69 (across all milestones)
 - Average duration: ~24 min
 - Total execution time: ~25.0 hours
 
@@ -44,6 +44,7 @@ Progress: [██████████] 100% (Phase 45)
 |-------|------|----------|-------|-------|
 | 45-preprocessor-split | 01 | 9min | 2 | 15 |
 | 45-preprocessor-split | 02 | 22min | 1 | 4 |
+| 46-test-infrastructure | 01 | 16min | 2 | 6 |
 
 ## Accumulated Context
 
@@ -60,6 +61,8 @@ Progress: [██████████] 100% (Phase 45)
 - Backward-compatible re-exports in renderer.py for test imports of preprocessor functions
 - _init_override_sources uses in-place mutation (not immutable) to match original renderer behavior
 - run_preprocessors() auto-recovers cleared registry via _rediscover()
+- [Phase 46]: Used _StubMCP class to absorb @mcp.tool() decorators when mcp absent (not mcp=None)
+- [Phase 46]: Fixture-level importorskip in test_mcp_server.py to preserve 8 OdooConfig/OdooClient tests
 
 ### Pending Todos
 
@@ -67,7 +70,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- 36 broken tests in CI -- Phase 46 addresses this
+- 36 broken tests in CI -- RESOLVED: Phase 46 complete (import guards + conftest fixture + importorskip + dep pinning)
 - preprocessors.py at 1,715 lines -- RESOLVED: Phase 45 complete (split into package + renderer wired + monolith deleted)
 - AskUserQuestion tool unreliable -- use plain text questions instead
 
@@ -86,7 +89,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T11:45:52Z
-Stopped at: Completed 45-02-PLAN.md (Phase 45 complete)
+Last session: 2026-03-07T19:34:41.524Z
+Stopped at: Completed 46-01-PLAN.md (Phase 46 complete)
 Resume file: None
-Next step: `/gsd:execute-phase 46` (Test Infrastructure)
+Next step: `/gsd:execute-phase 47` (Architecture Patterns)

@@ -33,8 +33,8 @@ Requirements for v3.3 Test Fixes, Domain Patterns & Architecture. Each maps to r
 
 ### Test Infrastructure
 
-- [ ] **TFIX-01**: Fix all 36 broken tests — MCP server import resolution (21 errors via `__init__.py` fix), search index optional dep guards (5+ failures via `pytest.importorskip`), verifier Docker-not-running skip (4 failures via `conftest.py`), ChromaDB ONNX test stability (1 failure), deepdiff collection fix (2 errors)
-- [ ] **TFIX-02**: Pin dependency upper bounds — `mcp>=1.9,<2.0`, `pytest-asyncio>=1.0,<2.0`, `chromadb>=1.5,<2.0` — prevent major version bumps from silently breaking CI
+- [x] **TFIX-01**: Fix all 36 broken tests — MCP server import resolution (21 errors via `__init__.py` fix), search index optional dep guards (5+ failures via `pytest.importorskip`), verifier Docker-not-running skip (4 failures via `conftest.py`), ChromaDB ONNX test stability (1 failure), deepdiff collection fix (2 errors)
+- [x] **TFIX-02**: Pin dependency upper bounds — `mcp>=1.9,<2.0`, `pytest-asyncio>=1.0,<2.0`, `chromadb>=1.5,<2.0` — prevent major version bumps from silently breaking CI
 
 ## Future Requirements (v3.4+)
 
@@ -71,8 +71,8 @@ Requirements for v3.3 Test Fixes, Domain Patterns & Architecture. Each maps to r
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | INFR-01 | Phase 45 | Complete |
-| TFIX-01 | Phase 46 | Pending |
-| TFIX-02 | Phase 46 | Pending |
+| TFIX-01 | Phase 46 | Complete |
+| TFIX-02 | Phase 46 | Complete |
 | ARCH-01 | Phase 47 | Pending |
 | ARCH-02 | Phase 48 | Pending |
 | DOMN-02 | Phase 49 | Pending |
