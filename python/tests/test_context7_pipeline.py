@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
+from click.testing import CliRunner
 
 
 # ---------------------------------------------------------------------------
@@ -159,3 +160,125 @@ class TestRenderModuleWithoutContext7:
         # Call WITHOUT the new keyword args -- must still work
         files, warnings = render_module(spec, template_dir, tmp_path)
         assert len(files) > 0
+
+
+# ---------------------------------------------------------------------------
+# TestCliNoContext7 -- --no-context7 flag passes through
+# ---------------------------------------------------------------------------
+
+class TestCliNoContext7:
+    """PIPE-01g: --no-context7 flag passes no_context7=True to render_module()."""
+
+    @patch("odoo_gen_utils.verifier.build_verifier_from_env", return_value=None)
+    @patch("odoo_gen_utils.renderer.render_module")
+    def test_no_context7_flag_passes_through(
+        self, mock_render: MagicMock, mock_verifier: MagicMock, tmp_path: Path,
+    ) -> None:
+        from odoo_gen_utils.cli import main
+
+        mock_render.return_value = ([], [])
+
+        spec = {"module_name": "test_cli_no_c7", "models": []}
+        spec_file = tmp_path / "spec.json"
+        spec_file.write_text(json.dumps(spec), encoding="utf-8")
+        output_dir = tmp_path / "output"
+
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            "render-module",
+            "--spec-file", str(spec_file),
+            "--output-dir", str(output_dir),
+            "--no-context7",
+        ])
+
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        mock_render.assert_called_once()
+        call_kwargs = mock_render.call_args
+        assert call_kwargs.kwargs.get("no_context7") is True
+
+    @patch("odoo_gen_utils.verifier.build_verifier_from_env", return_value=None)
+    @patch("odoo_gen_utils.renderer.render_module")
+    def test_no_context7_default_is_false(
+        self, mock_render: MagicMock, mock_verifier: MagicMock, tmp_path: Path,
+    ) -> None:
+        from odoo_gen_utils.cli import main
+
+        mock_render.return_value = ([], [])
+
+        spec = {"module_name": "test_cli_default", "models": []}
+        spec_file = tmp_path / "spec.json"
+        spec_file.write_text(json.dumps(spec), encoding="utf-8")
+        output_dir = tmp_path / "output"
+
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            "render-module",
+            "--spec-file", str(spec_file),
+            "--output-dir", str(output_dir),
+        ])
+
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        mock_render.assert_called_once()
+        call_kwargs = mock_render.call_args
+        assert call_kwargs.kwargs.get("no_context7") is False
+
+
+# ---------------------------------------------------------------------------
+# TestCliFreshContext7 -- --fresh-context7 flag passes through
+# ---------------------------------------------------------------------------
+
+class TestCliFreshContext7:
+    """PIPE-01h: --fresh-context7 flag passes fresh_context7=True to render_module()."""
+
+    @patch("odoo_gen_utils.verifier.build_verifier_from_env", return_value=None)
+    @patch("odoo_gen_utils.renderer.render_module")
+    def test_fresh_context7_flag_passes_through(
+        self, mock_render: MagicMock, mock_verifier: MagicMock, tmp_path: Path,
+    ) -> None:
+        from odoo_gen_utils.cli import main
+
+        mock_render.return_value = ([], [])
+
+        spec = {"module_name": "test_cli_fresh", "models": []}
+        spec_file = tmp_path / "spec.json"
+        spec_file.write_text(json.dumps(spec), encoding="utf-8")
+        output_dir = tmp_path / "output"
+
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            "render-module",
+            "--spec-file", str(spec_file),
+            "--output-dir", str(output_dir),
+            "--fresh-context7",
+        ])
+
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        mock_render.assert_called_once()
+        call_kwargs = mock_render.call_args
+        assert call_kwargs.kwargs.get("fresh_context7") is True
+
+    @patch("odoo_gen_utils.verifier.build_verifier_from_env", return_value=None)
+    @patch("odoo_gen_utils.renderer.render_module")
+    def test_fresh_context7_default_is_false(
+        self, mock_render: MagicMock, mock_verifier: MagicMock, tmp_path: Path,
+    ) -> None:
+        from odoo_gen_utils.cli import main
+
+        mock_render.return_value = ([], [])
+
+        spec = {"module_name": "test_cli_fresh_default", "models": []}
+        spec_file = tmp_path / "spec.json"
+        spec_file.write_text(json.dumps(spec), encoding="utf-8")
+        output_dir = tmp_path / "output"
+
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            "render-module",
+            "--spec-file", str(spec_file),
+            "--output-dir", str(output_dir),
+        ])
+
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        mock_render.assert_called_once()
+        call_kwargs = mock_render.call_args
+        assert call_kwargs.kwargs.get("fresh_context7") is False
