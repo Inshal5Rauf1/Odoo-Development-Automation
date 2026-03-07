@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.3
 milestone_name: Test Fixes, Domain Patterns & Architecture
 status: completed
-stopped_at: Completed 47-01-PLAN.md
-last_updated: "2026-03-07T23:39:13.419Z"
-last_activity: 2026-03-08 — Phase 47 Plan 01 executed (Pydantic v2 spec schema with all models, validators, and 22 TDD tests)
+stopped_at: Completed 47-02-PLAN.md
+last_updated: "2026-03-07T23:52:32Z"
+last_activity: 2026-03-08 — Phase 47 Plan 02 executed (renderer integration, export-schema CLI, 5 integration tests)
 progress:
   total_phases: 10
   completed_phases: 2
   total_plans: 5
-  completed_plans: 4
-  percent: 50
+  completed_plans: 5
+  percent: 60
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 
 ## Current Position
 
-Phase: 47 — third of 10 phases in v3.3 (Pydantic Spec Validation)
-Plan: 1 of 2 in current phase (COMPLETE)
-Status: Plan 01 complete, Plan 02 pending
-Last activity: 2026-03-08 — Phase 47 Plan 01 executed (Pydantic v2 spec schema with all models, validators, and 22 TDD tests)
+Phase: 47 — third of 10 phases in v3.3 (Pydantic Spec Validation) COMPLETE
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase 47 complete, ready for Phase 48
+Last activity: 2026-03-08 — Phase 47 Plan 02 executed (renderer integration, export-schema CLI, 5 integration tests)
 
-Progress: [█████████░] 50% (Phase 47)
+Progress: [██████████] 100% (Phase 47)
 
 ## Performance Metrics
 
@@ -46,6 +46,7 @@ Progress: [█████████░] 50% (Phase 47)
 | 45-preprocessor-split | 02 | 22min | 1 | 4 |
 | 46-test-infrastructure | 01 | 16min | 2 | 6 |
 | 47-pydantic-spec-validation | 01 | 4min | 1 | 3 |
+| 47-pydantic-spec-validation | 02 | 11min | 3 | 5 |
 
 ## Accumulated Context
 
@@ -66,6 +67,9 @@ Progress: [█████████░] 50% (Phase 47)
 - [Phase 46]: Fixture-level importorskip in test_mcp_server.py to preserve 8 OdooConfig/OdooClient tests
 - [Phase 47]: Used 16 valid field types (excluding Reference); cross-ref validators check per-model security.roles
 - [Phase 47]: validate_spec() prints formatted errors then re-raises ValidationError (hard fail)
+- [Phase 47]: Lazy imports for pydantic in cli.py to preserve import guard test pattern
+- [Phase 47]: ApprovalLevelSpec.name made optional (default='') for backward compat with state-based levels
+- [Phase 47]: model_dump() at pipeline boundary; preprocessors continue receiving plain dicts
 
 ### Pending Todos
 
@@ -92,7 +96,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T23:39:11.895Z
-Stopped at: Completed 47-01-PLAN.md
+Last session: 2026-03-07T23:52:32Z
+Stopped at: Completed 47-02-PLAN.md
 Resume file: None
-Next step: Execute 47-02-PLAN.md (renderer integration and CLI export-schema)
+Next step: Execute Phase 48 (next phase in v3.3 roadmap)
