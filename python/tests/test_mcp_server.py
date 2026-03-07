@@ -156,6 +156,7 @@ class TestOdooClient:
 @pytest.fixture
 def mock_client():
     """Create a mock OdooClient that returns canned responses."""
+    pytest.importorskip("mcp", reason="mcp package not installed")
     client = MagicMock()
     client._config = MagicMock()
     client._config.url = "http://localhost:8069"

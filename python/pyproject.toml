@@ -16,14 +16,14 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = [
-    "mcp>=1.9",
+    "mcp>=1.9,<2.0",
 ]
 test = [
     "pytest>=8.0",
-    "pytest-asyncio>=0.23",
+    "pytest-asyncio>=1.0,<2.0",
 ]
 search = [
-    "chromadb>=1.5",
+    "chromadb>=1.5,<2.0",
     "PyGithub>=2.8",
     "gitpython>=3.1",
 ]

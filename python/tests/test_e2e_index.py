@@ -57,7 +57,7 @@ def test_chromadb_onnx_embedding_without_sentence_transformers(
     queries it, and asserts results come back. This proves ChromaDB's ONNX
     all-MiniLM-L6-v2 model works independently of torch/sentence-transformers.
     """
-    import chromadb
+    chromadb = pytest.importorskip("chromadb", reason="chromadb not installed")
 
     db_path = str(tmp_path / "test_onnx_chromadb")
     client = chromadb.PersistentClient(path=db_path)

@@ -224,6 +224,7 @@ def _make_mock_repo(
         branch.name = "17.0"
         repo.get_branch.return_value = branch
     else:
+        pytest.importorskip("github", reason="PyGithub not installed")
         from github import GithubException
 
         repo.get_branch.side_effect = GithubException(404, {"message": "Branch not found"}, None)
@@ -419,6 +420,7 @@ class TestRetryOnRateLimit:
     @patch("odoo_gen_utils.search.index.time")
     def test_retries_with_exponential_backoff(self, mock_time: MagicMock) -> None:
         """Retries on RateLimitExceededException with 1s, 2s delays."""
+        pytest.importorskip("github", reason="PyGithub not installed")
         from github import RateLimitExceededException
 
         mock_func = MagicMock()
@@ -441,6 +443,7 @@ class TestRetryOnRateLimit:
     @patch("odoo_gen_utils.search.index.time")
     def test_reraises_after_max_retries(self, mock_time: MagicMock) -> None:
         """Re-raises RateLimitExceededException after max_retries exhausted."""
+        pytest.importorskip("github", reason="PyGithub not installed")
         from github import RateLimitExceededException
 
         exc = RateLimitExceededException(403, {"message": "rate limit"}, None)
@@ -481,12 +484,14 @@ class TestBuildOcaIndexRateLimit:
         mock_check_rl: MagicMock,
     ) -> None:
         """build_oca_index calls _check_rate_limit at least once for 15+ repos."""
+        pytest.importorskip("github", reason="PyGithub not installed")
+        from github import GithubException
+
         # Create 15 repos with no 17.0 branch (simplest mock)
         repos = []
         for i in range(15):
             repo = MagicMock()
             repo.name = f"repo-{i}"
-            from github import GithubException
             repo.get_branch.side_effect = GithubException(404, {"message": "Not found"}, None)
             repos.append(repo)
 
@@ -516,6 +521,7 @@ class TestBuildOcaIndexRateLimit:
         mock_check_rl: MagicMock,
     ) -> None:
         """build_oca_index catches RateLimitExceededException on get_branch and retries."""
+        pytest.importorskip("github", reason="PyGithub not installed")
         from github import RateLimitExceededException
 
         repo = MagicMock()
