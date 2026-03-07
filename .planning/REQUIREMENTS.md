@@ -13,7 +13,7 @@ Requirements for v3.3 Test Fixes, Domain Patterns & Architecture. Each maps to r
 
 ### Architecture
 
-- [ ] **ARCH-01**: Pydantic v2 spec validation with `protected_namespaces=()`, `extra="allow"`, backward-compatible defaults on all new fields, JSON Schema export for IDE autocomplete — runs BEFORE preprocessors in `render_module()`
+- [x] **ARCH-01**: Pydantic v2 spec validation with `protected_namespaces=()`, `extra="allow"`, backward-compatible defaults on all new fields, JSON Schema export for IDE autocomplete — runs BEFORE preprocessors in `render_module()`
 - [ ] **ARCH-02**: Cross-module model registry with JSON persistence (`.odoo-gen-registry.json`), comodel validation, `depends` inference, cycle detection — called in CLI layer, not inside render pipeline
 - [ ] **ARCH-03**: Pre-Docker semantic validation — AST-parse generated Python, XML field reference cross-check, XML ID uniqueness, ACL model references, manifest `depends` completeness — catches 60-70% of bugs in <1 second
 - [ ] **ARCH-04**: Generation manifest with file paths, SHA256 checksums, template versions, preprocessor list — persisted as `.odoo-gen-manifest.json` sidecar
@@ -73,7 +73,7 @@ Requirements for v3.3 Test Fixes, Domain Patterns & Architecture. Each maps to r
 | INFR-01 | Phase 45 | Complete |
 | TFIX-01 | Phase 46 | Complete |
 | TFIX-02 | Phase 46 | Complete |
-| ARCH-01 | Phase 47 | Pending |
+| ARCH-01 | Phase 47 | Complete |
 | ARCH-02 | Phase 48 | Pending |
 | DOMN-02 | Phase 49 | Pending |
 | DOMN-03 | Phase 50 | Pending |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.3
 milestone_name: Test Fixes, Domain Patterns & Architecture
 status: completed
-stopped_at: Completed 46-01-PLAN.md (Phase 46 complete)
-last_updated: "2026-03-07T19:34:41.526Z"
-last_activity: 2026-03-07 — Phase 46 Plan 01 executed (import guards, conftest Docker skip fixture, dependency pinning)
+stopped_at: Completed 47-01-PLAN.md
+last_updated: "2026-03-07T23:39:13.419Z"
+last_activity: 2026-03-08 — Phase 47 Plan 01 executed (Pydantic v2 spec schema with all models, validators, and 22 TDD tests)
 progress:
   total_phases: 10
   completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
-  percent: 100
+  total_plans: 5
+  completed_plans: 4
+  percent: 50
 ---
 
 # Project State
@@ -22,16 +22,16 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** Phase 46 — Test Infrastructure (v3.3)
+**Current focus:** Phase 47 — Pydantic Spec Validation (v3.3)
 
 ## Current Position
 
-Phase: 46 — second of 10 phases in v3.3 (Test Infrastructure)
-Plan: 1 of 1 in current phase (COMPLETE)
-Status: Phase 46 complete, ready for Phase 47
-Last activity: 2026-03-07 — Phase 46 Plan 01 executed (import guards, conftest Docker skip fixture, dependency pinning)
+Phase: 47 — third of 10 phases in v3.3 (Pydantic Spec Validation)
+Plan: 1 of 2 in current phase (COMPLETE)
+Status: Plan 01 complete, Plan 02 pending
+Last activity: 2026-03-08 — Phase 47 Plan 01 executed (Pydantic v2 spec schema with all models, validators, and 22 TDD tests)
 
-Progress: [██████████] 100% (Phase 46)
+Progress: [█████████░] 50% (Phase 47)
 
 ## Performance Metrics
 
@@ -45,6 +45,7 @@ Progress: [██████████] 100% (Phase 46)
 | 45-preprocessor-split | 01 | 9min | 2 | 15 |
 | 45-preprocessor-split | 02 | 22min | 1 | 4 |
 | 46-test-infrastructure | 01 | 16min | 2 | 6 |
+| 47-pydantic-spec-validation | 01 | 4min | 1 | 3 |
 
 ## Accumulated Context
 
@@ -63,6 +64,8 @@ Progress: [██████████] 100% (Phase 46)
 - run_preprocessors() auto-recovers cleared registry via _rediscover()
 - [Phase 46]: Used _StubMCP class to absorb @mcp.tool() decorators when mcp absent (not mcp=None)
 - [Phase 46]: Fixture-level importorskip in test_mcp_server.py to preserve 8 OdooConfig/OdooClient tests
+- [Phase 47]: Used 16 valid field types (excluding Reference); cross-ref validators check per-model security.roles
+- [Phase 47]: validate_spec() prints formatted errors then re-raises ValidationError (hard fail)
 
 ### Pending Todos
 
@@ -85,11 +88,11 @@ None yet.
 - v3.1 Design Flaws & Feature Gaps (10 phases, 12 plans) -- 2026-03-05
 - v3.2 Security, Business Logic & Context7 (9 phases, 15 plans) -- 2026-03-07
 
-**Total:** 44 phases, 68 plans, 392+ commits, 1113+ tests, ~33,000+ LOC Python
+**Total:** 44 phases, 70 plans, 394+ commits, 1135+ tests, ~33,300+ LOC Python
 
 ## Session Continuity
 
-Last session: 2026-03-07T19:34:41.524Z
-Stopped at: Completed 46-01-PLAN.md (Phase 46 complete)
+Last session: 2026-03-07T23:39:11.895Z
+Stopped at: Completed 47-01-PLAN.md
 Resume file: None
-Next step: `/gsd:execute-phase 47` (Architecture Patterns)
+Next step: Execute 47-02-PLAN.md (renderer integration and CLI export-schema)
