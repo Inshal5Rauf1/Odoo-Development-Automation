@@ -141,8 +141,11 @@ Plans:
   2. All Pydantic models use `ConfigDict(protected_namespaces=())` so Odoo's `model_name`, `model_description` etc. work without conflict
   3. Existing spec fixtures (spec_v1.json, spec_v2.json, and all test specs) validate successfully with no modifications -- `extra="allow"` ensures backward compatibility
   4. `odoo-gen export-schema` outputs a JSON Schema file that provides autocomplete in VS Code / any JSON-aware editor
-  5. Validation failures produce warnings (not errors) -- generation never blocks on schema violations
-**Plans**: TBD
+  5. Validation failures produce hard errors (not warnings) -- bad specs fail early before wasting Docker time (user decision overrides original criteria #5)
+**Plans:** 2 plans
+Plans:
+- [ ] 47-01-PLAN.md — Create spec_schema.py with Pydantic models, validate_spec(), format_validation_errors(), and TDD tests
+- [ ] 47-02-PLAN.md — Wire validation into renderer.py, add export-schema CLI command, full regression
 
 ### Phase 48: Model Registry
 **Goal**: The system tracks all generated models across modules, enabling comodel validation and depends inference without requiring a running Odoo instance
@@ -243,8 +246,8 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 26-35 | v3.1 | 12/12 | Complete | 2026-03-05 |
 | 36-44 | v3.2 | 15/15 | Complete | 2026-03-07 |
 | 45. Preprocessor Split | 2/2 | Complete    | 2026-03-07 | - |
-| 46. Test Infrastructure | 1/1 | Complete   | 2026-03-07 | - |
-| 47. Pydantic Spec Validation | v3.3 | 0/TBD | Not started | - |
+| 46. Test Infrastructure | 1/1 | Complete    | 2026-03-07 | - |
+| 47. Pydantic Spec Validation | v3.3 | 0/2 | Planned | - |
 | 48. Model Registry | v3.3 | 0/TBD | Not started | - |
 | 49. Pakistan/HEC Localization | v3.3 | 0/TBD | Not started | - |
 | 50. Academic Calendar | v3.3 | 0/TBD | Not started | - |

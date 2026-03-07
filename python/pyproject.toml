@@ -12,6 +12,7 @@ dependencies = [
     "click>=8.0",
     "pylint-odoo>=10.0",
     "deepdiff>=8.0",
+    "pydantic>=2.10,<3.0",
 ]
 
 [project.optional-dependencies]
