@@ -835,3 +835,49 @@ def context7_status() -> None:
         click.echo(f"Odoo library resolved: {library_id}")
     else:
         click.echo("Odoo library resolution failed (docs may be unavailable).")
+
+
+@main.command("diff-spec")
+@click.argument("old_spec", type=click.Path(exists=True))
+@click.argument("new_spec", type=click.Path(exists=True))
+@click.option("--json", "json_output", is_flag=True, help="Output JSON only (no human summary)")
+def diff_spec(old_spec: str, new_spec: str, json_output: bool) -> None:
+    """Compare two spec versions and output structural differences.
+
+    Reads two JSON spec files, computes a hierarchical diff with
+    destructiveness classification, and outputs the results.
+
+    Default: human-readable summary followed by JSON.
+    With --json: JSON only, no human summary.
+    """
+    from odoo_gen_utils.spec_differ import diff_specs, format_human_summary
+
+    try:
+        old_data = json.loads(Path(old_spec).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        click.echo(f"Error reading old spec: {exc}", err=True)
+        sys.exit(1)
+
+    try:
+        new_data = json.loads(Path(new_spec).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        click.echo(f"Error reading new spec: {exc}", err=True)
+        sys.exit(1)
+
+    result = diff_specs(old_data, new_data)
+
+    if json_output:
+        click.echo(json.dumps(result, indent=2))
+    else:
+        summary = format_human_summary(result)
+        click.echo(summary)
+        click.echo("")
+        click.echo(json.dumps(result, indent=2))
+
+    # Print destructive warnings to stderr
+    if result.get("destructive_count", 0) > 0:
+        click.echo(
+            f"\nWARNING: {result['destructive_count']} destructive change(s) detected. "
+            "Review migration script carefully.",
+            err=True,
+        )
