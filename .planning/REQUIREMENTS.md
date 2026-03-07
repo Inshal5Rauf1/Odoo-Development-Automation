@@ -1,90 +1,95 @@
 # Requirements: Odoo Module Automation
 
-**Defined:** 2026-03-06
+**Defined:** 2026-03-07
 **Core Value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 
-## v3.2 Requirements
+## v3.3 Requirements
 
-Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap phases.
-
-### Security
-
-- [x] **SECR-01**: Generator produces `res.groups` XML with `implied_ids` hierarchy and `ir.model.access` CSV entries for custom security roles defined in spec
-- [x] **SECR-02**: Fields with `sensitive: true` or `groups` in spec render with `groups="module.group_name"` attribute for field-level access control
-- [x] **SECR-03**: Models with `audit: true` generate a tracking mixin with `write()` override, context flag recursion guard, and structured audit log entries
-
-### Business Logic
-
-- [x] **BIZL-01**: Models with `approval` in spec generate multi-level state field, action methods, group-gated header buttons, and `ir.rule` per approval stage
-- [x] **BIZL-02**: State transitions with `notify: true` generate `mail.template` XML records and `send_mail()` calls in action methods
-- [x] **BIZL-03**: Models with `webhooks` generate hook method stubs in `create()`/`write()` with configurable dispatch
-
-### Tooling
-
-- [x] **TOOL-01**: CLI `diff-spec` command compares two spec versions and produces typed change objects (added/removed/modified fields, models, relations)
-- [x] **TOOL-04**: CLI `gen-migration` command consumes spec diff output and generates Odoo migration scripts (`pre-migrate.py`, `post-migrate.py`)
-
-### Pipeline
-
-- [x] **PIPE-01**: Context7 `query_docs` is called during render setup (pre-fetch) to enrich template context with relevant Odoo documentation hints
+Requirements for v3.3 Test Fixes, Domain Patterns & Architecture. Each maps to roadmap phases.
 
 ### Infrastructure
 
-- [x] **INFR-01**: renderer.py preprocessors and context builders extracted into separate modules before new features
-- [x] **INFR-02**: Multi-feature integration tests validate write() override stacking, non-admin field access, and full approval+notification flow
-
-## Future Requirements (v3.3+)
-
-### Domain/Localization
-
-- **DOMN-01**: Document management pattern with verification workflow
-- **DOMN-02**: Pakistan/HEC localization framework (CNIC, phone, PKR)
-- **DOMN-03**: Semester/academic calendar awareness
+- [x] **INFR-01**: Preprocessor package extraction — split 1,715-line `preprocessors.py` into `preprocessors/` package with decorator-based registry, each preprocessor in its own file, zero behavior change for existing pipelines
 
 ### Architecture
 
-- **ARCH-01**: Project context / model registry for cross-module awareness
-- **ARCH-02**: Structured generation manifest for checker
-- **ARCH-03**: Semantic validation beyond pylint+Docker
-- **ARCH-04**: Human checkpoint hooks in generation pipeline
-- **ARCH-05**: Generation state persistence with resume
+- [ ] **ARCH-01**: Pydantic v2 spec validation with `protected_namespaces=()`, `extra="allow"`, backward-compatible defaults on all new fields, JSON Schema export for IDE autocomplete — runs BEFORE preprocessors in `render_module()`
+- [ ] **ARCH-02**: Cross-module model registry with JSON persistence (`.odoo-gen-registry.json`), comodel validation, `depends` inference, cycle detection — called in CLI layer, not inside render pipeline
+- [ ] **ARCH-03**: Pre-Docker semantic validation — AST-parse generated Python, XML field reference cross-check, XML ID uniqueness, ACL model references, manifest `depends` completeness — catches 60-70% of bugs in <1 second
+- [ ] **ARCH-04**: Generation manifest with file paths, SHA256 checksums, template versions, preprocessor list — persisted as `.odoo-gen-manifest.json` sidecar
+- [ ] **ARCH-05**: Checkpoint hooks via `RenderHook` Protocol in `renderer.py` with `on_preprocess_complete`, `on_stage_complete`, `on_render_complete` callbacks — zero overhead when `hooks=None`
+- [ ] **ARCH-06**: Generation state persistence with `GenerationSession` dataclass extending `artifact_state.py`, `resume_from` parameter on `render_module()` to skip completed stages
+
+### Domain Patterns
+
+- [ ] **DOMN-02**: Pakistan/HEC localization — CNIC validation (normalize-then-validate, 5 edge cases: no-dash, province code, gender digit, old format, NICOP), Pakistani phone validation (phonenumbers lib, optional `pakistan` extra), PKR currency via Odoo `res.currency`, NTN/STRN tax identifiers for FBR, HEC fields (registration number, GPA 4.0 scale, credit hours, recognition status)
+- [ ] **DOMN-03**: Academic calendar — `academic.year`, `academic.term`, `academic.batch` models following OpenEduCat naming, date range overlap prevention via `@api.constrains`, automatic term generation from `term_structure` selection, academic year as Char field (not fiscal year Many2one)
+- [ ] **DOMN-01**: Document management — document type classification, Binary file storage with `attachment=True`, verification workflow using separate `verification_state` field (independent from approval `state`), simple version tracking
+- [ ] **DOMN-04**: Odoo 18 `discuss.channel` version gate — template conditional for mail.channel (17.0) vs discuss.channel (18.0) rename
 
 ### Tooling
 
-- **TOOL-02**: Dev environment generation (docker-compose.dev.yml, devcontainer)
-- **TOOL-03**: Module dependency visualization (Mermaid graph)
+- [ ] **TOOL-01**: Mermaid dependency graph + model ER diagram generation as `.mmd` files — module dependency DAG and field-level entity relationships, renders in GitHub/VS Code
+
+### Test Infrastructure
+
+- [ ] **TFIX-01**: Fix all 36 broken tests — MCP server import resolution (21 errors via `__init__.py` fix), search index optional dep guards (5+ failures via `pytest.importorskip`), verifier Docker-not-running skip (4 failures via `conftest.py`), ChromaDB ONNX test stability (1 failure), deepdiff collection fix (2 errors)
+- [ ] **TFIX-02**: Pin dependency upper bounds — `mcp>=1.9,<2.0`, `pytest-asyncio>=1.0,<2.0`, `chromadb>=1.5,<2.0` — prevent major version bumps from silently breaking CI
+
+## Future Requirements (v3.4+)
+
+### Infrastructure
+
+- **INFR-02**: Devcontainer generation (`.devcontainer/` with devcontainer.json, docker-compose.dev.yml, launch.json)
+
+### Domain/Localization
+
+- **DOMN-05**: HEC combined semester structure (needs DOMN-02 + DOMN-03 stable first)
+- **DOMN-06**: Full l10n_pk accounting localization (FBR tax slabs change annually)
+- **DOMN-07**: Urdu RTL generation support
+
+### Architecture
+
+- **ARCH-07**: Spec migration/upgrade infrastructure (only needed when schema changes are breaking)
+- **ARCH-08**: Auto-install link module detection (heuristic-heavy)
+- **ARCH-09**: Cross-module Mermaid with registry (needs registry battle-tested first)
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Dynamic RBAC (runtime ACL sync) | Anti-feature: Odoo expects static XML/CSV security, not runtime ir.model.access manipulation |
-| Non-admin Docker testing | Infrastructure gap: Docker tests run as admin; field-level security validation deferred to manual testing |
-| Pydantic spec validation | May add in v3.3 if spec complexity warrants it |
+| Devcontainer generation | Belt generates Odoo modules, not dev environments -- contributors already have setup. Deferred to v3.4. |
+| FBR e-invoicing | Tax slabs change annually, high maintenance burden |
+| OCR document classification | AI/ML scope creep -- document management is metadata + storage + workflow |
+| Full OpenEduCat clone | We generate academic models, not replicate a full education ERP |
+| Dynamic RBAC (runtime ACL sync) | Anti-feature: Odoo expects static XML/CSV security |
+| Pydantic spec schema migration tool | Only needed when schema changes are breaking -- premature for v3.3 |
 | QWeb PDF rendering validation | wkhtmltopdf testing too fragile for automated CI |
-| Odoo 18 discuss.channel support | Version gate needed but low priority for v3.2 |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFR-01 | Phase 36 | Complete |
-| SECR-01 | Phase 37 | Complete |
-| SECR-02 | Phase 37 | Complete |
-| SECR-03 | Phase 38 | Complete |
-| BIZL-01 | Phase 39 | Complete |
-| BIZL-02 | Phase 40 | Complete |
-| BIZL-03 | Phase 40 | Complete |
-| TOOL-01 | Phase 41 | Complete |
-| TOOL-04 | Phase 41 | Complete |
-| PIPE-01 | Phase 42 | Complete |
-| INFR-02 | Phase 43 | Complete |
+| INFR-01 | Phase 45 | Complete |
+| TFIX-01 | Phase 46 | Pending |
+| TFIX-02 | Phase 46 | Pending |
+| ARCH-01 | Phase 47 | Pending |
+| ARCH-02 | Phase 48 | Pending |
+| DOMN-02 | Phase 49 | Pending |
+| DOMN-03 | Phase 50 | Pending |
+| ARCH-03 | Phase 51 | Pending |
+| DOMN-01 | Phase 52 | Pending |
+| DOMN-04 | Phase 52 | Pending |
+| TOOL-01 | Phase 53 | Pending |
+| ARCH-04 | Phase 54 | Pending |
+| ARCH-05 | Phase 54 | Pending |
+| ARCH-06 | Phase 54 | Pending |
 
 **Coverage:**
-- v3.2 requirements: 11 total
-- Mapped to phases: 11
+- v3.3 requirements: 14 total
+- Mapped to phases: 14
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-03-06*
-*Last updated: 2026-03-06 after roadmap creation*
+*Requirements defined: 2026-03-07*
+*Last updated: 2026-03-07 after roadmap creation*

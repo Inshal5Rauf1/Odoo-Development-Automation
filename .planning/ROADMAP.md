@@ -9,7 +9,8 @@
 - **v2.1 Auto-Fix & Enhancements** — Phases 18-19 (shipped 2026-03-04) | [Archive](milestones/v2.1-ROADMAP.md)
 - **v3.0 Bug Fixes & Tech Debt** — Phases 20-25 (shipped 2026-03-05) | [Archive](milestones/v3.0-ROADMAP.md)
 - **v3.1 Design Flaws & Feature Gaps** — Phases 26-35 (shipped 2026-03-05)
-- **v3.2 Security, Business Logic & Context7** — Phases 36-43 (in progress)
+- **v3.2 Security, Business Logic & Context7** — Phases 36-44 (shipped 2026-03-07) | [Archive](milestones/v3.2-ROADMAP.md)
+- **v3.3 Test Fixes, Domain Patterns & Architecture** — Phases 45-54 (in progress)
 
 ## Phases
 
@@ -73,160 +74,161 @@
 <details>
 <summary>v3.1 Design Flaws & Feature Gaps (Phases 26-35) — SHIPPED 2026-03-05</summary>
 
-- [x] Phase 26: Monetary Field Detection (1/1 plan) — completed 2026-03-05
-- [x] Phase 27: Relationship Patterns (1/1 plan) — completed 2026-03-05
-- [x] Phase 28: Computed Chains & Cycle Detection (1/1 plan) — completed 2026-03-05
-- [x] Phase 29: Complex Constraints (1/1 plan) — completed 2026-03-05
-- [x] Phase 30: Scheduled Actions & Render Pipeline (1/1 plan) — completed 2026-03-05
-- [x] Phase 31: Reports & Analytics (1/1 plan) — completed 2026-03-05
-- [x] Phase 32: Controllers & Import/Export (2/2 plans) — completed 2026-03-05
-- [x] Phase 33: Database Performance (1/1 plan) — completed 2026-03-05
-- [x] Phase 34: Production Patterns (2/2 plans) — completed 2026-03-05
-- [x] Phase 35: Template Bug Fixes & Tech Debt (1/1 plan) — completed 2026-03-05
-
-**Total:** 10 phases, 12 plans, 16 requirements
+- [x] Phase 26-35: 10 phases, 12 plans — completed 2026-03-05
 
 </details>
 
-### v3.2 Security, Business Logic & Context7 (In Progress)
+<details>
+<summary>v3.2 Security, Business Logic & Context7 (Phases 36-44) — SHIPPED 2026-03-07</summary>
 
-**Milestone Goal:** Add security patterns (RBAC, field-level, audit trail), business logic patterns (approval workflows, notifications, webhooks), developer tooling (spec diffing, migration scripts), and wire Context7 into the generation pipeline.
+- [x] Phase 36-44: 9 phases, 15 plans — completed 2026-03-07
 
-- [x] **Phase 36: Renderer Extraction** - Extract preprocessors and context builders from renderer.py into separate modules (completed 2026-03-06)
-- [x] **Phase 37: Security Foundation** - RBAC group hierarchy, field-level groups= attribute, and per-role ACLs (completed 2026-03-06)
-- [x] **Phase 38: Audit Trail** - Structured audit log model with write() override stacking and context flag guards (completed 2026-03-06)
-- [x] **Phase 39: Approval Workflows** - Multi-level state field, group-gated action methods, and per-stage record rules (completed 2026-03-06)
-- [x] **Phase 40: Notifications & Webhooks** - mail.template generation for state transitions and hook method stubs in create()/write() (completed 2026-03-06)
-- [x] **Phase 41: Spec Diffing & Migration** - CLI diff-spec command and gen-migration for pre/post migration scripts (completed 2026-03-07)
-- [x] **Phase 42: Context7 Pipeline** - Pre-fetch Context7 docs during render setup to enrich template context (completed 2026-03-07)
-- [x] **Phase 43: Integration Testing** - Multi-feature integration tests validating write() stacking, field access, and full approval+notification flow (completed 2026-03-07)
+</details>
+
+### v3.3 Test Fixes, Domain Patterns & Architecture (In Progress)
+
+**Milestone Goal:** Fix all 36 broken tests, add domain-specific generation patterns (documents, Pakistan/HEC, academic calendar), strengthen architecture (Pydantic validation, model registry, semantic validation, generation manifest, checkpoint hooks, state persistence), and add developer tooling (Mermaid graphs).
+
+**Parallel execution:** Two-track git worktree strategy (infra track + features track) with strict file ownership.
+
+- [ ] **Phase 45: Preprocessor Split** - Extract 1,715-line preprocessors.py into preprocessors/ package with decorator-based registry
+- [ ] **Phase 46: Test Infrastructure** - Fix 36 broken tests and pin dependency upper bounds
+- [ ] **Phase 47: Pydantic Spec Validation** - Pydantic v2 spec schema with protected_namespaces, backward-compatible defaults, JSON Schema export
+- [ ] **Phase 48: Model Registry** - Cross-module model registry with JSON persistence, comodel validation, cycle detection
+- [ ] **Phase 49: Pakistan/HEC Localization** - CNIC, phone, PKR, NTN/STRN, HEC fields as generation patterns
+- [ ] **Phase 50: Academic Calendar** - academic.year, academic.term, academic.batch models with overlap prevention
+- [ ] **Phase 51: Semantic Validation** - Pre-Docker AST + XML cross-check catching 60-70% of bugs in <1 second
+- [ ] **Phase 52: Document Management** - Document types, Binary storage, verification workflow, Odoo 18 discuss.channel gate
+- [ ] **Phase 53: Mermaid Graphs** - Module dependency DAG and model ER diagrams as .mmd files
+- [ ] **Phase 54: Pipeline Quality of Life** - Generation manifest, checkpoint hooks, and state persistence with resume
 
 ## Phase Details
 
-### Phase 36: Renderer Extraction
-**Goal**: Preprocessors and context builders live in dedicated modules, reducing renderer.py from 1852 lines to ~800 and establishing override flag merge patterns before new features add complexity
-**Depends on**: Nothing (prerequisite for all v3.2 work)
+### Phase 45: Preprocessor Split
+**Goal**: Preprocessors live in a dedicated package with a decorator-based registry, unblocking domain pattern phases that would otherwise push a 1,715-line monolith past 2,500 lines
+**Depends on**: Nothing (first phase of v3.3)
 **Requirements**: INFR-01
 **Success Criteria** (what must be TRUE):
-  1. `preprocessors.py` exists as a standalone module containing all existing preprocessor functions, importable and callable from renderer.py
-  2. `renderer_context.py` exists as a standalone module containing `_build_model_context` and `_build_module_context`
-  3. renderer.py is under 900 lines with no behavior change -- all existing tests pass without modification
-  4. Override flags use a `set[str]` of sources (not boolean) so new preprocessors cannot silently clobber earlier flags
-  5. A minimal-spec smoke test exists that renders a bare-minimum spec through the full pipeline without StrictUndefined errors
-**Plans**: 2 plans
-
+  1. `preprocessors/` package exists with each preprocessor in its own file, importable via `from odoo_gen_utils.preprocessors import run_preprocessors`
+  2. A decorator-based registry (`@register_preprocessor`) controls preprocessor discovery and ordering without manual import lists
+  3. All existing tests pass without modification -- zero behavior change for the render pipeline
+  4. Adding a new preprocessor requires only creating a new file with the decorator -- no edits to `__init__.py` or registry configuration
+**Plans:** 1/2 plans executed
 Plans:
-- [x] 36-01-PLAN.md — Extract renderer_utils.py and preprocessors.py, migrate override flags to set[str]
-- [x] 36-02-PLAN.md — Extract renderer_context.py, slim renderer.py, add smoke test
+- [ ] 45-01-PLAN.md — Create registry infrastructure, split preprocessors into domain files with decorators
+- [ ] 45-02-PLAN.md — Wire renderer to use run_preprocessors(), delete old monolith, full regression
 
-### Phase 37: Security Foundation
-**Goal**: Specs with custom security roles generate complete RBAC infrastructure -- group hierarchy XML, per-role ACL rows, field-level groups= attributes, and ownership/department record rules
-**Depends on**: Phase 36 (preprocessors module must exist for `_process_security_patterns`)
-**Requirements**: SECR-01, SECR-02
+### Phase 46: Test Infrastructure
+**Goal**: CI is green with all 36 previously broken tests passing or properly skipped, and dependency pins prevent future silent breakage
+**Depends on**: Nothing (independent of Phase 45)
+**Requirements**: TFIX-01, TFIX-02
 **Success Criteria** (what must be TRUE):
-  1. A spec with `roles: [viewer, editor, manager]` generates `security_group.xml` with `res.groups` records and `implied_ids` chain (viewer < editor < manager)
-  2. Each custom role gets corresponding `ir.model.access` CSV entries with appropriate CRUD permissions (viewer: read-only, editor: read/write, manager: full)
-  3. Fields marked `sensitive: true` or with explicit `groups` in spec render with `groups="module.group_name"` attribute in the generated model file
-  4. The security preprocessor cross-references `groups=` fields against search view filters and computed field dependencies, warning if a restricted field is used in a context accessible to lower-privilege roles
-**Plans**: 2 plans
+  1. All 21 MCP server test errors are resolved via proper import path resolution (not by deleting or skipping the tests)
+  2. Search index tests with optional PyGithub dependency use `pytest.importorskip` guards and pass in both with-dep and without-dep environments
+  3. Verifier integration tests skip cleanly when Docker is not running (via `conftest.py` fixture), and pass when Docker is available
+  4. `pyproject.toml` pins `mcp>=1.9,<2.0`, `pytest-asyncio>=1.0,<2.0`, and `chromadb>=1.5,<2.0` with upper bounds
+  5. `pytest` run with no Docker reports 0 failures and 0 errors (skips are acceptable)
+**Plans**: TBD
 
-Plans:
-- [x] 37-01-PLAN.md — Security preprocessor, group hierarchy, ACL matrix, record rules, template updates
-- [x] 37-02-PLAN.md — Field-level groups= attribute, view auto-fix, model template groups= rendering
-
-### Phase 38: Audit Trail
-**Goal**: Models with `audit: true` generate a companion audit log model, a write() override with context flag recursion guard, and audit-specific views and ACLs
-**Depends on**: Phase 36 (preprocessors extraction), Phase 37 (security groups for audit viewer role)
-**Requirements**: SECR-03
+### Phase 47: Pydantic Spec Validation
+**Goal**: Module specs are validated against a typed Pydantic v2 schema before preprocessing, catching malformed input early while remaining backward-compatible with all existing specs
+**Depends on**: Phase 45 (preprocessor package must exist for pipeline integration point)
+**Requirements**: ARCH-01
 **Success Criteria** (what must be TRUE):
-  1. A spec with `audit: true` on a model generates an `audit.trail.log` companion model with fields for user, timestamp, model name, record ID, field name, old value, and new value
-  2. The audited model gets a `write()` override that logs changed fields to the audit model, guarded by `self.env.context.get('_skip_audit')` to prevent infinite recursion
-  3. Audit log entries are only writable by the audit system (create-only ACL for the audit model, no write/unlink for regular users)
-  4. The write() override stacking pattern (context flag guard, super() call ordering) is established as a reusable template block for Phase 39 and 40 to extend
-**Plans**: 2 plans
+  1. `validate_spec()` runs BEFORE preprocessors in `render_module()` and returns a validated Pydantic model with defaults filled for all optional fields
+  2. All Pydantic models use `ConfigDict(protected_namespaces=())` so Odoo's `model_name`, `model_description` etc. work without conflict
+  3. Existing spec fixtures (spec_v1.json, spec_v2.json, and all test specs) validate successfully with no modifications -- `extra="allow"` ensures backward compatibility
+  4. `odoo-gen export-schema` outputs a JSON Schema file that provides autocomplete in VS Code / any JSON-aware editor
+  5. Validation failures produce warnings (not errors) -- generation never blocks on schema violations
+**Plans**: TBD
 
-Plans:
-- [ ] 38-01-PLAN.md — Audit preprocessor, renderer context defaults, auditor role injection, ACL
-- [ ] 38-02-PLAN.md — Model template audit write() wrapper, helper methods, smoke test
-
-### Phase 39: Approval Workflows
-**Goal**: Models with `approval` in spec generate a complete multi-level approval workflow with state field, group-gated action methods, header buttons, and per-stage record rules
-**Depends on**: Phase 37 (security groups for approver roles), Phase 38 (write() stacking pattern)
-**Requirements**: BIZL-01
+### Phase 48: Model Registry
+**Goal**: The system tracks all generated models across modules, enabling comodel validation and depends inference without requiring a running Odoo instance
+**Depends on**: Nothing (independent of Phase 47)
+**Requirements**: ARCH-02
 **Success Criteria** (what must be TRUE):
-  1. A spec with `approval: {levels: [submitted, approved_l1, approved_l2, done]}` generates a Selection state field with those values and `action_submit()`, `action_approve_l1()`, `action_approve_l2()`, `action_done()` methods
-  2. Each approval action method is gated by a security group check (e.g., only `group_approver_l1` can call `action_approve_l1`)
-  3. Form view `<header>` section contains workflow buttons with `states=` and `groups=` attributes controlling visibility per approval stage
-  4. `ir.rule` record rules restrict record visibility by approval stage (e.g., draft records visible only to creator and managers)
-**Plans**: 2 plans
+  1. After generating a module, its models are registered in `.odoo-gen-registry.json` with model names, field definitions, and module membership
+  2. When a spec references a comodel (Many2one, One2many, Many2many), the registry validates that the comodel exists and warns if it does not
+  3. `depends` list in `__manifest__.py` is automatically inferred from comodel references found in the registry (no manual depends required for registered modules)
+  4. Circular dependency between modules is detected and reported before generation proceeds
+  5. Registry operations are called from the CLI layer (not inside render pipeline) -- render_module() has no knowledge of the registry
+**Plans**: TBD
 
-Plans:
-- [ ] 39-01-PLAN.md — Approval preprocessor, context defaults, pipeline wiring, and unit tests
-- [ ] 39-02-PLAN.md — Template blocks (action methods, header buttons, record rules), smoke tests
-
-### Phase 40: Notifications & Webhooks
-**Goal**: State transitions generate mail.template XML records with send_mail() calls, and models with webhooks generate extensible hook method stubs in create()/write()
-**Depends on**: Phase 39 (state fields and action methods must exist for notification triggers)
-**Requirements**: BIZL-02, BIZL-03
+### Phase 49: Pakistan/HEC Localization
+**Goal**: Specs requesting Pakistan localization generate models with properly validated CNIC, phone, NTN/STRN, PKR currency, and HEC academic fields -- covering the first Pakistan-specific Odoo generation capability in the ecosystem
+**Depends on**: Phase 45 (preprocessor package for domain preprocessor registration), Phase 47 (Pydantic schema for localization spec keys)
+**Requirements**: DOMN-02
 **Success Criteria** (what must be TRUE):
-  1. State transitions with `notify: true` generate `mail.template` XML records with `noupdate="1"`, subject/body referencing the model fields, and `email_to` targeting relevant users
-  2. Action methods for notifiable transitions include `self.env.ref('module.template_name').send_mail(self.id)` calls after the state change
-  3. Models with `webhooks` in spec generate `_webhook_post_create(self, vals)` and `_webhook_post_write(self, vals, old_vals)` stub methods called from `create()` and `write()` overrides
-  4. Webhook hooks use `self.env.context.get('_skip_webhooks')` guard to prevent recursion, consistent with the audit trail pattern from Phase 38
-**Plans**: 2 plans
+  1. A spec with `localization: pakistan` generates CNIC fields with normalize-then-validate logic handling all 5 edge cases (no-dash, province code, gender digit, old format, NICOP)
+  2. Pakistani phone fields use the `phonenumbers` library for validation, supporting mobile (03XX), landline, and international (+92) formats
+  3. PKR currency is injected via `res.currency` reference (not hardcoded symbol), and NTN/STRN tax identifier fields are generated for FBR compliance
+  4. HEC fields (registration number, GPA on 4.0 scale, credit hours, recognition status) are generated when `hec: true` is present in the localization config
+  5. All Pakistan-specific logic lives in `preprocessors/pakistan_hec.py` -- zero changes to core preprocessor files
+**Plans**: TBD
 
-Plans:
-- [ ] 40-01-PLAN.md — Notification and webhook preprocessors, renderer context defaults, pipeline wiring, unit tests
-- [ ] 40-02-PLAN.md — Template rendering (mail_template_data.xml.j2, model.py.j2 notification/webhook blocks), smoke tests
-
-### Phase 41: Spec Diffing & Migration
-**Goal**: CLI commands compare spec versions and generate Odoo migration scripts from the structural differences
-**Depends on**: Phase 36 (independent of security/workflow track, only needs stable renderer)
-**Requirements**: TOOL-01, TOOL-04
+### Phase 50: Academic Calendar
+**Goal**: Specs requesting academic calendar generate a complete semester/term management system with overlap prevention and automatic term generation, following OpenEduCat naming conventions
+**Depends on**: Phase 45 (preprocessor package), Phase 47 (Pydantic schema for academic_calendar spec key)
+**Requirements**: DOMN-03
 **Success Criteria** (what must be TRUE):
-  1. `odoo-gen diff-spec old.json new.json` outputs typed change objects categorizing each difference as added/removed/modified for models, fields, and relations
-  2. `odoo-gen gen-migration old.json new.json --version 17.0.1.1.0` generates `migrations/17.0.1.1.0/pre-migrate.py` using only `cr.execute()` raw SQL (no ORM) and `post-migrate.py` using ORM calls
-  3. Field type changes that lose data (e.g., Text to Integer) are flagged as warnings in the diff output, and migration scripts include safety comments
-  4. The `deepdiff` library is added as a dependency and used for structural comparison with `ignore_order` for list fields
-**Plans**: 2 plans
+  1. A spec with `academic_calendar: true` generates `academic.year`, `academic.term`, and `academic.batch` models with proper relationships (term belongs to year, batch belongs to term)
+  2. `@api.constrains` on date fields prevents overlapping terms within the same academic year and overlapping academic years
+  3. `term_structure` Selection field on academic year (e.g., semester, trimester, quarter) drives automatic term generation with computed date splits
+  4. Academic year is a Char field (e.g., "2025-2026"), not a Many2one to `account.fiscal.year`
+  5. All academic calendar logic lives in `preprocessors/academic_calendar.py` -- zero changes to core preprocessor files
+**Plans**: TBD
 
-Plans:
-- [ ] 41-01-PLAN.md — Spec differ module with deepdiff, destructiveness classification, diff-spec CLI command
-- [ ] 41-02-PLAN.md — Migration generator with per-change helpers, backup/restore patterns, gen-migration CLI command
-
-### Phase 42: Context7 Pipeline
-**Goal**: Context7 documentation is pre-fetched during render setup and injected into template context as hints, enriching generated code with real-time Odoo API knowledge
-**Depends on**: Phase 36 (renderer_context.py must exist for context injection point)
-**Requirements**: PIPE-01
+### Phase 51: Semantic Validation
+**Goal**: A pre-Docker validation pass catches field reference errors, XML ID conflicts, ACL mismatches, and manifest gaps in under 1 second -- eliminating the 30-60 second Docker round-trip for the majority of bugs
+**Depends on**: Phase 48 (model registry for cross-model reference validation)
+**Requirements**: ARCH-03
 **Success Criteria** (what must be TRUE):
-  1. Before the render chain starts, `context7_enrich()` batch-queries Context7 for relevant Odoo documentation based on the spec's models, fields, and patterns
-  2. Results are injected as `c7_hints` dict into the template context, accessible in Jinja2 templates as optional enrichment
-  3. Context7 failures (timeout, rate limit, network error) never block or fail the render pipeline -- generation proceeds with empty hints and a stderr warning
-  4. A `--no-context7` CLI flag disables enrichment entirely for offline or CI usage
-**Plans**: 2 plans
+  1. AST-parsed generated Python files are cross-checked against the spec: every field referenced in views exists in the model, every comodel in relational fields is defined or registered
+  2. XML IDs across all generated XML files are unique within the module -- duplicates are reported as errors
+  3. ACL CSV entries reference models that actually exist in the generated module (no typos in `model_id:id` column)
+  4. Manifest `depends` list is validated for completeness: if generated code imports from `odoo.addons.X`, then `X` must appear in depends
+  5. Full semantic validation completes in under 2 seconds for a typical module (5 models, 10 views)
+**Plans**: TBD
 
-Plans:
-- [ ] 42-01-PLAN.md — Core enrichment engine: context7_enrich(), pattern detection, disk cache, token truncation, unit tests
-- [ ] 42-02-PLAN.md — Pipeline wiring: renderer/context/CLI integration, --no-context7/--fresh-context7 flags, pipeline tests
-
-### Phase 43: Integration Testing
-**Goal**: Multi-feature integration tests validate that security, audit, approval, notification, and webhook patterns work correctly in combination
-**Depends on**: Phase 38, Phase 39, Phase 40 (all feature phases must be complete)
-**Requirements**: INFR-02
+### Phase 52: Document Management
+**Goal**: Specs requesting document management generate a complete document lifecycle system with type classification, file storage, verification workflow, and Odoo 18 discuss.channel compatibility
+**Depends on**: Phase 45 (preprocessor package), Phase 47 (Pydantic schema for document spec keys)
+**Requirements**: DOMN-01, DOMN-04
 **Success Criteria** (what must be TRUE):
-  1. An integration test renders a spec combining audit + approval + notifications + webhooks and verifies that the generated write() method contains all override blocks in correct order (audit wraps approval wraps webhook)
-  2. An integration test verifies that field-level `groups=` restrictions and approval-stage `ir.rule` records coexist without conflicts in the generated security files
-  3. An integration test renders a full-featured spec through Docker validation, confirming the module installs and tests pass with all patterns active simultaneously
-  4. A recursion guard test verifies that audit logging during an approval state change does not trigger infinite write() recursion
-**Plans**: 1 plan
+  1. A spec with `documents: true` generates document type classification model, Binary file storage fields with `attachment=True` (never in-database), and metadata fields (upload date, file size, mime type)
+  2. Document models have a `verification_state` field (separate from approval `state`) with its own button group and workflow transitions (draft/pending/verified/rejected)
+  3. Simple version tracking is generated: new uploads create version records, previous versions remain accessible
+  4. Templates generate `mail.channel` references for Odoo 17.0 and `discuss.channel` for Odoo 18.0 via version-conditional blocks
+  5. All document management logic lives in `preprocessors/document_management.py` -- zero changes to core preprocessor files
+**Plans**: TBD
 
-Plans:
-- [ ] 43-01-PLAN.md — Kitchen sink + pairwise integration tests, Tier 1 validation helpers, Docker-gated install test
+### Phase 53: Mermaid Graphs
+**Goal**: Developers can visualize module dependencies and model relationships as Mermaid diagrams renderable in GitHub and VS Code
+**Depends on**: Phase 48 (model registry provides the data for dependency graphs)
+**Requirements**: TOOL-01
+**Success Criteria** (what must be TRUE):
+  1. `odoo-gen mermaid-deps <module>` generates a `.mmd` file with a directed acyclic graph of module dependencies (from manifest + registry)
+  2. `odoo-gen mermaid-er <module>` generates a `.mmd` file with an entity-relationship diagram showing models, fields, and relational links
+  3. Generated `.mmd` files render correctly in GitHub markdown preview and VS Code Mermaid extension without manual editing
+  4. Node names with dots (e.g., `res.partner`) are sanitized to valid Mermaid identifiers with display labels preserving the original name
+**Plans**: TBD
+
+### Phase 54: Pipeline Quality of Life
+**Goal**: The generation pipeline produces a manifest of what it generated, supports human checkpoint callbacks at key stages, and can resume from where it left off after interruption
+**Depends on**: Phase 45 (preprocessor package for hook integration points), Phase 47 (Pydantic for manifest schema)
+**Requirements**: ARCH-04, ARCH-05, ARCH-06
+**Success Criteria** (what must be TRUE):
+  1. After generation, `.odoo-gen-manifest.json` sidecar contains file paths, SHA256 checksums, template versions used, and list of preprocessors that ran
+  2. `RenderHook` Protocol in `renderer.py` defines `on_preprocess_complete`, `on_stage_complete`, `on_render_complete` callbacks -- when `hooks=None` (default), zero overhead
+  3. GSD workflows can instantiate a hook object that pauses for human review at configured pipeline stages (post-preprocess, post-stage, post-render)
+  4. `GenerationSession` dataclass tracks which stages have completed, persisted to the artifact state sidecar
+  5. `render_module(resume_from=<stage>)` skips already-completed stages and resumes from the specified point, enabling recovery from interruptions
+**Plans**: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
+Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 -> 54
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -237,14 +239,17 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 18-19 | v2.1 | 5/5 | Complete | 2026-03-04 |
 | 20-25 | v3.0 | 11/11 | Complete | 2026-03-05 |
 | 26-35 | v3.1 | 12/12 | Complete | 2026-03-05 |
-| 36. Renderer Extraction | 2/2 | Complete    | 2026-03-06 | - |
-| 37. Security Foundation | 2/2 | Complete   | 2026-03-06 | - |
-| 38. Audit Trail | 1/2 | Complete    | 2026-03-06 | - |
-| 39. Approval Workflows | 2/2 | Complete    | 2026-03-06 | - |
-| 40. Notifications & Webhooks | 2/2 | Complete    | 2026-03-06 | - |
-| 41. Spec Diffing & Migration | 2/2 | Complete    | 2026-03-07 | - |
-| 42. Context7 Pipeline | 2/2 | Complete    | 2026-03-07 | - |
-| 43. Integration Testing | 1/1 | Complete   | 2026-03-07 | - |
+| 36-44 | v3.2 | 15/15 | Complete | 2026-03-07 |
+| 45. Preprocessor Split | 1/2 | In Progress|  | - |
+| 46. Test Infrastructure | v3.3 | 0/TBD | Not started | - |
+| 47. Pydantic Spec Validation | v3.3 | 0/TBD | Not started | - |
+| 48. Model Registry | v3.3 | 0/TBD | Not started | - |
+| 49. Pakistan/HEC Localization | v3.3 | 0/TBD | Not started | - |
+| 50. Academic Calendar | v3.3 | 0/TBD | Not started | - |
+| 51. Semantic Validation | v3.3 | 0/TBD | Not started | - |
+| 52. Document Management | v3.3 | 0/TBD | Not started | - |
+| 53. Mermaid Graphs | v3.3 | 0/TBD | Not started | - |
+| 54. Pipeline Quality of Life | v3.3 | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-03-01*
@@ -255,4 +260,5 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 *v2.1 shipped: 2026-03-04*
 *v3.0 shipped: 2026-03-05*
 *v3.1 shipped: 2026-03-05*
-*v3.2 roadmap created: 2026-03-06*
+*v3.2 shipped: 2026-03-07*
+*v3.3 roadmap created: 2026-03-07*
