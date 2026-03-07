@@ -155,7 +155,9 @@ def _extract_template_description(template_path: Path) -> str:
 @main.command("render-module")
 @click.option("--spec-file", required=True, type=click.Path(exists=True), help="JSON file with module specification")
 @click.option("--output-dir", required=True, type=click.Path(), help="Directory to create module in")
-def render_module_cmd(spec_file: str, output_dir: str) -> None:
+@click.option("--no-context7", is_flag=True, default=False, help="Skip Context7 documentation hints")
+@click.option("--fresh-context7", is_flag=True, default=False, help="Ignore Context7 cache, force re-query")
+def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_context7: bool) -> None:
     """Render a complete Odoo module from a JSON specification file."""
     from odoo_gen_utils.renderer import get_template_dir, render_module
     from odoo_gen_utils.verifier import build_verifier_from_env
@@ -178,7 +180,10 @@ def render_module_cmd(spec_file: str, output_dir: str) -> None:
 
     try:
         verifier = build_verifier_from_env()
-        files, warnings = render_module(spec, template_dir, output_path, verifier=verifier)
+        files, warnings = render_module(
+            spec, template_dir, output_path, verifier=verifier,
+            no_context7=no_context7, fresh_context7=fresh_context7,
+        )
         for f in files:
             click.echo(str(f))
         for w in warnings:
