@@ -886,3 +886,54 @@ def diff_spec(old_spec: str, new_spec: str, json_output: bool) -> None:
             "Review migration script carefully.",
             err=True,
         )
+
+
+@main.command("gen-migration")
+@click.argument("old_spec", type=click.Path(exists=True))
+@click.argument("new_spec", type=click.Path(exists=True))
+@click.option("--version", "migration_version", required=True, help="Migration version (e.g., 17.0.1.1.0)")
+@click.option("--output-dir", default=".", type=click.Path(), help="Output directory for migration folder")
+def gen_migration(old_spec: str, new_spec: str, migration_version: str, output_dir: str) -> None:
+    """Generate Odoo migration scripts from spec differences.
+
+    Reads two JSON spec files, computes the diff, and generates
+    pre-migrate.py and post-migrate.py scripts with per-change helper
+    functions using raw SQL (cr.execute).
+
+    Creates {output-dir}/migrations/{version}/ directory with the scripts.
+    """
+    from odoo_gen_utils.migration_generator import generate_migration
+    from odoo_gen_utils.spec_differ import diff_specs
+
+    try:
+        old_data = json.loads(Path(old_spec).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        click.echo(f"Error reading old spec: {exc}", err=True)
+        sys.exit(1)
+
+    try:
+        new_data = json.loads(Path(new_spec).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        click.echo(f"Error reading new spec: {exc}", err=True)
+        sys.exit(1)
+
+    diff = diff_specs(old_data, new_data)
+
+    if not diff["migration_required"]:
+        click.echo("No migration required.")
+        return
+
+    result = generate_migration(diff, migration_version, output_dir=output_dir)
+
+    migration_dir = Path(output_dir) / "migrations" / migration_version
+    click.echo(f"Created migration scripts in: {migration_dir}")
+    click.echo(f"  {migration_dir / 'pre-migrate.py'}")
+    click.echo(f"  {migration_dir / 'post-migrate.py'}")
+
+    destructive_count = diff.get("destructive_count", 0)
+    if destructive_count > 0:
+        click.echo(
+            f"\nWARNING: {destructive_count} destructive change(s) detected. "
+            "Review migration scripts carefully.",
+            err=True,
+        )
