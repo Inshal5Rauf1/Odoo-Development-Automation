@@ -26,7 +26,7 @@ Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap 
 
 ### Pipeline
 
-- [ ] **PIPE-01**: Context7 `query_docs` is called during render setup (pre-fetch) to enrich template context with relevant Odoo documentation hints
+- [x] **PIPE-01**: Context7 `query_docs` is called during render setup (pre-fetch) to enrich template context with relevant Odoo documentation hints
 
 ### Infrastructure
 
@@ -77,7 +77,7 @@ Requirements for v3.2 Security, Business Logic & Context7. Each maps to roadmap 
 | BIZL-03 | Phase 40 | Complete |
 | TOOL-01 | Phase 41 | Pending |
 | TOOL-04 | Phase 41 | Pending |
-| PIPE-01 | Phase 42 | Pending |
+| PIPE-01 | Phase 42 | Complete |
 | INFR-02 | Phase 43 | Pending |
 
 **Coverage:**
