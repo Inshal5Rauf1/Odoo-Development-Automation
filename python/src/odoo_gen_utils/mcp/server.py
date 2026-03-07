@@ -15,7 +15,12 @@ import os
 import sys
 import xmlrpc.client
 
-from mcp.server.fastmcp import FastMCP
+try:
+    from mcp.server.fastmcp import FastMCP
+    _HAS_MCP = True
+except ImportError:
+    FastMCP = None  # type: ignore[assignment,misc]
+    _HAS_MCP = False
 
 from odoo_gen_utils.mcp.odoo_client import OdooClient, OdooConfig
 
@@ -28,7 +33,21 @@ logging.basicConfig(
 logger = logging.getLogger("odoo-mcp")
 
 # FastMCP server instance -- tool decorators register against this object
-mcp = FastMCP("odoo-introspection")
+if _HAS_MCP:
+    mcp = FastMCP("odoo-introspection")
+else:
+    # Stub that absorbs @mcp.tool() decorators so the module can be imported
+    # without the mcp package.  Functions remain plain callables.
+    class _StubMCP:
+        """No-op stand-in for FastMCP when the mcp package is absent."""
+
+        def tool(self, *_a, **_kw):  # noqa: ANN002,ANN003
+            """Return identity decorator -- leaves the function unchanged."""
+            def _identity(fn):  # noqa: ANN001
+                return fn
+            return _identity
+
+    mcp = _StubMCP()  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +296,10 @@ def main() -> None:
     Invoked via `python -m odoo_gen_utils.mcp.server` or
     `python -m odoo_gen_utils.mcp` (via __main__.py).
     """
+    if not _HAS_MCP:
+        raise RuntimeError(
+            "mcp package not installed. Install with: pip install 'odoo-gen-utils[mcp]'"
+        )
     logger.info("Starting Odoo MCP server (stdio transport)...")
     mcp.run(transport="stdio")
 
