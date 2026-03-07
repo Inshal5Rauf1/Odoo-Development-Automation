@@ -188,10 +188,11 @@ Plans:
   2. `odoo-gen gen-migration old.json new.json --version 17.0.1.1.0` generates `migrations/17.0.1.1.0/pre-migrate.py` using only `cr.execute()` raw SQL (no ORM) and `post-migrate.py` using ORM calls
   3. Field type changes that lose data (e.g., Text to Integer) are flagged as warnings in the diff output, and migration scripts include safety comments
   4. The `deepdiff` library is added as a dependency and used for structural comparison with `ignore_order` for list fields
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 41-01: TBD
+- [ ] 41-01-PLAN.md — Spec differ module with deepdiff, destructiveness classification, diff-spec CLI command
+- [ ] 41-02-PLAN.md — Migration generator with per-change helpers, backup/restore patterns, gen-migration CLI command
 
 ### Phase 42: Context7 Pipeline
 **Goal**: Context7 documentation is pre-fetched during render setup and injected into template context as hints, enriching generated code with real-time Odoo API knowledge
@@ -202,10 +203,11 @@ Plans:
   2. Results are injected as `c7_hints` dict into the template context, accessible in Jinja2 templates as optional enrichment
   3. Context7 failures (timeout, rate limit, network error) never block or fail the render pipeline -- generation proceeds with empty hints and a stderr warning
   4. A `--no-context7` CLI flag disables enrichment entirely for offline or CI usage
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 42-01: TBD
+- [ ] 42-01-PLAN.md — Core enrichment engine: context7_enrich(), pattern detection, disk cache, token truncation, unit tests
+- [ ] 42-02-PLAN.md — Pipeline wiring: renderer/context/CLI integration, --no-context7/--fresh-context7 flags, pipeline tests
 
 ### Phase 43: Integration Testing
 **Goal**: Multi-feature integration tests validate that security, audit, approval, notification, and webhook patterns work correctly in combination
@@ -239,9 +241,9 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 37. Security Foundation | 2/2 | Complete   | 2026-03-06 | - |
 | 38. Audit Trail | 1/2 | Complete    | 2026-03-06 | - |
 | 39. Approval Workflows | 2/2 | Complete    | 2026-03-06 | - |
-| 40. Notifications & Webhooks | 2/2 | Complete   | 2026-03-06 | - |
-| 41. Spec Diffing & Migration | v3.2 | 0/? | Not started | - |
-| 42. Context7 Pipeline | v3.2 | 0/? | Not started | - |
+| 40. Notifications & Webhooks | 2/2 | Complete    | 2026-03-06 | - |
+| 41. Spec Diffing & Migration | v3.2 | 0/2 | Planned | - |
+| 42. Context7 Pipeline | v3.2 | 0/2 | Planned | - |
 | 43. Integration Testing | v3.2 | 0/? | Not started | - |
 
 ---
