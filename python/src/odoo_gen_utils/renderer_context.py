@@ -482,6 +482,8 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         # Phase 40 keys
         "has_notification_models": any(m.get("has_notifications") for m in models),
         "has_webhook_models": any(m.get("has_webhooks") for m in models),
+        # Phase 42: Context7 documentation hints (StrictUndefined-safe default)
+        "c7_hints": {},
     }
     if has_import_export:
         ctx["external_dependencies"] = {"python": ["openpyxl"]}

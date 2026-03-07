@@ -41,6 +41,8 @@ from odoo_gen_utils.preprocessors import (
     _validate_no_cycles,
 )
 
+from odoo_gen_utils.context7 import build_context7_from_env, context7_enrich
+
 from odoo_gen_utils.renderer_context import (
     _build_model_context,
     _build_module_context,
@@ -716,6 +718,9 @@ def render_module(
     template_dir: Path,
     output_dir: Path,
     verifier: "EnvironmentVerifier | None" = None,
+    *,
+    no_context7: bool = False,
+    fresh_context7: bool = False,
 ) -> "tuple[list[Path], list[VerificationWarning]]":
     """Orchestrate rendering of a complete Odoo module via 10 stage functions.
 
@@ -755,9 +760,22 @@ def render_module(
     spec = _process_notification_patterns(spec)
     # Phase 40: webhook patterns (extension point stubs in create/write)
     spec = _process_webhook_patterns(spec)
+    # Phase 42: Context7 documentation enrichment
+    if no_context7:
+        c7_hints: dict[str, str] = {}
+    else:
+        _c7_client = build_context7_from_env()
+        _c7_cache = Path(".odoo-gen-cache/context7")
+        c7_hints = context7_enrich(
+            spec, _c7_client,
+            cache_dir=_c7_cache,
+            fresh=fresh_context7,
+            odoo_version=spec.get("odoo_version", "17.0"),
+        )
     module_name = spec["module_name"]
     module_dir = output_dir / module_name
     ctx = _build_module_context(spec, module_name)
+    ctx["c7_hints"] = c7_hints  # Phase 42: inject Context7 hints
     all_warnings: list = []
 
     try:
