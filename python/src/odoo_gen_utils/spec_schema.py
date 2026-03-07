@@ -1,0 +1,318 @@
+"""Pydantic v2 spec schema for Odoo module validation.
+
+Defines typed models mirroring the spec JSON hierarchy:
+ModuleSpec > ModelSpec > FieldSpec + supporting specs.
+
+All models use ``ConfigDict(extra='allow', protected_namespaces=())``
+to preserve unknown keys and avoid conflicts with Odoo's ``model_``
+prefixed field names.
+
+Usage::
+
+    from odoo_gen_utils.spec_schema import validate_spec
+    spec = validate_spec(raw_dict)  # Returns ModuleSpec or raises
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, model_validator
+
+# ---------------------------------------------------------------------------
+# Valid Odoo field types (16 total)
+# ---------------------------------------------------------------------------
+
+VALID_FIELD_TYPES: frozenset[str] = frozenset({
+    "Char",
+    "Text",
+    "Html",
+    "Integer",
+    "Float",
+    "Monetary",
+    "Boolean",
+    "Date",
+    "Datetime",
+    "Binary",
+    "Selection",
+    "Many2one",
+    "One2many",
+    "Many2many",
+    "Many2oneReference",
+    "Json",
+})
+
+# ---------------------------------------------------------------------------
+# Leaf-level specs
+# ---------------------------------------------------------------------------
+
+
+class FieldSpec(BaseModel):
+    """Specification for a single Odoo model field."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    type: str
+    string: str = ""
+    required: bool = False
+    readonly: bool = False
+    index: bool = False
+    store: bool | None = None
+    default: Any = None
+    compute: str | None = None
+    depends: list[str] = []
+    onchange: str | None = None
+    constrains: list[str] | None = None
+    selection: list = []
+    comodel_name: str | None = None
+    inverse_name: str | None = None
+    ondelete: str = "set null"
+    tracking: bool = False
+    groups: str | None = None
+    sensitive: bool = False
+    internal: bool = False
+
+    @field_validator("type")
+    @classmethod
+    def validate_field_type(cls, v: str) -> str:
+        if v not in VALID_FIELD_TYPES:
+            valid_sorted = ", ".join(sorted(VALID_FIELD_TYPES))
+            raise ValueError(
+                f"Value '{v}' is not a valid field type. "
+                f"Valid types: {valid_sorted}"
+            )
+        return v
+
+
+class ConstraintSpec(BaseModel):
+    """Specification for a model constraint (check, unique, exclude)."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    type: str
+    expression: str = ""
+    message: str = ""
+
+
+class WebhookSpec(BaseModel):
+    """Specification for model webhook configuration."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    watched_fields: list[str] = []
+    on_create: bool = False
+    on_write: list[str] = []
+    on_unlink: bool = False
+
+
+class ApprovalLevelSpec(BaseModel):
+    """Specification for one approval workflow level."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    role: str = ""
+    state: str = ""
+    group: str | None = None
+
+
+class ApprovalSpec(BaseModel):
+    """Specification for an approval workflow."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    levels: list[ApprovalLevelSpec] = []
+    on_reject: str = "draft"
+
+
+class SecurityACLSpec(BaseModel):
+    """CRUD permission set for a single role."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    create: bool = True
+    read: bool = True
+    write: bool = True
+    unlink: bool = True
+
+
+class SecurityBlockSpec(BaseModel):
+    """Security configuration block (model-level or module-level)."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    roles: list[str] = []
+    acl: dict[str, SecurityACLSpec] = {}
+    defaults: dict[str, str] = {}
+
+
+# ---------------------------------------------------------------------------
+# Model-level spec
+# ---------------------------------------------------------------------------
+
+
+class ModelSpec(BaseModel):
+    """Specification for a single Odoo model."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    description: str = ""
+    fields: list[FieldSpec] = []
+    security: SecurityBlockSpec | None = None
+    approval: ApprovalSpec | None = None
+    webhooks: WebhookSpec | None = None
+    constraints: list[ConstraintSpec] = []
+    chatter: bool | None = None
+    hierarchical: bool = False
+    inherit: str | None = None
+    audit: bool = False
+    audit_exclude: list[str] = []
+    import_export: bool = False
+    transient: bool = False
+    bulk: bool = False
+    cacheable: bool = False
+    archival: bool = False
+    record_rules: list[str] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Supporting top-level specs
+# ---------------------------------------------------------------------------
+
+
+class CronJobSpec(BaseModel):
+    """Specification for a scheduled action (cron job)."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    model: str = ""
+    method: str
+    interval_number: int = 1
+    interval_type: str = "days"
+
+
+class ReportSpec(BaseModel):
+    """Specification for a QWeb report."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    model: str = ""
+    report_type: str = "qweb-pdf"
+    template: str = ""
+    xml_id: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Module-level spec (root)
+# ---------------------------------------------------------------------------
+
+
+class ModuleSpec(BaseModel):
+    """Root specification for an Odoo module.
+
+    Cross-reference validators check:
+    - Approval level roles exist in per-model security.roles
+    - audit_exclude fields exist in per-model field lists
+    """
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    module_name: str
+    module_title: str = ""
+    odoo_version: str = "17.0"
+    version: str = ""
+    summary: str = ""
+    author: str = ""
+    website: str = ""
+    license: str = "LGPL-3"
+    category: str = "Uncategorized"
+    application: bool = True
+    depends: list[str] = ["base"]
+    models: list[ModelSpec] = []
+    wizards: list[dict] = []
+    cron_jobs: list[CronJobSpec] = []
+    reports: list[ReportSpec] = []
+    controllers: list[dict] | None = None
+    dashboards: list[dict] = []
+    relationships: list[dict] = []
+    computation_chains: list[dict] = []
+    constraints: list[dict] = []
+    security: SecurityBlockSpec | None = None
+
+    @model_validator(mode="after")
+    def check_approval_roles_exist(self) -> ModuleSpec:
+        """Verify approval level roles reference defined security roles."""
+        for model in self.models:
+            if not model.approval or not model.security:
+                continue
+            defined_roles = set(model.security.roles)
+            for level in model.approval.levels:
+                if level.role and level.role not in defined_roles:
+                    raise ValueError(
+                        f"Approval role '{level.role}' in model '{model.name}' "
+                        f"not found in security.roles: {sorted(defined_roles)}"
+                    )
+        return self
+
+    @model_validator(mode="after")
+    def check_audit_exclude_fields(self) -> ModuleSpec:
+        """Verify audit_exclude references actual field names."""
+        for model in self.models:
+            if not model.audit or not model.audit_exclude:
+                continue
+            field_names = {f.name for f in model.fields}
+            for excluded in model.audit_exclude:
+                if excluded not in field_names:
+                    raise ValueError(
+                        f"audit_exclude field '{excluded}' in model "
+                        f"'{model.name}' not found in model fields: "
+                        f"{sorted(field_names)}"
+                    )
+        return self
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def validate_spec(raw_spec: dict[str, Any]) -> ModuleSpec:
+    """Validate a raw spec dict against the Pydantic schema.
+
+    Returns a ``ModuleSpec`` instance with defaults filled.
+    Raises ``ValidationError`` on invalid input (hard fail).
+    """
+    try:
+        return ModuleSpec(**raw_spec)
+    except ValidationError as exc:
+        module_name = raw_spec.get("module_name", "unknown")
+        formatted = format_validation_errors(exc, module_name)
+        print(formatted)
+        raise
+
+
+def format_validation_errors(exc: ValidationError, module_name: str) -> str:
+    """Format a ``ValidationError`` into human-readable output.
+
+    Output format::
+
+        Spec validation failed for {module_name}:
+            {loc}
+              {msg}
+              Got: {input!r}
+    """
+    lines = [f"Spec validation failed for {module_name}:"]
+    for error in exc.errors():
+        loc = ".".join(str(part) for part in error["loc"])
+        msg = error["msg"]
+        inp = error.get("input", "")
+        lines.append(f"    {loc}")
+        lines.append(f"      {msg}")
+        if inp:
+            lines.append(f"      Got: {inp!r}")
+    return "\n".join(lines)
