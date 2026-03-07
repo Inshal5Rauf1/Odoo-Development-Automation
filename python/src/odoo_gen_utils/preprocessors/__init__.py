@@ -1,39 +1,88 @@
-"""Preprocessor package -- temporary shim for Task 1 (TDD registry tests).
-
-Re-exports all names from the legacy monolith so existing tests keep passing.
-This file will be replaced with the full auto-discovery version in Task 2.
-"""
+"""Preprocessor package with auto-discovery and backward-compatible exports."""
 
 from __future__ import annotations
 
-# Re-export everything from the legacy monolith for backward compatibility
-from odoo_gen_utils.preprocessors_legacy import *  # noqa: F401,F403
-from odoo_gen_utils.preprocessors_legacy import (  # noqa: F401,E402
-    _build_audit_log_model,
-    _enrich_model_performance,
+import importlib
+import pkgutil
+from pathlib import Path
+from typing import Any
+
+from odoo_gen_utils.preprocessors._registry import (
+    get_registered_preprocessors,
+    register_preprocessor,
+)
+
+# Auto-discover all submodules (triggers @register_preprocessor decorators)
+_pkg_path = str(Path(__file__).parent)
+for _finder, _name, _ispkg in pkgutil.iter_modules([_pkg_path]):
+    if not _name.startswith("_"):
+        importlib.import_module(f"{__name__}.{_name}")
+
+
+def run_preprocessors(spec: dict[str, Any]) -> dict[str, Any]:
+    """Execute all registered preprocessors in order.
+
+    Each preprocessor receives the spec dict and returns a new spec dict.
+    This is the primary public API for the preprocessor pipeline.
+    """
+    for _order, _name, fn in get_registered_preprocessors():
+        spec = fn(spec)
+    return spec
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible re-exports
+# ---------------------------------------------------------------------------
+# Every function that was importable from the old monolith preprocessors.py
+# must still be importable via `from odoo_gen_utils.preprocessors import X`.
+
+from odoo_gen_utils.preprocessors.relationships import (  # noqa: E402,F401
     _enrich_self_referential_m2m,
-    _inject_legacy_security,
+    _init_override_sources,
     _inject_one2many_links,
-    _parse_crud,
-    _process_approval_patterns,
-    _process_audit_patterns,
-    _process_computation_chains,
-    _process_constraints,
-    _process_notification_patterns,
-    _process_performance,
-    _process_production_patterns,
     _process_relationships,
-    _process_security_patterns,
-    _process_webhook_patterns,
     _resolve_comodel,
-    _resolve_recipient,
+    _synthesize_through_model,
+)
+from odoo_gen_utils.preprocessors.validation import (  # noqa: E402,F401
+    _validate_no_cycles,
+)
+from odoo_gen_utils.preprocessors.computation_chains import (  # noqa: E402,F401
+    _process_computation_chains,
+)
+from odoo_gen_utils.preprocessors.constraints import (  # noqa: E402,F401
+    _process_constraints,
+)
+from odoo_gen_utils.preprocessors.performance import (  # noqa: E402,F401
+    _enrich_model_performance,
+    _process_performance,
+)
+from odoo_gen_utils.preprocessors.production import (  # noqa: E402,F401
+    _process_production_patterns,
+)
+from odoo_gen_utils.preprocessors.security import (  # noqa: E402,F401
+    _inject_legacy_security,
+    _parse_crud,
+    _process_security_patterns,
     _security_auto_fix_views,
     _security_build_acl_matrix,
     _security_build_roles,
     _security_detect_record_rule_scopes,
     _security_enrich_fields,
     _security_validate_spec,
+)
+from odoo_gen_utils.preprocessors.audit import (  # noqa: E402,F401
+    _build_audit_log_model,
+    _process_audit_patterns,
+)
+from odoo_gen_utils.preprocessors.approval import (  # noqa: E402,F401
+    _process_approval_patterns,
+)
+from odoo_gen_utils.preprocessors.notifications import (  # noqa: E402,F401
+    _process_notification_patterns,
+    _resolve_recipient,
     _select_body_fields,
-    _synthesize_through_model,
-    _validate_no_cycles,
+)
+from odoo_gen_utils.preprocessors.webhooks import (  # noqa: E402,F401
+    _process_webhook_patterns,
 )

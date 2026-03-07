@@ -126,3 +126,77 @@ def test_duplicate_orders_both_kept():
 
     entries = get_registered_preprocessors()
     assert len(entries) == 2
+
+
+# ---------------------------------------------------------------------------
+# Integration tests (require full package import to trigger auto-discovery)
+# ---------------------------------------------------------------------------
+
+
+class TestRegistryIntegration:
+    """Tests that require the full preprocessors package to be imported.
+
+    These tests need the registry populated by the real decorators.
+    We override the autouse clear fixture and instead reload all modules
+    to repopulate the registry cleanly.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolated_registry(self):
+        """Override the module-level fixture: reload submodules to repopulate."""
+        import importlib
+        import sys
+
+        clear_registry()
+
+        # Reload all preprocessor submodules so decorators fire again
+        submodule_names = [
+            name for name in sorted(sys.modules)
+            if name.startswith("odoo_gen_utils.preprocessors.")
+            and not name.endswith("._registry")
+        ]
+        for name in submodule_names:
+            importlib.reload(sys.modules[name])
+        yield
+        clear_registry()
+
+    def test_registry_count_is_11(self):
+        """After full import, exactly 11 preprocessors are registered."""
+        entries = get_registered_preprocessors()
+        assert len(entries) == 11, (
+            f"Expected 11 registered preprocessors, got {len(entries)}: "
+            f"{[(e[0], e[1]) for e in entries]}"
+        )
+
+    def test_registry_order_matches_pipeline(self):
+        """The order sequence matches the expected pipeline order."""
+        entries = get_registered_preprocessors()
+        orders = [e[0] for e in entries]
+        expected = [10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+        assert orders == expected, f"Expected {expected}, got {orders}"
+
+    def test_auto_discovery_finds_all_modules(self):
+        """All 11 non-underscore .py files in preprocessors/ are importable."""
+        import pkgutil
+        from pathlib import Path
+
+        import odoo_gen_utils.preprocessors as pkg
+
+        pkg_path = str(Path(pkg.__file__).parent)
+        discovered = [
+            name
+            for _finder, name, _ispkg in pkgutil.iter_modules([pkg_path])
+            if not name.startswith("_")
+        ]
+        assert len(discovered) == 11, (
+            f"Expected 11 discoverable modules, got {len(discovered)}: {discovered}"
+        )
+
+    def test_run_preprocessors_callable(self):
+        """run_preprocessors is importable and callable."""
+        from odoo_gen_utils.preprocessors import run_preprocessors
+
+        assert callable(run_preprocessors)
+        # Minimal smoke test: empty spec passes through
+        result = run_preprocessors({"module_name": "test", "models": []})
+        assert result["module_name"] == "test"
