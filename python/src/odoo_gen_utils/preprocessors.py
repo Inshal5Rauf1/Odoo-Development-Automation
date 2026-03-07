@@ -986,6 +986,7 @@ def _build_audit_log_model(
         "_is_audit_log": True,
         "chatter": False,
         "audit": False,
+        "record_rule_scopes": [],
         "fields": [
             {
                 "name": "res_model",
@@ -1541,7 +1542,7 @@ def _process_notification_patterns(spec: dict[str, Any]) -> dict[str, Any]:
             notification_templates.append(template_entry)
 
             notification_sub = {
-                "template_xml_id": f"{module_name}.{xml_id}",
+                "template_xml_id": xml_id,
                 "send_mail": True,
                 "email_to": email_to,
             }
@@ -1576,7 +1577,7 @@ def _process_notification_patterns(spec: dict[str, Any]) -> dict[str, Any]:
             notification_templates.append(template_entry)
 
             notification_sub = {
-                "template_xml_id": f"{module_name}.{xml_id}",
+                "template_xml_id": xml_id,
                 "send_mail": True,
                 "email_to": email_to,
             }
