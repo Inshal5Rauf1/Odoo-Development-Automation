@@ -218,10 +218,10 @@ Plans:
   2. An integration test verifies that field-level `groups=` restrictions and approval-stage `ir.rule` records coexist without conflicts in the generated security files
   3. An integration test renders a full-featured spec through Docker validation, confirming the module installs and tests pass with all patterns active simultaneously
   4. A recursion guard test verifies that audit logging during an approval state change does not trigger infinite write() recursion
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 43-01: TBD
+- [ ] 43-01-PLAN.md — Kitchen sink + pairwise integration tests, Tier 1 validation helpers, Docker-gated install test
 
 ## Progress
 
@@ -242,9 +242,9 @@ Phases execute in numeric order: 36 -> 37 -> 38 -> 39 -> 40 -> 41 -> 42 -> 43
 | 38. Audit Trail | 1/2 | Complete    | 2026-03-06 | - |
 | 39. Approval Workflows | 2/2 | Complete    | 2026-03-06 | - |
 | 40. Notifications & Webhooks | 2/2 | Complete    | 2026-03-06 | - |
-| 41. Spec Diffing & Migration | 2/2 | Complete   | 2026-03-07 | - |
+| 41. Spec Diffing & Migration | 2/2 | Complete    | 2026-03-07 | - |
 | 42. Context7 Pipeline | 2/2 | Complete    | 2026-03-07 | - |
-| 43. Integration Testing | v3.2 | 0/? | Not started | - |
+| 43. Integration Testing | v3.2 | 0/1 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-01*
