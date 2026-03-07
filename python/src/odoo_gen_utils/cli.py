@@ -7,10 +7,8 @@ import sys
 from pathlib import Path
 
 import click
-from pydantic import ValidationError as PydanticValidationError
 
 from odoo_gen_utils import __version__
-from odoo_gen_utils.spec_schema import format_validation_errors
 
 
 @click.group()
@@ -161,7 +159,10 @@ def _extract_template_description(template_path: Path) -> str:
 @click.option("--fresh-context7", is_flag=True, default=False, help="Ignore Context7 cache, force re-query")
 def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_context7: bool) -> None:
     """Render a complete Odoo module from a JSON specification file."""
+    from pydantic import ValidationError as PydanticValidationError
+
     from odoo_gen_utils.renderer import get_template_dir, render_module
+    from odoo_gen_utils.spec_schema import format_validation_errors
     from odoo_gen_utils.verifier import build_verifier_from_env
 
     try:
