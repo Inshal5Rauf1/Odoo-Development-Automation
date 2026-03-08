@@ -1232,22 +1232,16 @@ def show_state(module_path: str, json_output: bool) -> None:
             click.echo(f"Models: {', '.join(manifest.models_registered)}")
         return
 
-    # Fallback to old state format
-    from odoo_gen_utils.artifact_state import format_state_table, load_state
-
-    state = load_state(mod_path)
-    if state is None:
-        click.echo("No state file found. Module has not been tracked.")
+    # Legacy .odoo-gen-state.json is no longer supported.
+    legacy_state = mod_path / ".odoo-gen-state.json"
+    if legacy_state.exists():
+        click.echo(
+            "Legacy state file found (.odoo-gen-state.json). "
+            "Re-generate the module with the current version for manifest tracking."
+        )
         return
 
-    if json_output:
-        state_file = mod_path / ".odoo-gen-state.json"
-        raw = state_file.read_text(encoding="utf-8")
-        data = json.loads(raw)
-        click.echo(json.dumps(data, indent=2))
-        return
-
-    click.echo(format_state_table(state))
+    click.echo("No manifest found. Module has not been tracked.")
 
 
 @main.command("context7-status")

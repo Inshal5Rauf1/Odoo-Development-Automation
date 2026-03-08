@@ -800,32 +800,6 @@ def render_mail_templates(
         return Result.fail(f"render_mail_templates failed: {exc}")
 
 
-def _track_artifacts(state: Any, spec: dict[str, Any], module_dir: Path) -> Any:
-    """Track artifact state transitions for all generated files."""
-    try:
-        from odoo_gen_utils.artifact_state import ArtifactKind, ArtifactStatus
-    except Exception:
-        return state
-    transitions = [("MANIFEST", "__manifest__", "__manifest__.py")]
-    for model in spec.get("models", []):
-        mv = _to_python_var(model["name"])
-        transitions.append(("MODEL", model["name"], f"models/{mv}.py"))
-        transitions.append(("VIEW", model["name"], f"views/{mv}_views.xml"))
-        transitions.append(("TEST", model["name"], f"tests/test_{mv}.py"))
-    transitions.append(("SECURITY", "ir.model.access.csv", "security/ir.model.access.csv"))
-    for kind_name, art_name, file_path in transitions:
-        try:
-            kind = getattr(ArtifactKind, kind_name, None)
-            if kind is not None:
-                state = state.transition(
-                    kind=kind.value, name=art_name, file_path=file_path,
-                    new_status=ArtifactStatus.GENERATED.value,
-                )
-        except Exception:
-            pass
-    return state
-
-
 def render_module(
     spec: dict[str, Any],
     template_dir: Path,

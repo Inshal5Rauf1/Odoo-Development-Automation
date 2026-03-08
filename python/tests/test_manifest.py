@@ -827,8 +827,8 @@ class TestShowStateManifest:
         data = json.loads(result.output)
         assert data["module"] == "json_test"
 
-    def test_show_state_falls_back_to_old_format(self, tmp_path):
-        """show-state with only old .odoo-gen-state.json falls back to old format."""
+    def test_show_state_legacy_state_file_message(self, tmp_path):
+        """show-state with only old .odoo-gen-state.json shows legacy message."""
         from click.testing import CliRunner
 
         from odoo_gen_utils.cli import main
@@ -845,20 +845,5 @@ class TestShowStateManifest:
         runner = CliRunner()
         result = runner.invoke(main, ["show-state", str(tmp_path)])
 
-        # Should not crash -- displays old state or "No state file found" if format mismatch
         assert result.exit_code == 0
-
-
-# ---------------------------------------------------------------------------
-# TestArtifactStateDeprecation
-# ---------------------------------------------------------------------------
-
-
-class TestArtifactStateDeprecation:
-    """artifact_state.py has DEPRECATED in docstring."""
-
-    def test_artifact_state_module_docstring_deprecated(self):
-        """artifact_state.py docstring contains 'DEPRECATED'."""
-        import odoo_gen_utils.artifact_state
-
-        assert "DEPRECATED" in (odoo_gen_utils.artifact_state.__doc__ or "")
+        assert "Legacy state file found" in result.output
