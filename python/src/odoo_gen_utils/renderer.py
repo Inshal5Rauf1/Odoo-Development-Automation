@@ -732,7 +732,7 @@ def render_module(
     """
     # Phase 47: Validate spec against Pydantic schema BEFORE any processing
     validated = validate_spec(spec)
-    spec = validated.model_dump()  # Convert back to dict for preprocessor pipeline
+    spec = validated.model_dump(exclude_none=True)  # Convert back to dict for preprocessor pipeline
 
     # Phase 28: validate no circular dependencies BEFORE any preprocessing
     _validate_no_cycles(spec)
