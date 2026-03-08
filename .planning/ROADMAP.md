@@ -227,7 +227,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 55. Cleanup | 1/1 | Complete    | 2026-03-08 |
 | 56. Logic Writer Core | 2/2 | Complete    | 2026-03-08 |
-| 57. Logic Writer Computed & Constraints | 0/2 | In progress | - |
+| 57. Logic Writer Computed & Constraints | 1/2 | In progress | - |
 | 58. Logic Writer Overrides & Actions | 0/? | Not started | - |
 | 59. Module Extension Pattern | 0/? | Not started | - |
 | 60. Iterative Refinement | 0/? | Not started | - |
