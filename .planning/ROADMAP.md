@@ -154,7 +154,10 @@ Plans:
   1. Generated _compute_* methods include correct @api.depends decorators matching the fields they read, and use self.mapped/filtered patterns for recordset operations
   2. Generated _check_* methods include correct @api.constrains decorators, raise ValidationError with user-facing messages, and handle cross-field validation logic
   3. Logic Writer output for computed and constraint methods passes the Phase 51 semantic validator (AST + XML cross-check) without errors -- field names resolve, ORM patterns are valid
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 57-01-PLAN.md — Enrich stub report context (computation_hint, constraint_type, target_field_types, method_type, error_messages)
+- [ ] 57-02-PLAN.md — Semantic validation E7-E12 checks for ORM pattern violations in method bodies
 
 ### Phase 58: Logic Writer Overrides & Actions
 **Goal**: Logic Writer generates correct create/write overrides, action workflow methods, and cron scheduled logic
@@ -223,8 +226,8 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 55. Cleanup | 1/1 | Complete    | 2026-03-08 |
-| 56. Logic Writer Core | 2/2 | Complete   | 2026-03-08 |
-| 57. Logic Writer Computed & Constraints | 0/? | Not started | - |
+| 56. Logic Writer Core | 2/2 | Complete    | 2026-03-08 |
+| 57. Logic Writer Computed & Constraints | 0/2 | In progress | - |
 | 58. Logic Writer Overrides & Actions | 0/? | Not started | - |
 | 59. Module Extension Pattern | 0/? | Not started | - |
 | 60. Iterative Refinement | 0/? | Not started | - |

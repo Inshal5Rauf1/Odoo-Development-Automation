@@ -455,3 +455,687 @@ class TestRegistryNone:
         ctx = build_stub_context(stub, spec, registry=None)
         assert ctx.related_fields == {}
         assert ctx.registry_source is None
+
+
+# ---------------------------------------------------------------------------
+# New fields backward compatibility
+# ---------------------------------------------------------------------------
+
+
+class TestNewFieldsDefaults:
+    """New StubContext fields have backward-compatible defaults."""
+
+    def test_new_fields_have_defaults(self) -> None:
+        """StubContext can be constructed with only the original 4 fields."""
+        ctx = StubContext(
+            model_fields={},
+            related_fields={},
+            business_rules=[],
+            registry_source=None,
+        )
+        assert ctx.method_type == ""
+        assert ctx.computation_hint == ""
+        assert ctx.constraint_type == ""
+        assert ctx.target_field_types == {}
+        assert ctx.error_messages == ()
+
+    def test_new_fields_settable(self) -> None:
+        """New fields can be set during construction."""
+        ctx = StubContext(
+            model_fields={},
+            related_fields={},
+            business_rules=[],
+            registry_source=None,
+            method_type="compute",
+            computation_hint="sum_related",
+            constraint_type="",
+            target_field_types={"total": {"type": "Float"}},
+            error_messages=(),
+        )
+        assert ctx.method_type == "compute"
+        assert ctx.computation_hint == "sum_related"
+        assert ctx.target_field_types == {"total": {"type": "Float"}}
+
+
+# ---------------------------------------------------------------------------
+# method_type classification
+# ---------------------------------------------------------------------------
+
+
+class TestMethodType:
+    """build_stub_context() classifies method_type from method name patterns."""
+
+    def test_compute_method_type(self) -> None:
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(method_name="_compute_total")
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "compute"
+
+    def test_constraint_method_type(self) -> None:
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_amount",
+            decorator='@api.constrains("amount")',
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "constraint"
+
+    def test_onchange_method_type(self) -> None:
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_onchange_partner",
+            decorator='@api.onchange("partner_id")',
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "onchange"
+
+    def test_action_method_type(self) -> None:
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="action_confirm",
+            decorator="",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "action"
+
+    def test_cron_method_type(self) -> None:
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_cron_cleanup",
+            decorator="@api.model",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "cron"
+
+    def test_override_method_type(self) -> None:
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="create",
+            decorator="@api.model_create_multi",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "override"
+
+    def test_write_override_method_type(self) -> None:
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="write",
+            decorator="",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "override"
+
+    def test_other_method_type(self) -> None:
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_get_report_data",
+            decorator="",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "other"
+
+
+# ---------------------------------------------------------------------------
+# computation_hint classification
+# ---------------------------------------------------------------------------
+
+
+class TestComputationHint:
+    """build_stub_context() classifies computation_hint for compute methods."""
+
+    def test_sum_related_hint(self) -> None:
+        """Dot-path to numeric field on x2many -> sum_related."""
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "line_ids",
+                    "type": "One2many",
+                    "string": "Lines",
+                    "comodel_name": "uni.fee.line",
+                },
+                {
+                    "name": "total_amount",
+                    "type": "Float",
+                    "string": "Total Amount",
+                    "compute": "_compute_total_amount",
+                    "store": True,
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_compute_total_amount",
+            decorator='@api.depends("line_ids.amount")',
+            target_fields=["total_amount"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.computation_hint == "sum_related"
+
+    def test_count_related_hint(self) -> None:
+        """Integer target + x2many depends -> count_related."""
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "line_ids",
+                    "type": "One2many",
+                    "string": "Lines",
+                    "comodel_name": "uni.fee.line",
+                },
+                {
+                    "name": "line_count",
+                    "type": "Integer",
+                    "string": "Line Count",
+                    "compute": "_compute_line_count",
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_compute_line_count",
+            decorator='@api.depends("line_ids")',
+            target_fields=["line_count"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.computation_hint == "count_related"
+
+    def test_conditional_set_hint(self) -> None:
+        """Boolean/Selection target -> conditional_set."""
+        model = _make_model_dict(
+            fields=[
+                {"name": "amount", "type": "Float", "string": "Amount"},
+                {
+                    "name": "is_paid",
+                    "type": "Boolean",
+                    "string": "Is Paid",
+                    "compute": "_compute_is_paid",
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_compute_is_paid",
+            decorator='@api.depends("amount")',
+            target_fields=["is_paid"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.computation_hint == "conditional_set"
+
+    def test_cross_model_calc_hint(self) -> None:
+        """2+ dot-path segments in depends -> cross_model_calc."""
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "partner_id",
+                    "type": "Many2one",
+                    "string": "Partner",
+                    "comodel_name": "res.partner",
+                },
+                {
+                    "name": "credit_limit",
+                    "type": "Float",
+                    "string": "Credit Limit",
+                    "compute": "_compute_credit_limit",
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_compute_credit_limit",
+            decorator='@api.depends("partner_id.parent_id.credit_limit")',
+            target_fields=["credit_limit"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.computation_hint == "cross_model_calc"
+
+    def test_aggregate_hint(self) -> None:
+        """Business rules mention average/weighted -> aggregate."""
+        model = _make_model_dict(
+            description="Weighted average calculation",
+            fields=[
+                {"name": "amount", "type": "Float", "string": "Amount"},
+                {
+                    "name": "weighted_avg",
+                    "type": "Float",
+                    "string": "Weighted Average",
+                    "compute": "_compute_weighted_avg",
+                    "help": "weighted average of line amounts",
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_compute_weighted_avg",
+            decorator='@api.depends("amount")',
+            target_fields=["weighted_avg"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.computation_hint == "aggregate"
+
+    def test_lookup_hint(self) -> None:
+        """Single dot-path, non-numeric target -> lookup."""
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "partner_id",
+                    "type": "Many2one",
+                    "string": "Partner",
+                    "comodel_name": "res.partner",
+                },
+                {
+                    "name": "partner_name",
+                    "type": "Char",
+                    "string": "Partner Name",
+                    "compute": "_compute_partner_name",
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_compute_partner_name",
+            decorator='@api.depends("partner_id.name")',
+            target_fields=["partner_name"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.computation_hint == "lookup"
+
+    def test_custom_hint_fallback(self) -> None:
+        """No matching pattern -> custom."""
+        model = _make_model_dict(
+            fields=[
+                {"name": "name", "type": "Char", "string": "Name"},
+                {
+                    "name": "display_name",
+                    "type": "Char",
+                    "string": "Display Name",
+                    "compute": "_compute_display_name",
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_compute_display_name",
+            decorator='@api.depends("name")',
+            target_fields=["display_name"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.computation_hint == "custom"
+
+    def test_non_compute_gets_empty_hint(self) -> None:
+        """Non-compute methods get empty computation_hint."""
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_amount",
+            decorator='@api.constrains("amount")',
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.computation_hint == ""
+
+
+# ---------------------------------------------------------------------------
+# constraint_type classification
+# ---------------------------------------------------------------------------
+
+
+class TestConstraintType:
+    """build_stub_context() classifies constraint_type for constraint methods."""
+
+    def test_range_constraint(self) -> None:
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "amount",
+                    "type": "Float",
+                    "string": "Amount",
+                    "help": "Amount must be between 0 and 10000",
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_amount",
+            decorator='@api.constrains("amount")',
+            target_fields=["amount"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.constraint_type == "range"
+
+    def test_required_if_constraint(self) -> None:
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "phone",
+                    "type": "Char",
+                    "string": "Phone",
+                    "help": "Phone is required when contact type is individual",
+                },
+            ],
+            complex_constraints=[
+                {"message": "Phone is required when contact type is individual"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_phone",
+            decorator='@api.constrains("phone", "contact_type")',
+            target_fields=["phone"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.constraint_type == "required_if"
+
+    def test_cross_field_constraint(self) -> None:
+        model = _make_model_dict(
+            fields=[
+                {"name": "start_date", "type": "Date", "string": "Start Date"},
+                {"name": "end_date", "type": "Date", "string": "End Date"},
+            ],
+            complex_constraints=[
+                {"message": "End date must be after start date"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_dates",
+            decorator='@api.constrains("start_date", "end_date")',
+            target_fields=["start_date", "end_date"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.constraint_type == "cross_field"
+
+    def test_format_constraint(self) -> None:
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "cnic",
+                    "type": "Char",
+                    "string": "CNIC",
+                    "help": "CNIC format must be XXXXX-XXXXXXX-X",
+                },
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_cnic",
+            decorator='@api.constrains("cnic")',
+            target_fields=["cnic"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.constraint_type == "format"
+
+    def test_unique_constraint(self) -> None:
+        model = _make_model_dict(
+            complex_constraints=[
+                {"message": "Student must be unique per semester"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_unique_enrollment",
+            decorator='@api.constrains("student_id", "semester_id")',
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.constraint_type == "unique"
+
+    def test_referential_constraint(self) -> None:
+        model = _make_model_dict(
+            complex_constraints=[
+                {"message": "Course must exist in the department's model catalog"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_course_exists",
+            decorator='@api.constrains("course_id")',
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.constraint_type == "referential"
+
+    def test_custom_constraint_fallback(self) -> None:
+        model = _make_model_dict(
+            complex_constraints=[
+                {"message": "Data is valid"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_data",
+            decorator='@api.constrains("data")',
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.constraint_type == "custom"
+
+    def test_non_constraint_gets_empty_type(self) -> None:
+        """Non-constraint methods get empty constraint_type."""
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(method_name="_compute_total")
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.constraint_type == ""
+
+
+# ---------------------------------------------------------------------------
+# target_field_types
+# ---------------------------------------------------------------------------
+
+
+class TestTargetFieldTypes:
+    """build_stub_context() populates target_field_types for compute stubs."""
+
+    def test_basic_type_extraction(self) -> None:
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "total",
+                    "type": "Float",
+                    "string": "Total",
+                    "store": True,
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_compute_total",
+            target_fields=["total"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert "total" in ctx.target_field_types
+        assert ctx.target_field_types["total"]["type"] == "Float"
+        assert ctx.target_field_types["total"]["store"] is True
+
+    def test_monetary_type_with_currency(self) -> None:
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "currency_id",
+                    "type": "Many2one",
+                    "comodel_name": "res.currency",
+                },
+                {
+                    "name": "total_amount",
+                    "type": "Monetary",
+                    "string": "Total Amount",
+                    "currency_field": "currency_id",
+                    "store": True,
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_compute_total_amount",
+            target_fields=["total_amount"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.target_field_types["total_amount"]["type"] == "Monetary"
+        assert ctx.target_field_types["total_amount"]["currency_field"] == "currency_id"
+
+    def test_no_none_values(self) -> None:
+        """Only keys with actual values are included (no None entries)."""
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "total",
+                    "type": "Float",
+                    "string": "Total",
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_compute_total",
+            target_fields=["total"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        # "store" and "currency_field" should not be present if not in spec
+        for _key, val in ctx.target_field_types.get("total", {}).items():
+            assert val is not None
+
+    def test_non_compute_gets_empty_types(self) -> None:
+        """Non-compute methods get empty target_field_types."""
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="action_confirm",
+            decorator="",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.target_field_types == {}
+
+
+# ---------------------------------------------------------------------------
+# error_messages for constraints
+# ---------------------------------------------------------------------------
+
+
+class TestErrorMessages:
+    """build_stub_context() generates error_messages for constraint methods."""
+
+    def test_range_constraint_messages(self) -> None:
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "amount",
+                    "type": "Float",
+                    "string": "Amount",
+                    "help": "Amount must be between 0 and 10000",
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_amount",
+            decorator='@api.constrains("amount")',
+            target_fields=["amount"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert len(ctx.error_messages) > 0
+        msg = ctx.error_messages[0]
+        assert "message" in msg
+        assert msg["translatable"] is True
+
+    def test_error_messages_use_field_labels(self) -> None:
+        model = _make_model_dict(
+            fields=[
+                {
+                    "name": "amount",
+                    "type": "Float",
+                    "string": "Amount",
+                    "help": "Amount must be between 0 and 10000",
+                },
+            ]
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_amount",
+            decorator='@api.constrains("amount")',
+            target_fields=["amount"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert len(ctx.error_messages) > 0
+        msg_text = ctx.error_messages[0]["message"]
+        # Should use named interpolation
+        assert "%(" in msg_text
+
+    def test_non_constraint_gets_empty_messages(self) -> None:
+        """Non-constraint methods get empty error_messages."""
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(method_name="_compute_total")
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.error_messages == ()
+
+    def test_error_message_structure(self) -> None:
+        """Each error message has condition, message, translatable keys."""
+        model = _make_model_dict(
+            complex_constraints=[
+                {"message": "End date must be after start date"},
+            ],
+            fields=[
+                {"name": "start_date", "type": "Date", "string": "Start Date"},
+                {"name": "end_date", "type": "Date", "string": "End Date"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_check_dates",
+            decorator='@api.constrains("start_date", "end_date")',
+            target_fields=["start_date", "end_date"],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert len(ctx.error_messages) > 0
+        for msg in ctx.error_messages:
+            assert "condition" in msg
+            assert "message" in msg
+            assert "translatable" in msg
+            assert msg["translatable"] is True
