@@ -18,7 +18,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from odoo_gen_utils.logic_writer.stub_detector import StubInfo
+from pathlib import Path
+
+from odoo_gen_utils.logic_writer.stub_detector import StubInfo, _find_stub_zones
 from odoo_gen_utils.registry import ModelEntry, ModelRegistry
 
 logger = logging.getLogger(__name__)
@@ -90,6 +92,18 @@ class StubContext:
     error_messages: tuple[dict[str, Any], ...] = ()
     """Translatable error message templates for constraint methods."""
 
+    stub_zone: dict[str, Any] | None = None
+    """Marker-delimited zone dict for override method stubs."""
+
+    exclusion_zones: tuple[dict[str, Any], ...] = ()
+    """Template-generated code zones that must not be modified."""
+
+    action_context: dict[str, Any] | None = None
+    """Full state machine context for action_* methods."""
+
+    cron_context: dict[str, Any] | None = None
+    """Domain hint and processing pattern for _cron_* methods."""
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -100,6 +114,7 @@ def build_stub_context(
     stub: StubInfo,
     spec: dict[str, Any],
     registry: ModelRegistry | None = None,
+    module_dir: Path | None = None,
 ) -> StubContext:
     """Assemble rich context for *stub* from *spec* and *registry*.
 
@@ -145,6 +160,22 @@ def build_stub_context(
             constraint_type, business_rules, stub.target_fields, model_fields
         )
 
+    # Phase 58: action_context, cron_context, stub_zone
+    action_context: dict[str, Any] | None = None
+    if method_type == "action":
+        action_context = _build_action_context(stub, model, spec)
+
+    cron_context: dict[str, Any] | None = None
+    if method_type == "cron":
+        cron_context = _build_cron_context(stub, model, spec)
+
+    stub_zone: dict[str, Any] | None = None
+    exclusion_zones: tuple[dict[str, Any], ...] = ()
+    if method_type == "override" and module_dir is not None:
+        stub_zone, exclusion_zones = _build_stub_zones_for_override(
+            stub, module_dir
+        )
+
     return StubContext(
         model_fields=model_fields,
         related_fields=related_fields,
@@ -155,6 +186,10 @@ def build_stub_context(
         constraint_type=constraint_type,
         target_field_types=target_field_types,
         error_messages=error_messages,
+        stub_zone=stub_zone,
+        exclusion_zones=exclusion_zones,
+        action_context=action_context,
+        cron_context=cron_context,
     )
 
 
@@ -432,6 +467,241 @@ def _generate_error_messages(
                 break
 
     return tuple(messages)
+
+
+# ---------------------------------------------------------------------------
+# Action context builder
+# ---------------------------------------------------------------------------
+
+# Keywords for side_effects detection
+_SIDE_EFFECT_KEYWORDS = frozenset({
+    "notification", "email", "create record", "log", "send",
+    "create", "notify",
+})
+
+# Keywords for preconditions detection
+_PRECONDITION_KEYWORDS = frozenset({
+    "cannot", "must have", "required", "must be",
+})
+
+
+def _build_action_context(
+    stub: StubInfo,
+    model: dict[str, Any],
+    spec: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Build action_context with full state machine for action_* methods.
+
+    Returns ``None`` if no state machine data is found (graceful degradation).
+    """
+    # Collect workflow states
+    workflow_states = model.get("workflow_states", [])
+    states_from_spec = model.get("states", [])
+
+    state_names: list[str] = []
+    for ws in workflow_states:
+        name = ws.get("name", "")
+        if name:
+            state_names.append(name)
+    for ws in states_from_spec:
+        name = ws.get("name", "") if isinstance(ws, dict) else str(ws)
+        if name and name not in state_names:
+            state_names.append(name)
+
+    if not state_names:
+        return None
+
+    # Build transitions from approval_levels and business rules
+    transitions: list[dict[str, Any]] = []
+    for level in model.get("approval_levels", []):
+        from_state = level.get("from_state", "")
+        to_state = level.get("to_state", "")
+        method = level.get("method", "")
+        role = level.get("name", "")
+        if from_state and to_state:
+            transitions.append({
+                "from": from_state,
+                "to": to_state,
+                "method": method,
+                "role": role,
+            })
+
+    # Extract side_effects from business rules
+    all_rules = _collect_all_rules(model)
+    side_effects: list[str] = []
+    preconditions: list[str] = []
+
+    for rule in all_rules:
+        rule_lower = rule.lower()
+        if any(kw in rule_lower for kw in _SIDE_EFFECT_KEYWORDS):
+            side_effects.append(rule)
+        if any(kw in rule_lower for kw in _PRECONDITION_KEYWORDS):
+            preconditions.append(rule)
+
+    return {
+        "full_state_machine": {
+            "states": state_names,
+            "transitions": transitions,
+        },
+        "side_effects": side_effects,
+        "preconditions": preconditions,
+    }
+
+
+def _collect_all_rules(model: dict[str, Any]) -> list[str]:
+    """Collect all rule-like strings from model spec for side_effect/precondition extraction."""
+    rules: list[str] = []
+    for cc in model.get("complex_constraints", []):
+        msg = cc.get("message", "")
+        if msg:
+            rules.append(msg)
+    for rule in model.get("business_rules", []):
+        if isinstance(rule, str) and rule:
+            rules.append(rule)
+        elif isinstance(rule, dict):
+            msg = rule.get("message", rule.get("description", ""))
+            if msg:
+                rules.append(msg)
+    return rules
+
+
+# ---------------------------------------------------------------------------
+# Cron context builder
+# ---------------------------------------------------------------------------
+
+# Keywords for processing_pattern classification
+_CRON_BATCH_KEYWORDS = frozenset({"for each", "per record", "each record"})
+_CRON_GENERATE_KEYWORDS = frozenset({"generate", "create", "schedule"})
+_CRON_CLEANUP_KEYWORDS = frozenset({"archive", "expire", "older than", "delete", "clean"})
+_CRON_AGGREGATE_KEYWORDS = frozenset({"calculate", "summarize", "report", "aggregate"})
+
+
+def _build_cron_context(
+    stub: StubInfo,
+    model: dict[str, Any],
+    spec: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Build cron_context with domain hint and processing pattern for _cron_* methods.
+
+    Returns ``None`` if no cron data is found in the spec.
+    """
+    # Look up cron section
+    cron_entries = spec.get("cron", spec.get("scheduled_actions", []))
+    if not cron_entries:
+        return None
+
+    # Find matching cron entry
+    cron_entry: dict[str, Any] | None = None
+    for entry in cron_entries:
+        if entry.get("method") == stub.method_name:
+            cron_entry = entry
+            break
+
+    if cron_entry is None:
+        return None
+
+    # Extract domain_hint
+    domain_hint = cron_entry.get("domain", "")
+
+    # If no domain in cron entry, try to infer from business rules
+    if not domain_hint:
+        all_rules = _collect_all_rules(model)
+        for rule in all_rules:
+            if "domain" in rule.lower() or "[(" in rule:
+                domain_hint = rule
+                break
+
+    # Classify processing_pattern
+    all_rules = _collect_all_rules(model)
+    desc = model.get("description", "")
+    all_text = " ".join(all_rules + [desc, cron_entry.get("name", "")]).lower()
+
+    processing_pattern = _classify_cron_pattern(all_text)
+
+    # batch_size_hint
+    batch_size_hint = cron_entry.get("batch_size", 100)
+
+    # error_handling
+    error_handling = cron_entry.get("error_handling", "log_and_continue")
+
+    return {
+        "domain_hint": domain_hint,
+        "processing_pattern": processing_pattern,
+        "batch_size_hint": batch_size_hint,
+        "error_handling": error_handling,
+    }
+
+
+def _classify_cron_pattern(text: str) -> str:
+    """Classify cron processing pattern from text keywords.
+
+    Priority: generate_records -> cleanup -> aggregate -> batch_per_record (default).
+    """
+    if any(kw in text for kw in _CRON_GENERATE_KEYWORDS):
+        return "generate_records"
+    if any(kw in text for kw in _CRON_CLEANUP_KEYWORDS):
+        return "cleanup"
+    if any(kw in text for kw in _CRON_AGGREGATE_KEYWORDS):
+        return "aggregate"
+    if any(kw in text for kw in _CRON_BATCH_KEYWORDS):
+        return "batch_per_record"
+    return "batch_per_record"
+
+
+# ---------------------------------------------------------------------------
+# Stub zone builder for overrides
+# ---------------------------------------------------------------------------
+
+
+def _build_stub_zones_for_override(
+    stub: StubInfo,
+    module_dir: Path,
+) -> tuple[dict[str, Any] | None, tuple[dict[str, Any], ...]]:
+    """Read source file and find BUSINESS LOGIC marker zones for override stubs.
+
+    For create(): first zone is ``"pre_super"``, second is ``"post_super"``.
+    For write(): single zone is ``"post_super"``.
+
+    Returns ``(stub_zone_for_this_stub, exclusion_zones_tuple)``.
+    """
+    source_path = module_dir / stub.file
+    if not source_path.exists():
+        return None, ()
+
+    try:
+        source = source_path.read_text(encoding="utf-8")
+    except OSError:
+        return None, ()
+
+    source_lines = source.splitlines()
+    zones = _find_stub_zones(source_lines)
+
+    if not zones:
+        return None, ()
+
+    # Assign position based on method name
+    if stub.method_name == "create" and len(zones) >= 2:
+        zones[0]["position"] = "pre_super"
+        zones[1]["position"] = "post_super"
+        # Return the first zone as the primary stub_zone
+        # (future: could return both as separate report entries)
+        stub_zone = zones[0]
+    elif stub.method_name == "create" and len(zones) == 1:
+        zones[0]["position"] = "post_super"
+        stub_zone = zones[0]
+    elif stub.method_name == "write" and zones:
+        zones[0]["position"] = "post_super"
+        stub_zone = zones[0]
+    else:
+        stub_zone = zones[0] if zones else None
+
+    # Build exclusion_zones from lines outside markers within the method
+    # For now, just return the zones not used as stub_zone
+    exclusion_zones: list[dict[str, Any]] = []
+    # Exclusion zones would be template-generated code around the markers
+    # This is a simplified version -- full implementation would diff against skeleton
+
+    return stub_zone, tuple(exclusion_zones)
 
 
 # ---------------------------------------------------------------------------

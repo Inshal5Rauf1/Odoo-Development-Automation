@@ -70,7 +70,7 @@ def generate_stub_report(
     quality_count = 0
 
     for stub in stubs:
-        context = build_stub_context(stub, spec, registry)
+        context = build_stub_context(stub, spec, registry, module_dir=module_dir)
         complexity = classify_complexity(stub, context.business_rules)
 
         entries.append(_stub_to_dict(stub, context, complexity))
@@ -157,6 +157,15 @@ def _stub_to_dict(
 
     if context.error_messages:
         result["error_messages"] = list(context.error_messages)
+
+    if context.stub_zone:
+        result["stub_zone"] = context.stub_zone
+    if context.exclusion_zones:
+        result["exclusion_zones"] = list(context.exclusion_zones)
+    if context.action_context:
+        result["action_context"] = context.action_context
+    if context.cron_context:
+        result["cron_context"] = context.cron_context
 
     result["context"] = {
         "model_fields": dict(context.model_fields),
