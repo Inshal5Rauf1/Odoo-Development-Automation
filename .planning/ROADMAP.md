@@ -175,8 +175,8 @@ Plans:
   5. All Pakistan-specific logic lives in `preprocessors/pakistan_hec.py` -- zero changes to core preprocessor files
 **Plans:** 2 plans
 Plans:
-- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
-- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
+- [ ] 49-01-PLAN.md — Pakistan/HEC preprocessor with TDD: CNIC, phone, NTN/STRN, HEC fields, PKR flag, pyproject.toml extras
+- [ ] 49-02-PLAN.md — Renderer integration: extra_data_files extension point, PKR XML rendering, template pk_* branch, E2E tests
 
 ### Phase 50: Academic Calendar
 **Goal**: Specs requesting academic calendar generate a complete semester/term management system with overlap prevention and automatic term generation, following OpenEduCat naming conventions
@@ -270,8 +270,8 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 45. Preprocessor Split | 2/2 | Complete    | 2026-03-07 | - |
 | 46. Test Infrastructure | 1/1 | Complete    | 2026-03-07 | - |
 | 47. Pydantic Spec Validation | 3/3 | Complete    | 2026-03-08 | - |
-| 48. Model Registry | 2/2 | Complete   | 2026-03-08 | - |
-| 49. Pakistan/HEC Localization | v3.3 | 0/TBD | Not started | - |
+| 48. Model Registry | 2/2 | Complete    | 2026-03-08 | - |
+| 49. Pakistan/HEC Localization | v3.3 | 0/2 | Planned | - |
 | 50. Academic Calendar | v3.3 | 0/TBD | Not started | - |
 | 51. Semantic Validation | v3.3 | 0/TBD | Not started | - |
 | 52. Document Management | v3.3 | 0/TBD | Not started | - |
