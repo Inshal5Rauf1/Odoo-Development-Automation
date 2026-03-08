@@ -520,6 +520,27 @@ def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_
             reg.save()
             model_count = len(spec.get("models", []))
             click.echo(f"Registry updated: +{model_count} models ({spec['module_name']})")
+
+            # Auto-generate mermaid diagrams (best-effort)
+            if not skip_validation:
+                try:
+                    from odoo_gen_utils.mermaid import generate_module_diagrams
+
+                    module_name = spec["module_name"]
+                    docs_dir = output_path / module_name / "docs"
+                    docs_dir.mkdir(parents=True, exist_ok=True)
+                    generate_module_diagrams(
+                        module_name=module_name,
+                        spec=spec,
+                        registry=reg,
+                        output_dir=docs_dir,
+                    )
+                    click.echo(
+                        f"Mermaid diagrams: {docs_dir}/dependencies.mmd, "
+                        f"{docs_dir}/er_diagram.mmd"
+                    )
+                except Exception:
+                    pass  # Mermaid generation is best-effort
         except Exception:
             pass  # Registry update is best-effort, don't fail render
     except PydanticValidationError as exc:
