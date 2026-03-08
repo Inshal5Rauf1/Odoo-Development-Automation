@@ -193,7 +193,10 @@ Plans:
   1. Adding a field to an existing model updates only the model file, relevant view XML, and security CSV -- other files remain untouched (verified by checksum or manifest comparison)
   2. Adding a new model creates its model file, updates __init__.py, adds views/security, and updates manifest depends -- existing model files are not regenerated
   3. Generation manifest tracks what exists, and only affected pipeline stages re-run (not the full pipeline) -- the model registry validates new references against existing models
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 60-01-PLAN.md — Iterative subpackage core: spec stash, diff-to-stage mapping, conflict detection, stub-zone merge
+- [ ] 60-02-PLAN.md — Renderer iterative mode, --force/--dry-run CLI flags, resolve command group
 
 ### Phase 61: Computed Chain Generator
 **Goal**: Users can define cross-model computed field chains (e.g., exam result grade -> enrollment grade points -> student CGPA) and the system generates correct implementations across all models in the chain
@@ -235,8 +238,8 @@ Plans:
 | 56. Logic Writer Core | 2/2 | Complete    | 2026-03-08 |
 | 57. Logic Writer Computed & Constraints | 2/2 | Complete    | 2026-03-08 |
 | 58. Logic Writer Overrides & Actions | 2/2 | Complete    | 2026-03-08 |
-| 59. Module Extension Pattern | 2/2 | Complete   | 2026-03-08 |
-| 60. Iterative Refinement | 0/? | Not started | - |
+| 59. Module Extension Pattern | 2/2 | Complete    | 2026-03-08 |
+| 60. Iterative Refinement | 0/2 | Planning complete | - |
 | 61. Computed Chain Generator | 0/? | Not started | - |
 | 62. Portal Controllers | 0/? | Not started | - |
 | 63. Bulk Operations | 0/? | Not started | - |
