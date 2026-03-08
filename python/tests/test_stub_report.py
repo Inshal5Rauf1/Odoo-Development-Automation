@@ -434,3 +434,357 @@ class SaleOrder(models.Model):
 
         raw = (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
         assert raw.endswith("\n"), "JSON should end with trailing newline"
+
+
+# ---------------------------------------------------------------------------
+# Enriched stub sources for report tests
+# ---------------------------------------------------------------------------
+
+
+_CONSTRAINT_STUB_PY = '''\
+from odoo import models, fields, api
+
+
+class TestOrder(models.Model):
+    _name = "test.order"
+    _description = "Test Order"
+
+    amount = fields.Float(string="Amount")
+    start_date = fields.Date(string="Start Date")
+    end_date = fields.Date(string="End Date")
+
+    @api.constrains("amount")
+    def _check_amount(self):
+        for rec in self:
+            pass
+
+    @api.constrains("start_date", "end_date")
+    def _check_dates(self):
+        for rec in self:
+            pass
+'''
+
+_MIXED_ENRICHMENT_PY = '''\
+from odoo import models, fields, api
+
+
+class TestOrder(models.Model):
+    _name = "test.order"
+    _description = "Test Order"
+
+    amount = fields.Float(string="Amount")
+    line_ids = fields.One2many("test.order.line", "order_id", string="Lines")
+    total = fields.Float(string="Total", compute="_compute_total", store=True)
+    partner_id = fields.Many2one("res.partner", string="Partner")
+
+    @api.depends("line_ids.amount")
+    def _compute_total(self):
+        for rec in self:
+            rec.total = 0.0
+
+    @api.constrains("amount")
+    def _check_amount(self):
+        for rec in self:
+            pass
+
+    def action_confirm(self):
+        pass
+'''
+
+
+def _enrichment_spec() -> dict[str, Any]:
+    """Spec matching _MIXED_ENRICHMENT_PY with line_ids One2many."""
+    return {
+        "module_name": "test_module",
+        "models": [
+            {
+                "name": "test.order",
+                "description": "Test Order",
+                "fields": [
+                    {"name": "amount", "type": "Float", "string": "Amount"},
+                    {
+                        "name": "line_ids",
+                        "type": "One2many",
+                        "string": "Lines",
+                        "comodel_name": "test.order.line",
+                    },
+                    {
+                        "name": "total",
+                        "type": "Float",
+                        "string": "Total",
+                        "compute": "_compute_total",
+                        "store": True,
+                        "depends": ["line_ids.amount"],
+                    },
+                    {
+                        "name": "partner_id",
+                        "type": "Many2one",
+                        "comodel_name": "res.partner",
+                        "string": "Partner",
+                    },
+                ],
+                "complex_constraints": [
+                    {"message": "Amount must be between 0 and 10000"},
+                ],
+            },
+        ],
+    }
+
+
+def _constraint_spec() -> dict[str, Any]:
+    """Spec matching _CONSTRAINT_STUB_PY."""
+    return {
+        "module_name": "test_module",
+        "models": [
+            {
+                "name": "test.order",
+                "description": "Test Order",
+                "fields": [
+                    {
+                        "name": "amount",
+                        "type": "Float",
+                        "string": "Amount",
+                        "help": "Amount must be between 0 and 10000",
+                    },
+                    {"name": "start_date", "type": "Date", "string": "Start Date"},
+                    {"name": "end_date", "type": "Date", "string": "End Date"},
+                ],
+                "complex_constraints": [
+                    {"message": "Amount must be between 0 and 10000"},
+                    {"message": "End date must be after start date"},
+                ],
+            },
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Test: method_type in report
+# ---------------------------------------------------------------------------
+
+
+class TestMethodType:
+    """method_type appears in report for all stub types."""
+
+    def test_compute_method_type_in_report(self, tmp_path: Path) -> None:
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _SIMPLE_COMPUTE_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _minimal_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stub = data["stubs"][0]
+        assert stub["method_type"] == "compute"
+
+    def test_action_method_type_in_report(self, tmp_path: Path) -> None:
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _MIXED_ENRICHMENT_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _enrichment_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stubs_by_method = {s["method"]: s for s in data["stubs"]}
+        assert stubs_by_method["action_confirm"]["method_type"] == "action"
+
+    def test_constraint_method_type_in_report(self, tmp_path: Path) -> None:
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _CONSTRAINT_STUB_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _constraint_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stubs_by_method = {s["method"]: s for s in data["stubs"]}
+        assert stubs_by_method["_check_amount"]["method_type"] == "constraint"
+
+
+# ---------------------------------------------------------------------------
+# Test: target_field_types in report
+# ---------------------------------------------------------------------------
+
+
+class TestTargetFieldTypes:
+    """target_field_types appears in report for compute stubs with type metadata."""
+
+    def test_compute_has_target_field_types(self, tmp_path: Path) -> None:
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _MIXED_ENRICHMENT_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _enrichment_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stubs_by_method = {s["method"]: s for s in data["stubs"]}
+        compute_stub = stubs_by_method["_compute_total"]
+        assert "target_field_types" in compute_stub
+        assert "total" in compute_stub["target_field_types"]
+        assert compute_stub["target_field_types"]["total"]["type"] == "Float"
+
+
+# ---------------------------------------------------------------------------
+# Test: computation_hint in report
+# ---------------------------------------------------------------------------
+
+
+class TestComputationHint:
+    """computation_hint appears in report for compute stubs."""
+
+    def test_compute_has_computation_hint(self, tmp_path: Path) -> None:
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _MIXED_ENRICHMENT_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _enrichment_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stubs_by_method = {s["method"]: s for s in data["stubs"]}
+        compute_stub = stubs_by_method["_compute_total"]
+        assert "computation_hint" in compute_stub
+        assert compute_stub["computation_hint"] == "sum_related"
+
+
+# ---------------------------------------------------------------------------
+# Test: constraint_type in report
+# ---------------------------------------------------------------------------
+
+
+class TestConstraintTypeReport:
+    """constraint_type appears in report for constraint stubs."""
+
+    def test_constraint_has_constraint_type(self, tmp_path: Path) -> None:
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _CONSTRAINT_STUB_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _constraint_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stubs_by_method = {s["method"]: s for s in data["stubs"]}
+        assert "constraint_type" in stubs_by_method["_check_amount"]
+        assert stubs_by_method["_check_amount"]["constraint_type"] == "range"
+
+
+# ---------------------------------------------------------------------------
+# Test: error_messages in report
+# ---------------------------------------------------------------------------
+
+
+class TestErrorMessages:
+    """error_messages appears in report for constraint stubs."""
+
+    def test_constraint_has_error_messages(self, tmp_path: Path) -> None:
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _CONSTRAINT_STUB_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _constraint_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stubs_by_method = {s["method"]: s for s in data["stubs"]}
+        check_amount = stubs_by_method["_check_amount"]
+        assert "error_messages" in check_amount
+        assert len(check_amount["error_messages"]) > 0
+        msg = check_amount["error_messages"][0]
+        assert msg["translatable"] is True
+
+
+# ---------------------------------------------------------------------------
+# Test: Enrichment omission
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichmentOmission:
+    """Empty enrichment values are NOT included in JSON (no clutter)."""
+
+    def test_action_has_no_computation_hint(self, tmp_path: Path) -> None:
+        """action_confirm stub should NOT have computation_hint in JSON."""
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _MIXED_ENRICHMENT_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _enrichment_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stubs_by_method = {s["method"]: s for s in data["stubs"]}
+        action_stub = stubs_by_method["action_confirm"]
+        assert "computation_hint" not in action_stub
+        assert "constraint_type" not in action_stub
+        assert "error_messages" not in action_stub
+
+    def test_compute_has_no_constraint_type(self, tmp_path: Path) -> None:
+        """Compute stub should NOT have constraint_type in JSON."""
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _SIMPLE_COMPUTE_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _minimal_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stub = data["stubs"][0]
+        assert "constraint_type" not in stub
+        assert "error_messages" not in stub
+
+    def test_action_has_no_target_field_types(self, tmp_path: Path) -> None:
+        """Non-compute stubs should NOT have target_field_types in JSON."""
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _MIXED_ENRICHMENT_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _enrichment_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stubs_by_method = {s["method"]: s for s in data["stubs"]}
+        action_stub = stubs_by_method["action_confirm"]
+        assert "target_field_types" not in action_stub
