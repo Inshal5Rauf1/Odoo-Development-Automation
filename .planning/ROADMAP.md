@@ -173,7 +173,7 @@ Plans:
   3. PKR currency is injected via `res.currency` reference (not hardcoded symbol), and NTN/STRN tax identifier fields are generated for FBR compliance
   4. HEC fields (registration number, GPA on 4.0 scale, credit hours, recognition status) are generated when `hec: true` is present in the localization config
   5. All Pakistan-specific logic lives in `preprocessors/pakistan_hec.py` -- zero changes to core preprocessor files
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 49-01-PLAN.md — Pakistan/HEC preprocessor with TDD: CNIC, phone, NTN/STRN, HEC fields, PKR flag, pyproject.toml extras
 - [ ] 49-02-PLAN.md — Renderer integration: extra_data_files extension point, PKR XML rendering, template pk_* branch, E2E tests
@@ -271,7 +271,7 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 46. Test Infrastructure | 1/1 | Complete    | 2026-03-07 | - |
 | 47. Pydantic Spec Validation | 3/3 | Complete    | 2026-03-08 | - |
 | 48. Model Registry | 2/2 | Complete    | 2026-03-08 | - |
-| 49. Pakistan/HEC Localization | v3.3 | 0/2 | Planned | - |
+| 49. Pakistan/HEC Localization | 1/2 | In Progress|  | - |
 | 50. Academic Calendar | v3.3 | 0/TBD | Not started | - |
 | 51. Semantic Validation | v3.3 | 0/TBD | Not started | - |
 | 52. Document Management | v3.3 | 0/TBD | Not started | - |
