@@ -18,8 +18,8 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 - [x] **LGEN-02**: LLM integration point — call LLM with method context + KB/Context7 patterns, parse response, write implementation back into generated .py file; model routing (quality for complex, budget for simple)
 - [x] **LGEN-03**: Computed field implementations — _compute_* methods with correct @api.depends, self.mapped/filtered patterns, store=True recomputation triggers
 - [x] **LGEN-04**: Constraint implementations — _check_* methods with correct @api.constrains, ValidationError with user-facing messages, cross-field validation logic
-- [ ] **LGEN-05**: create()/write() override implementations — super() call pattern, business logic (auto-create related records, increment counters, trigger state changes), not audit/approval (already template-generated)
-- [ ] **LGEN-06**: Action and cron method implementations — action_* workflow transitions, _cron_* scheduled logic with correct @api.model decorator and domain queries
+- [x] **LGEN-05**: create()/write() override implementations — super() call pattern, business logic (auto-create related records, increment counters, trigger state changes), not audit/approval (already template-generated)
+- [x] **LGEN-06**: Action and cron method implementations — action_* workflow transitions, _cron_* scheduled logic with correct @api.model decorator and domain queries
 - [x] **LGEN-07**: Logic Writer output passes semantic validation (Phase 51 AST + XML cross-check) — generated method bodies reference correct field names and use valid ORM patterns
 
 ### Module Extension
@@ -87,8 +87,8 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 | LGEN-02 | Phase 56 | Complete |
 | LGEN-03 | Phase 57 | Complete |
 | LGEN-04 | Phase 57 | Complete |
-| LGEN-05 | Phase 58 | Pending |
-| LGEN-06 | Phase 58 | Pending |
+| LGEN-05 | Phase 58 | Complete |
+| LGEN-06 | Phase 58 | Complete |
 | LGEN-07 | Phase 57 | Complete |
 | MEXT-01 | Phase 59 | Pending |
 | MEXT-02 | Phase 59 | Pending |

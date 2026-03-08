@@ -167,7 +167,7 @@ Plans:
   1. Generated create()/write() overrides call super() correctly, implement business logic (auto-create related records, increment counters, trigger state changes), and do not duplicate audit/approval logic already handled by templates
   2. Generated action_* methods implement workflow state transitions with correct domain queries and recordset operations
   3. Generated _cron_* methods include @api.model decorator, use domain-based queries to select target records, and implement scheduled processing logic
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 58-01-PLAN.md — Template markers + stub zone detection + context enrichment (action_context, cron_context, stub_zone)
 - [ ] 58-02-PLAN.md — Semantic validation E13, W5, E15, E16 + skeleton preservation
@@ -231,7 +231,7 @@ Plans:
 | 55. Cleanup | 1/1 | Complete    | 2026-03-08 |
 | 56. Logic Writer Core | 2/2 | Complete    | 2026-03-08 |
 | 57. Logic Writer Computed & Constraints | 2/2 | Complete    | 2026-03-08 |
-| 58. Logic Writer Overrides & Actions | 0/2 | Not started | - |
+| 58. Logic Writer Overrides & Actions | 1/2 | In Progress|  |
 | 59. Module Extension Pattern | 0/? | Not started | - |
 | 60. Iterative Refinement | 0/? | Not started | - |
 | 61. Computed Chain Generator | 0/? | Not started | - |
