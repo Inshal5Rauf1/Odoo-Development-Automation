@@ -821,3 +821,197 @@ class TestImmutability:
         existing_copy = copy.deepcopy(existing)
         _process(spec)
         assert existing == existing_copy
+
+
+# ===========================================================================
+# TestAcademicCalendarE2E -- Full module render integration tests
+# ===========================================================================
+
+
+def _make_e2e_spec(**overrides: Any) -> dict[str, Any]:
+    """Build a spec suitable for render_module() E2E testing with academic calendar."""
+    spec: dict[str, Any] = {
+        "module_name": "test_academic",
+        "module_title": "Test Academic",
+        "summary": "Test academic calendar module",
+        "author": "Test Author",
+        "website": "https://test.example.com",
+        "license": "LGPL-3",
+        "category": "Education",
+        "odoo_version": "17.0",
+        "depends": ["base"],
+        "models": [],
+        "academic_calendar": True,
+    }
+    spec.update(overrides)
+    return spec
+
+
+class TestAcademicCalendarE2E:
+    """End-to-end integration tests: full module render with academic calendar."""
+
+    def _render(
+        self, spec: dict[str, Any], tmp_path: Any
+    ) -> dict[str, str]:
+        """Render a spec and return dict of relative_path -> file content."""
+        import tempfile
+        from pathlib import Path
+
+        from odoo_gen_utils.renderer import get_template_dir, render_module
+
+        output_dir = Path(tmp_path)
+        files, _warnings = render_module(
+            spec, get_template_dir(), output_dir, no_context7=True
+        )
+        module_dir = output_dir / spec["module_name"]
+        results: dict[str, str] = {}
+        for f in files:
+            if f.exists():
+                results[str(f.relative_to(module_dir))] = f.read_text(
+                    encoding="utf-8"
+                )
+        return results
+
+    def test_e2e_renders_three_model_files(self, tmp_path):
+        """render_module with academic_calendar spec produces 3 model files."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        assert "models/academic_year.py" in results, (
+            f"academic_year.py not found. Keys: {list(results.keys())}"
+        )
+        assert "models/academic_term.py" in results, (
+            f"academic_term.py not found. Keys: {list(results.keys())}"
+        )
+        assert "models/academic_batch.py" in results, (
+            f"academic_batch.py not found. Keys: {list(results.keys())}"
+        )
+
+    def test_e2e_year_model_has_api_constrains(self, tmp_path):
+        """Rendered academic_year.py contains @api.constrains for date fields."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        year_py = results.get("models/academic_year.py", "")
+        assert '@api.constrains("date_start", "date_end")' in year_py, (
+            "Missing @api.constrains for date_start, date_end"
+        )
+
+    def test_e2e_year_model_has_overlap_check(self, tmp_path):
+        """Rendered academic_year.py contains _check_year_dates overlap method."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        year_py = results.get("models/academic_year.py", "")
+        assert "def _check_year_dates(self):" in year_py, (
+            "Missing _check_year_dates method"
+        )
+        assert "search_count(domain)" in year_py, (
+            "Missing overlap search domain in year model"
+        )
+
+    def test_e2e_year_model_has_action_confirm(self, tmp_path):
+        """Rendered academic_year.py contains def action_confirm(self) (not _check_)."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        year_py = results.get("models/academic_year.py", "")
+        assert "def action_confirm(self):" in year_py, (
+            "Missing action_confirm method"
+        )
+        assert "def _check_action_confirm" not in year_py, (
+            "action_confirm should NOT have _check_ prefix"
+        )
+
+    def test_e2e_year_model_has_action_activate(self, tmp_path):
+        """Rendered academic_year.py contains def action_activate(self)."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        year_py = results.get("models/academic_year.py", "")
+        assert "def action_activate(self):" in year_py, (
+            "Missing action_activate method"
+        )
+
+    def test_e2e_term_model_has_overlap_check(self, tmp_path):
+        """Rendered academic_term.py contains term overlap constraint."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        term_py = results.get("models/academic_term.py", "")
+        assert "def _check_term_dates(self):" in term_py, (
+            "Missing _check_term_dates method"
+        )
+        assert "search_count(domain)" in term_py, (
+            "Missing overlap search domain in term model"
+        )
+
+    def test_e2e_term_model_has_parent_boundary_check(self, tmp_path):
+        """Rendered academic_term.py validates dates within parent year range."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        term_py = results.get("models/academic_term.py", "")
+        assert "academic_year_id" in term_py, (
+            "Missing academic_year_id reference in term model"
+        )
+        assert "year.date_start" in term_py or "year.date_end" in term_py, (
+            "Missing parent year boundary validation"
+        )
+
+    def test_e2e_batch_model_renders(self, tmp_path):
+        """Rendered academic_batch.py contains _name = 'academic.batch'."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        batch_py = results.get("models/academic_batch.py", "")
+        assert '_name = "academic.batch"' in batch_py, (
+            "Missing _name declaration in batch model"
+        )
+
+    def test_e2e_manifest_has_mail_depend(self, tmp_path):
+        """Rendered __manifest__.py contains 'mail' in depends list."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        manifest = results.get("__manifest__.py", "")
+        assert '"mail"' in manifest, (
+            "Missing 'mail' dependency in manifest"
+        )
+
+    def test_e2e_models_init_has_all_three(self, tmp_path):
+        """Rendered models/__init__.py imports all three model files."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        init_py = results.get("models/__init__.py", "")
+        assert "academic_year" in init_py, "Missing academic_year import"
+        assert "academic_term" in init_py, "Missing academic_term import"
+        assert "academic_batch" in init_py, "Missing academic_batch import"
+
+    def test_e2e_no_batch_when_disabled(self, tmp_path):
+        """render_module with enable_batch=false produces only year and term."""
+        spec = _make_e2e_spec(academic_config={"enable_batch": False})
+        results = self._render(spec, tmp_path)
+        assert "models/academic_year.py" in results
+        assert "models/academic_term.py" in results
+        assert "models/academic_batch.py" not in results, (
+            "Batch model should not exist when enable_batch=false"
+        )
+
+    def test_e2e_year_model_has_state_field(self, tmp_path):
+        """Rendered academic_year.py contains state = fields.Selection."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        year_py = results.get("models/academic_year.py", "")
+        assert "state = fields.Selection(" in year_py, (
+            "Missing state Selection field in year model"
+        )
+
+    def test_e2e_year_model_imports_api(self, tmp_path):
+        """Rendered academic_year.py contains 'from odoo import api, fields, models'."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        year_py = results.get("models/academic_year.py", "")
+        assert "from odoo import api, fields, models" in year_py, (
+            "Missing api import in year model"
+        )
+
+    def test_e2e_year_model_inherits_mail_thread(self, tmp_path):
+        """Rendered academic_year.py contains _inherit with mail.thread."""
+        spec = _make_e2e_spec()
+        results = self._render(spec, tmp_path)
+        year_py = results.get("models/academic_year.py", "")
+        assert '"mail.thread"' in year_py, (
+            "Missing mail.thread in _inherit list"
+        )

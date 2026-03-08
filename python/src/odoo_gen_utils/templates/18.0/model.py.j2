@@ -97,7 +97,7 @@ class {{ model_name | to_class }}(models.Model):
         groups="{{ field.groups }}",
 {% endif %}
     )
-{% elif field.type == 'Char' and field.name in sequence_field_names and field.required %}
+{% elif field.type == 'Char' and field.name in sequence_field_names and field.required is defined and field.required %}
     {{ field.name }} = fields.Char(
         string="{{ field.string | default(field.name | replace('_', ' ') | title) }}",
         required=True,
