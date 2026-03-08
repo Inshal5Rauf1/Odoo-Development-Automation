@@ -228,14 +228,14 @@ Plans:
 **Depends on**: Phase 48 (model registry provides the data for dependency graphs)
 **Requirements**: TOOL-01
 **Success Criteria** (what must be TRUE):
-  1. `odoo-gen mermaid-deps <module>` generates a `.mmd` file with a directed acyclic graph of module dependencies (from manifest + registry)
-  2. `odoo-gen mermaid-er <module>` generates a `.mmd` file with an entity-relationship diagram showing models, fields, and relational links
+  1. `odoo-gen mermaid --module <name>` generates `.mmd` files with a directed acyclic graph of module dependencies and an ER diagram
+  2. `odoo-gen mermaid --project` generates project-level diagrams from the full registry
   3. Generated `.mmd` files render correctly in GitHub markdown preview and VS Code Mermaid extension without manual editing
   4. Node names with dots (e.g., `res.partner`) are sanitized to valid Mermaid identifiers with display labels preserving the original name
 **Plans:** 2 plans
 Plans:
-- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
-- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
+- [ ] 53-01-PLAN.md — Core mermaid.py module TDD: _mermaid_id, generate_dependency_dag, generate_er_diagram, field filtering, file writing
+- [ ] 53-02-PLAN.md — CLI mermaid command + auto-generation hook in render_module_cmd + integration tests
 
 ### Phase 54: Pipeline Quality of Life
 **Goal**: The generation pipeline produces a manifest of what it generated, supports human checkpoint callbacks at key stages, and can resume from where it left off after interruption
@@ -249,8 +249,8 @@ Plans:
   5. `render_module(resume_from=<stage>)` skips already-completed stages and resumes from the specified point, enabling recovery from interruptions
 **Plans:** 2 plans
 Plans:
-- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
-- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
+- [ ] 54-01-PLAN.md — Generation manifest + RenderHook protocol + GenerationSession dataclass TDD
+- [ ] 54-02-PLAN.md — CLI integration: resume_from parameter, hook instantiation, state persistence
 
 ## Progress
 
@@ -274,8 +274,8 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 49. Pakistan/HEC Localization | 2/2 | Complete    | 2026-03-08 | - |
 | 50. Academic Calendar | 2/2 | Complete    | 2026-03-08 | - |
 | 51. Semantic Validation | 2/2 | Complete    | 2026-03-08 | - |
-| 52. Document Management | 2/2 | Complete   | 2026-03-08 | - |
-| 53. Mermaid Graphs | v3.3 | 0/TBD | Not started | - |
+| 52. Document Management | 2/2 | Complete    | 2026-03-08 | - |
+| 53. Mermaid Graphs | v3.3 | 0/2 | Not started | - |
 | 54. Pipeline Quality of Life | v3.3 | 0/TBD | Not started | - |
 
 ---
