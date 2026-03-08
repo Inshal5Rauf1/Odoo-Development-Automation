@@ -93,7 +93,7 @@
 
 - [x] **Phase 45: Preprocessor Split** - Extract 1,715-line preprocessors.py into preprocessors/ package with decorator-based registry (completed 2026-03-07)
 - [x] **Phase 46: Test Infrastructure** - Fix 36 broken tests and pin dependency upper bounds (completed 2026-03-07)
-- [x] **Phase 47: Pydantic Spec Validation** - Pydantic v2 spec schema with protected_namespaces, backward-compatible defaults, JSON Schema export (completed 2026-03-07)
+- [x] **Phase 47: Pydantic Spec Validation** - Pydantic v2 spec schema with protected_namespaces, backward-compatible defaults, JSON Schema export (gap closure: model_dump regression fix) (completed 2026-03-08)
 - [ ] **Phase 48: Model Registry** - Cross-module model registry with JSON persistence, comodel validation, cycle detection
 - [ ] **Phase 49: Pakistan/HEC Localization** - CNIC, phone, PKR, NTN/STRN, HEC fields as generation patterns
 - [ ] **Phase 50: Academic Calendar** - academic.year, academic.term, academic.batch models with overlap prevention
@@ -142,10 +142,11 @@ Plans:
   3. Existing spec fixtures (spec_v1.json, spec_v2.json, and all test specs) validate successfully with no modifications -- `extra="allow"` ensures backward compatibility
   4. `odoo-gen export-schema` outputs a JSON Schema file that provides autocomplete in VS Code / any JSON-aware editor
   5. Validation failures produce hard errors (not warnings) -- bad specs fail early before wasting Docker time (user decision overrides original criteria #5)
-**Plans:** 2/2 plans complete
+**Plans:** 3/3 plans complete
 Plans:
-- [ ] 47-01-PLAN.md — Create spec_schema.py with Pydantic models, validate_spec(), format_validation_errors(), and TDD tests
-- [ ] 47-02-PLAN.md — Wire validation into renderer.py, add export-schema CLI command, full regression
+- [x] 47-01-PLAN.md — Create spec_schema.py with Pydantic models, validate_spec(), format_validation_errors(), and TDD tests
+- [x] 47-02-PLAN.md — Wire validation into renderer.py, add export-schema CLI command, full regression
+- [ ] 47-03-PLAN.md — Fix model_dump() regression: exclude_none=True + update mutation-dependent test
 
 ### Phase 48: Model Registry
 **Goal**: The system tracks all generated models across modules, enabling comodel validation and depends inference without requiring a running Odoo instance
@@ -247,7 +248,7 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 36-44 | v3.2 | 15/15 | Complete | 2026-03-07 |
 | 45. Preprocessor Split | 2/2 | Complete    | 2026-03-07 | - |
 | 46. Test Infrastructure | 1/1 | Complete    | 2026-03-07 | - |
-| 47. Pydantic Spec Validation | 2/2 | Complete   | 2026-03-07 | - |
+| 47. Pydantic Spec Validation | 3/3 | Complete   | 2026-03-08 | - |
 | 48. Model Registry | v3.3 | 0/TBD | Not started | - |
 | 49. Pakistan/HEC Localization | v3.3 | 0/TBD | Not started | - |
 | 50. Academic Calendar | v3.3 | 0/TBD | Not started | - |

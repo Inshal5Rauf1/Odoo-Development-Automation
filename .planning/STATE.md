@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.3
 milestone_name: Test Fixes, Domain Patterns & Architecture
 status: completed
-stopped_at: Completed 47-02-PLAN.md
-last_updated: "2026-03-07T23:52:32Z"
+stopped_at: Completed 47-03-PLAN.md
+last_updated: "2026-03-08T00:55:06.175Z"
 last_activity: 2026-03-08 — Phase 47 Plan 02 executed (renderer integration, export-schema CLI, 5 integration tests)
 progress:
   total_phases: 10
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 60
+  completed_phases: 3
+  total_plans: 6
+  completed_plans: 6
+  percent: 100
 ---
 
 # Project State
@@ -47,6 +47,7 @@ Progress: [██████████] 100% (Phase 47)
 | 46-test-infrastructure | 01 | 16min | 2 | 6 |
 | 47-pydantic-spec-validation | 01 | 4min | 1 | 3 |
 | 47-pydantic-spec-validation | 02 | 11min | 3 | 5 |
+| Phase 47-pydantic-spec-validation P03 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,8 @@ Progress: [██████████] 100% (Phase 47)
 - [Phase 47]: Lazy imports for pydantic in cli.py to preserve import guard test pattern
 - [Phase 47]: ApprovalLevelSpec.name made optional (default='') for backward compat with state-based levels
 - [Phase 47]: model_dump() at pipeline boundary; preprocessors continue receiving plain dicts
+- [Phase 47-pydantic-spec-validation]: exclude_none=True at model_dump() boundary -- single fix point preserving idiomatic .get() pattern across all 11 preprocessors
+- [Phase 47-pydantic-spec-validation]: Audit test verifies generated file content instead of spec dict mutation -- aligns with immutable pipeline semantics
 
 ### Pending Todos
 
@@ -96,7 +99,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T23:52:32Z
-Stopped at: Completed 47-02-PLAN.md
+Last session: 2026-03-08T00:55:06.174Z
+Stopped at: Completed 47-03-PLAN.md
 Resume file: None
 Next step: Execute Phase 48 (next phase in v3.3 roadmap)
