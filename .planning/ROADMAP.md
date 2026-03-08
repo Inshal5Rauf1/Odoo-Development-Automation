@@ -133,15 +133,18 @@ Plans:
 - [ ] 55-01-PLAN.md — Verify docker fix, delete artifact_state.py and all references
 
 ### Phase 56: Logic Writer Core
-**Goal**: Users can invoke a Logic Writer pass that detects TODO method stubs in generated Python files and replaces them with LLM-generated implementations
+**Goal**: Belt produces a deterministic stub report (.odoo-gen-stubs.json) that detects TODO method stubs in generated Python files, assembles rich per-stub context, and classifies complexity -- enabling Claude Code to fill stubs externally
 **Depends on**: Phase 55
 **Requirements**: LGEN-01, LGEN-02
 **Success Criteria** (what must be TRUE):
-  1. StubDetector scans a generated .py file and returns a list of methods containing TODO/pass/raise NotImplementedError bodies with their line ranges
+  1. StubDetector scans a generated .py file and returns a list of methods containing TODO/pass/constant-assign bodies with their line ranges
   2. MethodContext builder assembles field definitions, spec business_rules, and model registry context for each detected stub
-  3. LLM receives method context, returns a syntactically valid Python method body, and the Logic Writer writes it back into the .py file replacing the stub
-  4. Model routing sends complex methods (multi-model, business rules) to quality model and simple methods (single-field compute) to budget model
-**Plans**: TBD
+  3. Belt generates .odoo-gen-stubs.json with per-stub context; Claude Code reads this report externally to implement stubs
+  4. Complexity classifier deterministically routes stubs as budget or quality based on cross-model depends, target count, conditional rules, and method type
+**Plans:** 2 plans
+Plans:
+- [ ] 56-01-PLAN.md — StubDetector + ContextBuilder (AST stub detection, per-stub context assembly)
+- [ ] 56-02-PLAN.md — Classifier + Report + CLI integration + Agent prompt
 
 ### Phase 57: Logic Writer Computed & Constraints
 **Goal**: Logic Writer generates correct _compute_* and _check_* method implementations that pass semantic validation
@@ -219,8 +222,8 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 55. Cleanup | 1/1 | Complete   | 2026-03-08 |
-| 56. Logic Writer Core | 0/? | Not started | - |
+| 55. Cleanup | 1/1 | Complete    | 2026-03-08 |
+| 56. Logic Writer Core | 0/2 | Planned | - |
 | 57. Logic Writer Computed & Constraints | 0/? | Not started | - |
 | 58. Logic Writer Overrides & Actions | 0/? | Not started | - |
 | 59. Module Extension Pattern | 0/? | Not started | - |
