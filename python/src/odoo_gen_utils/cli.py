@@ -500,6 +500,38 @@ def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_
             if w.suggestion:
                 click.echo(f"  Suggestion: {w.suggestion}", err=True)
 
+        # Logic Writer: generate stub report
+        try:
+            from odoo_gen_utils.logic_writer import generate_stub_report
+            from odoo_gen_utils.registry import ModelRegistry as _StubRegistry
+
+            module_name = spec["module_name"]
+            stub_reg: _StubRegistry | None = None
+            try:
+                stub_reg_path = _find_registry_path()
+                stub_reg = _StubRegistry(stub_reg_path)
+                stub_reg.load()
+                stub_reg.load_known_models()
+            except Exception:
+                stub_reg = None
+
+            stub_report = generate_stub_report(
+                module_dir=output_path / module_name,
+                spec=spec,
+                registry=stub_reg,
+            )
+            if stub_report.total_stubs > 0:
+                click.echo(
+                    f"Stub report: {stub_report.total_stubs} stubs "
+                    f"({stub_report.budget_count} budget, "
+                    f"{stub_report.quality_count} quality) "
+                    f"-> {stub_report.report_path}"
+                )
+            else:
+                click.echo("Stub report: 0 stubs (no TODO methods found)")
+        except Exception as exc:
+            click.echo(f"WARN: Stub report generation failed: {exc}", err=True)
+
         # Post-render semantic validation
         if not skip_validation:
             from odoo_gen_utils.validation.semantic import (
