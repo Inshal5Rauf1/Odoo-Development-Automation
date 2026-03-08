@@ -1,11 +1,12 @@
 """Semantic validation for generated Odoo modules.
 
-Catches field reference errors, XML ID conflicts, ACL mismatches, and
-manifest dependency gaps in rendered output files -- eliminating the
-Docker round-trip for the majority of generation bugs.
+Catches field reference errors, XML ID conflicts, ACL mismatches,
+manifest dependency gaps, and ORM pattern violations in rendered output
+files -- eliminating the Docker round-trip for the majority of
+generation bugs.
 
-10 checks total:
-  ERRORS (E1-E6) -- generation is broken, will fail at install
+16 checks total:
+  ERRORS (E1-E12) -- generation is broken, will fail at install
   WARNINGS (W1-W4) -- might be wrong, might be intentional
 
 All stdlib: ast, xml.etree, csv, difflib, dataclasses, time, pathlib.
@@ -745,6 +746,572 @@ def _check_w4(
 
 
 # ---------------------------------------------------------------------------
+# E7-E12 helper functions
+# ---------------------------------------------------------------------------
+
+
+def _has_api_decorator(func: ast.FunctionDef, decorator_name: str) -> bool:
+    """Return True if *func* has ``@api.{decorator_name}`` decorator."""
+    for dec in func.decorator_list:
+        # @api.depends('x') -- Call form
+        if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute):
+            if (
+                dec.func.attr == decorator_name
+                and isinstance(dec.func.value, ast.Name)
+                and dec.func.value.id == "api"
+            ):
+                return True
+        # @api.model -- bare Attribute form (no call parens)
+        if isinstance(dec, ast.Attribute):
+            if (
+                dec.attr == decorator_name
+                and isinstance(dec.value, ast.Name)
+                and dec.value.id == "api"
+            ):
+                return True
+    return False
+
+
+def _extract_constrains_decorator(dec: ast.expr) -> list[str] | None:
+    """Extract field names from ``@api.constrains('f1', 'f2')``."""
+    if not isinstance(dec, ast.Call):
+        return None
+    if not isinstance(dec.func, ast.Attribute):
+        return None
+    if dec.func.attr != "constrains":
+        return None
+    if not isinstance(dec.func.value, ast.Name) or dec.func.value.id != "api":
+        return None
+    result = []
+    for arg in dec.args:
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            result.append(arg.value)
+    return result if result else None
+
+
+def _accesses_self_field_without_loop(func: ast.FunctionDef) -> bool:
+    """Return True if method body accesses ``self.X`` (read or write)
+    without a ``for rec in self:`` loop.
+
+    Both ``self.field = value`` (assignment) and ``self.field`` (read
+    in expression) on a multi-record recordset are bugs.
+    """
+    has_self_field_access = False
+    has_self_loop = False
+
+    for stmt in ast.walk(func):
+        # Check for: for rec in self: ...
+        if isinstance(stmt, ast.For):
+            if isinstance(stmt.iter, ast.Name) and stmt.iter.id == "self":
+                has_self_loop = True
+
+        # Check for: self.field = ... (assignment)
+        if isinstance(stmt, ast.Assign):
+            for target in stmt.targets:
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "self"
+                ):
+                    has_self_field_access = True
+
+        # Check for: self.field (read in expression) -- Attribute access
+        if isinstance(stmt, ast.Attribute):
+            if (
+                isinstance(stmt.value, ast.Name)
+                and stmt.value.id == "self"
+                and stmt.attr not in _SELF_SAFE_ATTRS
+            ):
+                has_self_field_access = True
+
+    return has_self_field_access and not has_self_loop
+
+
+# Attributes on self that are safe to access without iteration
+# (they're ORM methods/properties, not field accesses)
+_SELF_SAFE_ATTRS: frozenset[str] = frozenset({
+    "env", "ids", "id", "ensure_one", "browse", "search",
+    "with_context", "sudo", "mapped", "filtered", "sorted",
+    "create", "write", "unlink", "read", "with_company",
+    "_context", "_cr", "_uid", "pool",
+})
+
+
+def _has_raise_validation_error(func: ast.FunctionDef) -> bool:
+    """Return True if method body contains ``raise ValidationError(...)``."""
+    for node in ast.walk(func):
+        if isinstance(node, ast.Raise) and node.exc is not None:
+            exc = node.exc
+            # raise ValidationError(...)
+            if isinstance(exc, ast.Call):
+                if isinstance(exc.func, ast.Name) and exc.func.id == "ValidationError":
+                    return True
+                # raise exceptions.ValidationError(...)
+                if isinstance(exc.func, ast.Attribute) and exc.func.attr == "ValidationError":
+                    return True
+    return False
+
+
+def _check_mapped_filtered_syntax(
+    func: ast.FunctionDef,
+) -> list[tuple[int, str]]:
+    """Return ``(line, message)`` tuples for bad ``mapped()``/``filtered()`` calls."""
+    errors: list[tuple[int, str]] = []
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute):
+            continue
+
+        method_name = node.func.attr
+        if method_name == "mapped" and node.args:
+            arg = node.args[0]
+            # Bad: bare Name (missing quotes)
+            if isinstance(arg, ast.Name):
+                errors.append((
+                    node.lineno,
+                    f"mapped({arg.id}) -- missing quotes, should be mapped('{arg.id}')",
+                ))
+        elif method_name == "filtered" and node.args:
+            arg = node.args[0]
+            # Bad: string with comparison operator
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                if any(op in arg.value for op in ("==", "!=", ">", "<", ">=", "<=")):
+                    errors.append((
+                        node.lineno,
+                        f"filtered('{arg.value}') -- use lambda instead of string comparison",
+                    ))
+    return errors
+
+
+def _has_self_mutating_call(
+    func: ast.FunctionDef,
+) -> list[tuple[int, str]]:
+    """Detect ``self.write()``/``self.create()``/``self.unlink()`` calls.
+
+    Only flags calls where the receiver is literally ``self``, not
+    variable aliases or ``self.env[...]``.
+    """
+    bad_methods = frozenset({"write", "create", "unlink"})
+    errors: list[tuple[int, str]] = []
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr not in bad_methods:
+            continue
+        # Check receiver is literally `self` (not self.env['...'].method())
+        if isinstance(node.func.value, ast.Name) and node.func.value.id == "self":
+            errors.append((
+                node.lineno,
+                f"self.{node.func.attr}() inside compute method causes infinite recursion",
+            ))
+    return errors
+
+
+def _get_assigned_fields_in_method(func: ast.FunctionDef) -> set[str]:
+    """Return set of field names assigned as ``record.field = ...`` anywhere
+    in the method body (via any variable name, not just ``self``).
+    """
+    fields_set: set[str] = set()
+    for node in ast.walk(func):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Attribute):
+                    fields_set.add(target.attr)
+    return fields_set
+
+
+def _get_for_loop_var_over_self(func: ast.FunctionDef) -> str | None:
+    """Return the loop variable name from ``for <var> in self:``
+    if present, else None.
+    """
+    for node in ast.walk(func):
+        if isinstance(node, ast.For):
+            if isinstance(node.iter, ast.Name) and node.iter.id == "self":
+                if isinstance(node.target, ast.Name):
+                    return node.target.id
+    return None
+
+
+def _bare_field_names_in_for_body(
+    func: ast.FunctionDef,
+    model_fields: set[str],
+) -> list[tuple[int, str]]:
+    """Find bare Name nodes in Load context inside for-loop body that
+    match model field names.
+
+    Returns ``(line, field_name)`` tuples.
+    """
+    errors: list[tuple[int, str]] = []
+
+    for node in ast.walk(func):
+        if not isinstance(node, ast.For):
+            continue
+        if not (isinstance(node.iter, ast.Name) and node.iter.id == "self"):
+            continue
+
+        # Get the loop variable name (e.g., 'rec', 'record')
+        loop_var = node.target.id if isinstance(node.target, ast.Name) else None
+
+        # Collect all names that are assigned to (Store context) inside the loop
+        assigned_names: set[str] = set()
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Assign):
+                for t in inner.targets:
+                    if isinstance(t, ast.Name):
+                        assigned_names.add(t.id)
+
+        # Walk the for-loop body for bare Name nodes in Load context
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Name) and isinstance(inner.ctx, ast.Load):
+                name = inner.id
+                # Skip: not a model field, or is loop var, or is 'self', or common builtins
+                if name not in model_fields:
+                    continue
+                if name == loop_var or name == "self":
+                    continue
+                # Skip common builtins/imports that might match field names
+                if name in {"True", "False", "None", "super", "len", "sum", "min", "max", "abs", "int", "float", "str", "list", "dict", "set", "range", "print", "type", "isinstance", "hasattr", "getattr"}:
+                    continue
+                errors.append((inner.lineno, name))
+    return errors
+
+
+def _read_sidecar_targets(module_dir: Path) -> dict[str, list[str]]:
+    """Read ``.odoo-gen-stubs.json`` sidecar and return
+    ``{method_name: [target_fields]}`` mapping.
+    """
+    sidecar_path = module_dir / ".odoo-gen-stubs.json"
+    if not sidecar_path.exists():
+        return {}
+    try:
+        data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    result: dict[str, list[str]] = {}
+    for stub in data.get("stubs", []):
+        method = stub.get("method", "")
+        targets = stub.get("target_fields", [])
+        if method and targets:
+            result[method] = targets
+    return result
+
+
+# ---------------------------------------------------------------------------
+# E7-E12 check functions
+# ---------------------------------------------------------------------------
+
+
+def _check_e7(
+    module_dir: Path,
+    module_models: dict[str, _ParsedModel],
+) -> list[ValidationIssue]:
+    """E7: Missing self iteration in multi-record method.
+
+    Methods with ``@api.depends`` or ``@api.constrains`` that assign
+    to ``self.field`` without a ``for rec in self:`` loop are flagged.
+    ``@api.model`` methods are exempt.
+    """
+    issues: list[ValidationIssue] = []
+
+    for py_file in module_dir.rglob("*.py"):
+        rel = str(py_file.relative_to(module_dir))
+        try:
+            source = py_file.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel)
+        except (SyntaxError, OSError):
+            continue  # E1 already caught syntax errors
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            model_info = _extract_model_info(node, rel)
+            if model_info is None:
+                continue
+
+            for stmt in node.body:
+                if not isinstance(stmt, ast.FunctionDef):
+                    continue
+                # Only check methods with @api.depends or @api.constrains
+                if not (_has_api_decorator(stmt, "depends") or _has_api_decorator(stmt, "constrains")):
+                    continue
+                # @api.model is exempt
+                if _has_api_decorator(stmt, "model"):
+                    continue
+
+                if _accesses_self_field_without_loop(stmt):
+                    issues.append(ValidationIssue(
+                        code="E7",
+                        severity="error",
+                        file=rel,
+                        line=stmt.lineno,
+                        message=(
+                            f"Method '{stmt.name}' assigns to self.field "
+                            f"without iterating over self (for rec in self)"
+                        ),
+                    ))
+
+    return issues
+
+
+def _check_e8(
+    module_dir: Path,
+    module_models: dict[str, _ParsedModel],
+) -> list[ValidationIssue]:
+    """E8: Compute method doesn't set target field.
+
+    Reads ``.odoo-gen-stubs.json`` sidecar for ``target_fields``.
+    Falls back to ``_compute_X`` -> field ``X`` naming convention.
+    """
+    issues: list[ValidationIssue] = []
+    sidecar_targets = _read_sidecar_targets(module_dir)
+
+    for py_file in module_dir.rglob("*.py"):
+        rel = str(py_file.relative_to(module_dir))
+        try:
+            source = py_file.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel)
+        except (SyntaxError, OSError):
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            model_info = _extract_model_info(node, rel)
+            if model_info is None:
+                continue
+
+            for stmt in node.body:
+                if not isinstance(stmt, ast.FunctionDef):
+                    continue
+                if not _has_api_decorator(stmt, "depends"):
+                    continue
+
+                # Determine target fields
+                method_name = stmt.name
+                target_fields: list[str] = []
+
+                if method_name in sidecar_targets:
+                    target_fields = sidecar_targets[method_name]
+                elif method_name.startswith("_compute_"):
+                    inferred = method_name[len("_compute_"):]
+                    if inferred and inferred in model_info.fields:
+                        target_fields = [inferred]
+
+                if not target_fields:
+                    continue  # Can't determine targets, skip
+
+                # Check which targets are assigned in the method body
+                assigned = _get_assigned_fields_in_method(stmt)
+                missing = [f for f in target_fields if f not in assigned]
+
+                if missing:
+                    issues.append(ValidationIssue(
+                        code="E8",
+                        severity="error",
+                        file=rel,
+                        line=stmt.lineno,
+                        message=(
+                            f"Compute method '{method_name}' never assigns "
+                            f"to target field(s): {', '.join(missing)}"
+                        ),
+                    ))
+
+    return issues
+
+
+def _check_e9(
+    module_dir: Path,
+    module_models: dict[str, _ParsedModel],
+) -> list[ValidationIssue]:
+    """E9: Constraint method doesn't raise ValidationError.
+
+    Methods with ``@api.constrains`` must contain at least one
+    ``raise ValidationError(...)`` statement.
+    """
+    issues: list[ValidationIssue] = []
+
+    for py_file in module_dir.rglob("*.py"):
+        rel = str(py_file.relative_to(module_dir))
+        try:
+            source = py_file.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel)
+        except (SyntaxError, OSError):
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            model_info = _extract_model_info(node, rel)
+            if model_info is None:
+                continue
+
+            for stmt in node.body:
+                if not isinstance(stmt, ast.FunctionDef):
+                    continue
+                if not _has_api_decorator(stmt, "constrains"):
+                    continue
+
+                if not _has_raise_validation_error(stmt):
+                    issues.append(ValidationIssue(
+                        code="E9",
+                        severity="error",
+                        file=rel,
+                        line=stmt.lineno,
+                        message=(
+                            f"Constraint method '{stmt.name}' never raises "
+                            f"ValidationError"
+                        ),
+                    ))
+
+    return issues
+
+
+def _check_e10(
+    module_dir: Path,
+    module_models: dict[str, _ParsedModel],
+) -> list[ValidationIssue]:
+    """E10: Bare field access without record variable.
+
+    Inside ``for rec in self:`` loops of ``@api.depends``/``@api.constrains``
+    methods, bare Name nodes in Load context matching model field names
+    are flagged.
+    """
+    issues: list[ValidationIssue] = []
+
+    for py_file in module_dir.rglob("*.py"):
+        rel = str(py_file.relative_to(module_dir))
+        try:
+            source = py_file.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel)
+        except (SyntaxError, OSError):
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            model_info = _extract_model_info(node, rel)
+            if model_info is None:
+                continue
+
+            model_field_names = set(model_info.fields.keys())
+
+            for stmt in node.body:
+                if not isinstance(stmt, ast.FunctionDef):
+                    continue
+                if not (_has_api_decorator(stmt, "depends") or _has_api_decorator(stmt, "constrains")):
+                    continue
+
+                bare_refs = _bare_field_names_in_for_body(stmt, model_field_names)
+                for lineno, field_name in bare_refs:
+                    issues.append(ValidationIssue(
+                        code="E10",
+                        severity="error",
+                        file=rel,
+                        line=lineno,
+                        message=(
+                            f"Bare field reference '{field_name}' -- "
+                            f"use record.{field_name} instead"
+                        ),
+                    ))
+
+    return issues
+
+
+def _check_e11(
+    module_dir: Path,
+    module_models: dict[str, _ParsedModel],
+) -> list[ValidationIssue]:
+    """E11: Wrong mapped/filtered syntax.
+
+    ``mapped()`` with bare Name argument (missing quotes) and
+    ``filtered()`` with string comparison expression.
+    """
+    issues: list[ValidationIssue] = []
+
+    for py_file in module_dir.rglob("*.py"):
+        rel = str(py_file.relative_to(module_dir))
+        try:
+            source = py_file.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel)
+        except (SyntaxError, OSError):
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            model_info = _extract_model_info(node, rel)
+            if model_info is None:
+                continue
+
+            for stmt in node.body:
+                if not isinstance(stmt, ast.FunctionDef):
+                    continue
+                if not (_has_api_decorator(stmt, "depends") or _has_api_decorator(stmt, "constrains")):
+                    continue
+
+                bad_calls = _check_mapped_filtered_syntax(stmt)
+                for lineno, msg in bad_calls:
+                    issues.append(ValidationIssue(
+                        code="E11",
+                        severity="error",
+                        file=rel,
+                        line=lineno,
+                        message=msg,
+                    ))
+
+    return issues
+
+
+def _check_e12(
+    module_dir: Path,
+    module_models: dict[str, _ParsedModel],
+) -> list[ValidationIssue]:
+    """E12: write()/create()/unlink() inside @api.depends method.
+
+    Only checks direct ``self.write()``/``self.create()``/``self.unlink()``
+    calls, not variable aliases or ``self.env[...].create()``.
+    """
+    issues: list[ValidationIssue] = []
+
+    for py_file in module_dir.rglob("*.py"):
+        rel = str(py_file.relative_to(module_dir))
+        try:
+            source = py_file.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel)
+        except (SyntaxError, OSError):
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            model_info = _extract_model_info(node, rel)
+            if model_info is None:
+                continue
+
+            for stmt in node.body:
+                if not isinstance(stmt, ast.FunctionDef):
+                    continue
+                # E12 only applies to @api.depends methods (compute)
+                if not _has_api_decorator(stmt, "depends"):
+                    continue
+
+                bad_calls = _has_self_mutating_call(stmt)
+                for lineno, msg in bad_calls:
+                    issues.append(ValidationIssue(
+                        code="E12",
+                        severity="error",
+                        file=rel,
+                        line=lineno,
+                        message=msg,
+                    ))
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -753,7 +1320,7 @@ def semantic_validate(
     output_dir: Path,
     registry: ModelRegistry | None = None,
 ) -> SemanticValidationResult:
-    """Run all 10 semantic checks on a generated module directory.
+    """Run all 16 semantic checks on a generated module directory.
 
     Parameters
     ----------
@@ -813,6 +1380,24 @@ def semantic_validate(
 
     # E6: Manifest depends
     result.errors.extend(_check_e6(output_dir, module_models, parsed_xmls))
+
+    # E7: Missing self iteration
+    result.errors.extend(_check_e7(output_dir, module_models))
+
+    # E8: Compute doesn't set target field
+    result.errors.extend(_check_e8(output_dir, module_models))
+
+    # E9: Constraint doesn't raise ValidationError
+    result.errors.extend(_check_e9(output_dir, module_models))
+
+    # E10: Bare field access in for-loop body
+    result.errors.extend(_check_e10(output_dir, module_models))
+
+    # E11: Wrong mapped/filtered syntax
+    result.errors.extend(_check_e11(output_dir, module_models))
+
+    # E12: write/create/unlink in compute
+    result.errors.extend(_check_e12(output_dir, module_models))
 
     # W1: Comodel references
     result.warnings.extend(_check_w1(module_models, known_models, registry))

@@ -13,7 +13,6 @@ class FeeInvoice(models.Model):
 
     @api.depends("line_ids.amount")
     def _compute_total(self):
-        for rec in self:
-            total = sum(rec.line_ids.mapped('amount'))
-            rec.write({'total': total})
+        total = sum(self.line_ids.mapped('amount'))
+        self.write({'total': total})
 """
