@@ -149,6 +149,111 @@ class SecurityBlockSpec(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Extension-level specs (Phase 59)
+# ---------------------------------------------------------------------------
+
+
+class ExtensionFieldSpec(BaseModel):
+    """Specification for a field added by an extension module (_inherit)."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    type: str
+    string: str = ""
+    comodel: str | None = None
+    comodel_name: str | None = None
+    selection: list = []
+    values: list | None = None  # Alias for selection; preprocessor normalizes
+    required: bool = False
+    store: bool | None = None
+    compute: str | None = None
+    depends: list[str] = []
+    groups: str | None = None
+    inverse_name: str | None = None
+
+    @field_validator("type")
+    @classmethod
+    def validate_field_type(cls, v: str) -> str:
+        if v not in VALID_FIELD_TYPES:
+            valid_sorted = ", ".join(sorted(VALID_FIELD_TYPES))
+            raise ValueError(
+                f"Value '{v}' is not a valid field type. "
+                f"Valid types: {valid_sorted}"
+            )
+        return v
+
+
+class ViewInsertionSpec(BaseModel):
+    """Specification for a single xpath insertion in a view extension."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    xpath: str
+    position: str = "after"
+    fields: list[str] = []
+    content: str | None = None  # e.g., "page" for Pattern B
+    page_name: str | None = None
+    page_string: str | None = None
+
+
+class ViewExtensionSpec(BaseModel):
+    """Specification for extending a base view with xpath insertions."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    base_view: str
+    insertions: list[ViewInsertionSpec] = []
+
+
+class ExtensionComputedSpec(BaseModel):
+    """Specification for a computed field added by an extension."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    type: str
+    compute: str
+    depends: list[str] = []
+    store: bool = False
+
+
+class ExtensionConstraintSpec(BaseModel):
+    """Specification for a constraint added by an extension."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    fields: list[str] = []
+    rule: str = ""
+    type: str = "check"
+
+
+class ExtensionMethodSpec(BaseModel):
+    """Specification for a method added by an extension."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    decorator: str | None = None
+    business_rules: list[str] = []
+
+
+class ExtensionSpec(BaseModel):
+    """Specification for extending an existing Odoo model via _inherit."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    base_model: str
+    base_module: str
+    add_fields: list[ExtensionFieldSpec] = []
+    add_computed: list[ExtensionComputedSpec] = []
+    add_constraints: list[ExtensionConstraintSpec] = []
+    add_methods: list[ExtensionMethodSpec] = []
+    view_extensions: list[ViewExtensionSpec] = []
+
+
+# ---------------------------------------------------------------------------
 # Model-level spec
 # ---------------------------------------------------------------------------
 
@@ -234,6 +339,7 @@ class ModuleSpec(BaseModel):
     application: bool = True
     depends: list[str] = ["base"]
     models: list[ModelSpec] = []
+    extends: list[ExtensionSpec] = []
     wizards: list[dict] = []
     cron_jobs: list[CronJobSpec] = []
     reports: list[ReportSpec] = []
@@ -243,6 +349,18 @@ class ModuleSpec(BaseModel):
     computation_chains: list[dict] = []
     constraints: list[dict] = []
     security: SecurityBlockSpec | None = None
+
+    @model_validator(mode="after")
+    def check_no_duplicate_extends(self) -> ModuleSpec:
+        """Reject duplicate base_model entries in extends list."""
+        seen: set[str] = set()
+        for ext in self.extends:
+            if ext.base_model in seen:
+                raise ValueError(
+                    f"duplicate base_model '{ext.base_model}' in extends list"
+                )
+            seen.add(ext.base_model)
+        return self
 
     @model_validator(mode="after")
     def check_approval_roles_exist(self) -> ModuleSpec:

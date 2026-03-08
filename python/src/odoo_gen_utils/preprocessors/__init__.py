@@ -104,3 +104,6 @@ from odoo_gen_utils.preprocessors.notifications import (  # noqa: E402,F401
 from odoo_gen_utils.preprocessors.webhooks import (  # noqa: E402,F401
     _process_webhook_patterns,
 )
+from odoo_gen_utils.preprocessors.extensions import (  # noqa: E402,F401
+    _process_extensions,
+)

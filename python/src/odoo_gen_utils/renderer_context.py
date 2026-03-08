@@ -402,6 +402,119 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     }
 
 
+def _build_extension_context(
+    spec: dict[str, Any], extension: dict[str, Any]
+) -> dict[str, Any]:
+    """Build template context for a single extension model (_inherit).
+
+    Args:
+        spec: Full module specification dictionary (preprocessed).
+        extension: Single extension dict from spec["extends"].
+
+    Returns:
+        Context dictionary suitable for rendering extension_model.py.j2.
+    """
+    base_model = extension["base_model"]
+    base_model_var = _to_python_var(base_model)
+    class_name = _to_class(base_model)
+    module_name = spec.get("module_name", "")
+
+    fields = extension.get("add_fields", [])
+    computed_fields = extension.get("add_computed", [])
+    methods = extension.get("add_methods", [])
+
+    # Build SQL constraints from add_constraints
+    sql_constraints: list[dict[str, Any]] = []
+    for constraint in extension.get("add_constraints", []):
+        c_type = constraint.get("type", "check")
+        c_fields = constraint.get("fields", [])
+        c_name = constraint.get("name", "")
+        c_rule = constraint.get("rule", "")
+
+        if c_type == "unique":
+            definition = f"UNIQUE({', '.join(c_fields)})"
+        else:
+            definition = f"CHECK({', '.join(c_fields)})"
+
+        sql_constraints.append({
+            "name": c_name,
+            "definition": definition,
+            "message": c_rule,
+        })
+
+    needs_api = bool(computed_fields or methods)
+
+    return {
+        "module_name": module_name,
+        "base_model": base_model,
+        "base_model_var": base_model_var,
+        "class_name": class_name,
+        "fields": fields,
+        "computed_fields": computed_fields,
+        "sql_constraints": sql_constraints,
+        "methods": methods,
+        "needs_api": needs_api,
+    }
+
+
+def _build_extension_view_context(
+    spec: dict[str, Any],
+    extension: dict[str, Any],
+    view_ext: dict[str, Any],
+) -> dict[str, Any]:
+    """Build template context for a single extension view (xpath inheritance).
+
+    Args:
+        spec: Full module specification dictionary (preprocessed).
+        extension: Single extension dict from spec["extends"].
+        view_ext: Single view_extension dict from extension["view_extensions"].
+
+    Returns:
+        Context dictionary suitable for rendering extension_views.xml.j2.
+    """
+    base_model = extension["base_model"]
+    base_model_var = _to_python_var(base_model)
+    module_name = spec.get("module_name", "")
+    base_view = view_ext.get("base_view", "")
+
+    # Infer view_type from base_view suffix: "_form" -> "form", "_tree" -> "tree"
+    view_type = "form"  # default
+    for suffix in ("_form", "_tree", "_search", "_kanban", "_graph", "_pivot"):
+        if suffix in base_view:
+            view_type = suffix.lstrip("_")
+            break
+
+    view_record_id = f"view_{base_model_var}_{view_type}_inherit_{module_name}"
+    view_name = f"{base_model}.{view_type}.inherit.{module_name}"
+    inherit_id_ref = base_view
+
+    # Process insertions
+    insertions: list[dict[str, Any]] = []
+    for ins in view_ext.get("insertions", []):
+        if hasattr(ins, "model_dump"):
+            ins_dict = ins.model_dump(exclude_none=True)
+        else:
+            ins_dict = dict(ins)
+        insertions.append({
+            "xpath": ins_dict.get("xpath", ""),
+            "position": ins_dict.get("position", "after"),
+            "fields": ins_dict.get("fields", []),
+            "content": ins_dict.get("content"),
+            "page_name": ins_dict.get("page_name"),
+            "page_string": ins_dict.get("page_string"),
+        })
+
+    return {
+        "module_name": module_name,
+        "base_model": base_model,
+        "model_name": base_model,
+        "view_record_id": view_record_id,
+        "view_name": view_name,
+        "inherit_id_ref": inherit_id_ref,
+        "insertions": insertions,
+    }
+
+
 def _compute_manifest_data(
     spec: dict[str, Any],
     data_files: list[str],
@@ -521,6 +634,17 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         spec, data_files, wiz_files,
         has_company_modules=has_company or has_record_rules,
     )
+    # Phase 59: extension model files for init_models.py.j2
+    extension_model_files = spec.get("extension_model_files", [])
+    has_extensions = spec.get("has_extensions", False)
+
+    # Phase 59: add extension view files to manifest_files
+    if has_extensions:
+        for ext in spec.get("extends", []):
+            ext_base_var = _to_python_var(ext.get("base_model", ""))
+            if ext.get("view_extensions"):
+                manifest_files.append(f"views/{ext_base_var}_views.xml")
+
     ctx: dict[str, Any] = {
         "module_name": module_name,
         "module_title": spec.get("module_title", module_name.replace("_", " ").title()),
@@ -554,6 +678,9 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         "c7_hints": {},
         # Phase 52 keys
         "has_document_models": any(m.get("has_document_verification") for m in models),
+        # Phase 59: extension keys
+        "extension_model_files": extension_model_files,
+        "has_extensions": has_extensions,
     }
     # Phase 52: VERSION_GATES for Odoo version-conditional template rendering (DOMN-04)
     _VERSION_GATES: dict[str, dict[str, str]] = {
