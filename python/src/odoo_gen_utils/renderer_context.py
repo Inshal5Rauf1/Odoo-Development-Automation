@@ -97,7 +97,12 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     # Phase 12 + 21: mail.thread auto-inheritance (TMPL-01)
     # Smart injection: skip line items, honor chatter flag, avoid duplicates on in-module parents
     explicit_inherit = model.get("inherit")
-    inherit_list = [explicit_inherit] if explicit_inherit else []
+    if isinstance(explicit_inherit, list):
+        inherit_list = list(explicit_inherit)
+    elif explicit_inherit:
+        inherit_list = [explicit_inherit]
+    else:
+        inherit_list = []
 
     # Collect all model names in this module for line item & parent detection
     module_model_names = {m["name"] for m in spec.get("models", [])}
@@ -117,7 +122,12 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         chatter = not is_line_item
 
     # Detect if parent (explicit_inherit) is another model in the same module
-    parent_is_in_module = explicit_inherit in module_model_names if explicit_inherit else False
+    if isinstance(explicit_inherit, list):
+        parent_is_in_module = any(inh in module_model_names for inh in explicit_inherit)
+    elif explicit_inherit:
+        parent_is_in_module = explicit_inherit in module_model_names
+    else:
+        parent_is_in_module = False
 
     if chatter and "mail" in spec.get("depends", []) and not parent_is_in_module:
         for mixin in ("mail.thread", "mail.activity.mixin"):
@@ -220,8 +230,49 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     webhook_on_write = bool(webhook_watched_fields)
     webhook_on_unlink = model.get("webhook_on_unlink", False)
 
+    # Phase 52: document management context keys (defaults prevent StrictUndefined crashes)
+    has_document_verification = model.get("has_document_verification", False)
+    has_document_versioning = model.get("has_document_versioning", False)
+    document_version_action = model.get("document_version_action", None)
+
+    # Build document_verification_actions from complex_constraints for view buttons
+    document_verification_actions: list[dict[str, Any]] = model.get(
+        "document_verification_actions", []
+    )
+    if has_document_verification and not document_verification_actions:
+        # Auto-build from doc_action_* constraints
+        module_name = spec.get("module_name", "module")
+        _doc_action_map = {
+            "doc_action_verify": {
+                "name": "doc_action_verify",
+                "button_label": "Verify",
+                "button_class": "btn-primary",
+                "visible_when": "pending",
+                "group_xml_id": f"group_{module_name}_verifier",
+            },
+            "doc_action_reject": {
+                "name": "doc_action_reject",
+                "button_label": "Reject",
+                "button_class": "btn-danger",
+                "visible_when": "pending",
+                "group_xml_id": f"group_{module_name}_verifier",
+            },
+            "doc_action_reset": {
+                "name": "doc_action_reset",
+                "button_label": "Reset to Pending",
+                "button_class": "btn-secondary",
+                "visible_when": "rejected",
+                "group_xml_id": f"group_{module_name}_manager",
+            },
+        }
+        for cc in complex_constraints:
+            cc_name = cc.get("name", "")
+            if cc_name in _doc_action_map:
+                document_verification_actions.append(_doc_action_map[cc_name])
+
     # Phase 39: approval models need translate for UserError messages in action methods
-    if has_approval:
+    # Phase 52: document verification models also need translate for UserError
+    if has_approval or has_document_verification:
         needs_translate = True
 
     # Phase 12: conditional api import (TMPL-02)
@@ -233,10 +284,12 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     has_temporal = any(c.get("type") == "temporal" for c in complex_constraints)
     # Phase 49: pk_* constraints need @api.constrains decorator
     # Phase 50: ac_year_*/ac_term_* constraints also need @api.constrains
+    # Phase 52: doc_file_* constraints also need @api.constrains
     has_domain_constraints = any(
         c.get("type", "").startswith("pk_")
         or c.get("type", "").startswith("ac_year_")
         or c.get("type", "").startswith("ac_term_")
+        or c.get("type", "").startswith("doc_file_")
         for c in complex_constraints
     )
     needs_api = bool(
@@ -341,6 +394,11 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         "webhook_on_create": webhook_on_create,
         "webhook_on_write": webhook_on_write,
         "webhook_on_unlink": webhook_on_unlink,
+        # Phase 52 keys
+        "has_document_verification": has_document_verification,
+        "document_verification_actions": document_verification_actions,
+        "has_document_versioning": has_document_versioning,
+        "document_version_action": document_version_action,
     }
 
 
@@ -494,7 +552,17 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         "has_webhook_models": any(m.get("has_webhooks") for m in models),
         # Phase 42: Context7 documentation hints (StrictUndefined-safe default)
         "c7_hints": {},
+        # Phase 52 keys
+        "has_document_models": any(m.get("has_document_verification") for m in models),
     }
+    # Phase 52: VERSION_GATES for Odoo version-conditional template rendering (DOMN-04)
+    _VERSION_GATES: dict[str, dict[str, str]] = {
+        "18.0": {
+            "mail.channel": "discuss.channel",
+            "mail.channel_all_employees": "discuss.channel_general",
+        },
+    }
+    ctx["version_gates"] = _VERSION_GATES
     if has_import_export:
         ctx["external_dependencies"] = {"python": ["openpyxl"]}
     return ctx

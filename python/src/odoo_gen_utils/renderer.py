@@ -407,6 +407,42 @@ _PKR_CURRENCY_XML = (
 )
 
 
+def _render_document_type_xml(
+    doc_types: list[dict[str, Any]], module_name: str
+) -> str:
+    """Generate noupdate XML records for document type seed data.
+
+    Args:
+        doc_types: List of document type dicts with name, code, required_for, etc.
+        module_name: Module technical name for XML ID prefix.
+
+    Returns:
+        XML string with <odoo><data noupdate="1"> records.
+    """
+    lines: list[str] = [
+        '<?xml version="1.0" encoding="utf-8"?>',
+        "<odoo>",
+        '    <data noupdate="1">',
+    ]
+    for dt in doc_types:
+        code = dt.get("code", "")
+        xml_id = f"{module_name}.document_type_{code}"
+        lines.append(f'        <record id="{xml_id}" model="document.type">')
+        lines.append(f'            <field name="name">{dt.get("name", "")}</field>')
+        lines.append(f'            <field name="code">{code}</field>')
+        if "required_for" in dt:
+            lines.append(f'            <field name="required_for">{dt["required_for"]}</field>')
+        if "max_file_size" in dt:
+            lines.append(f'            <field name="max_file_size" eval="{dt["max_file_size"]}"/>')
+        if "allowed_mime_types" in dt:
+            lines.append(f'            <field name="allowed_mime_types">{dt["allowed_mime_types"]}</field>')
+        lines.append("        </record>")
+    lines.append("    </data>")
+    lines.append("</odoo>")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _render_extra_data_files(spec: dict[str, Any], module_dir: Path) -> list[Path]:
     """Render extra data files injected by localization preprocessors (Phase 49)."""
     created: list[Path] = []
@@ -416,6 +452,18 @@ def _render_extra_data_files(spec: dict[str, Any], module_dir: Path) -> list[Pat
         if extra_file == "data/pk_currency_data.xml":
             extra_path.write_text(_PKR_CURRENCY_XML, encoding="utf-8")
             created.append(extra_path)
+        elif extra_file == "data/document_type_data.xml":
+            # Phase 52: document type seed data from preprocessor
+            doc_types = spec.get("_document_type_seed_data", [])
+            if not doc_types:
+                # Fall back to document_config.default_types
+                doc_types = spec.get("document_config", {}).get("default_types", [])
+            if doc_types:
+                xml_content = _render_document_type_xml(
+                    doc_types, spec.get("module_name", "module")
+                )
+                extra_path.write_text(xml_content, encoding="utf-8")
+                created.append(extra_path)
     return created
 
 

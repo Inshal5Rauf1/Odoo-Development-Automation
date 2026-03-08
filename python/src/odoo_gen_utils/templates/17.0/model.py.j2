@@ -3,7 +3,7 @@ from odoo import {{ 'api, ' if needs_api }}fields, models{{ ', tools' if needs_t
 {% if has_constraints or constrained_fields %}
 from odoo.exceptions import ValidationError
 {% endif %}
-{% if has_approval %}
+{% if has_approval or has_document_verification %}
 from odoo.exceptions import UserError
 {% endif %}
 {% if needs_translate %}
@@ -165,6 +165,24 @@ class {{ model_name | to_class }}(models.Model):
 {% if field.groups is defined and field.groups %}
         groups="{{ field.groups }}",
 {% endif %}
+{% if field.attachment is defined and field.attachment %}
+        attachment=True,
+{% endif %}
+{% if field.readonly is defined and field.readonly %}
+        readonly=True,
+{% endif %}
+{% if field.tracking is defined and field.tracking %}
+        tracking=True,
+{% endif %}
+{% if 'copy' in field and not field['copy'] %}
+        copy=False,
+{% endif %}
+{% if field.size is defined and field.size %}
+        size={{ field.size }},
+{% endif %}
+{% if field.model_field is defined and field.model_field %}
+        model_field="{{ field.model_field }}",
+{% endif %}
     )
 {% endif %}
 {% endfor %}
@@ -220,12 +238,12 @@ class {{ model_name | to_class }}(models.Model):
                 raise ValidationError(
                     _("{{ constraint.message }}")
                 )
-{% elif constraint.type.startswith('pk_') or constraint.type.startswith('ac_year_') or constraint.type.startswith('ac_term_') %}
+{% elif constraint.type.startswith('pk_') or constraint.type.startswith('ac_year_') or constraint.type.startswith('ac_term_') or constraint.type.startswith('doc_file_') %}
 
     @api.constrains({% for f in constraint.fields %}"{{ f }}"{% if not loop.last %}, {% endif %}{% endfor %})
     def _check_{{ constraint.name }}(self):
         {{ constraint.check_body | indent(8) }}
-{% elif constraint.type.startswith('ac_action') %}
+{% elif constraint.type.startswith('ac_action') or constraint.type.startswith('doc_action') %}
 
     def {{ constraint.name }}(self):
         {{ constraint.check_body | indent(8) }}
