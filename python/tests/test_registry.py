@@ -54,7 +54,7 @@ def _make_spec(
     return {
         "module_name": module_name,
         "models": models,
-        "depends": depends or ["base"],
+        "depends": depends if depends is not None else ["base"],
     }
 
 
