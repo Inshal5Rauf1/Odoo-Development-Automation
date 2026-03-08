@@ -898,3 +898,347 @@ class TestImmutability:
         roles_copy = copy.deepcopy(existing_roles)
         _process(spec)
         assert existing_roles == roles_copy
+
+
+# ===========================================================================
+# Template Rendering Tests (Phase 52-02)
+# ===========================================================================
+
+
+def _render_model_template(
+    model_dict: dict[str, Any],
+    spec_overrides: dict[str, Any] | None = None,
+    version: str = "17.0",
+) -> str:
+    """Render a model through the model.py.j2 template and return the output text."""
+    from odoo_gen_utils.renderer import create_versioned_renderer
+    from odoo_gen_utils.renderer_context import _build_model_context
+
+    spec: dict[str, Any] = {
+        "module_name": "test_module",
+        "depends": ["base", "mail"],
+        "models": [model_dict],
+        "odoo_version": version,
+        **(spec_overrides or {}),
+    }
+    ctx = _build_model_context(spec, model_dict)
+    env = create_versioned_renderer(version)
+    tpl = env.get_template("model.py.j2")
+    return tpl.render(**ctx)
+
+
+def _render_view_template(
+    model_dict: dict[str, Any],
+    spec_overrides: dict[str, Any] | None = None,
+    version: str = "17.0",
+) -> str:
+    """Render a model through the view_form.xml.j2 template and return the output text."""
+    from odoo_gen_utils.renderer import create_versioned_renderer
+    from odoo_gen_utils.renderer_context import _build_model_context
+
+    spec: dict[str, Any] = {
+        "module_name": "test_module",
+        "depends": ["base", "mail"],
+        "models": [model_dict],
+        "odoo_version": version,
+        **(spec_overrides or {}),
+    }
+    ctx = _build_model_context(spec, model_dict)
+    env = create_versioned_renderer(version)
+    tpl = env.get_template("view_form.xml.j2")
+    return tpl.render(**ctx)
+
+
+class TestGenericFieldBranchKwargs:
+    """Generic field branch renders attachment, readonly, tracking, copy, size, model_field."""
+
+    def test_attachment_true_on_binary(self):
+        """Binary field with attachment=True renders attachment=True."""
+        model = {
+            "name": "test.model",
+            "description": "Test",
+            "fields": [
+                {"name": "file", "type": "Binary", "string": "File", "attachment": True},
+            ],
+        }
+        output = _render_model_template(model)
+        assert "attachment=True" in output
+
+    def test_readonly_true(self):
+        """Field with readonly=True renders readonly=True."""
+        model = {
+            "name": "test.model",
+            "description": "Test",
+            "fields": [
+                {"name": "mime_type", "type": "Char", "string": "MIME Type", "readonly": True},
+            ],
+        }
+        output = _render_model_template(model)
+        assert "readonly=True" in output
+
+    def test_tracking_true(self):
+        """Field with tracking=True renders tracking=True."""
+        model = {
+            "name": "test.model",
+            "description": "Test",
+            "fields": [
+                {"name": "name", "type": "Char", "string": "Name", "required": True, "tracking": True},
+            ],
+        }
+        output = _render_model_template(model)
+        assert "tracking=True" in output
+
+    def test_copy_false(self):
+        """Field with copy=False renders copy=False."""
+        model = {
+            "name": "test.model",
+            "description": "Test",
+            "fields": [
+                {"name": "ref", "type": "Char", "string": "Ref", "copy": False},
+            ],
+        }
+        output = _render_model_template(model)
+        assert "copy=False" in output
+
+    def test_model_field_on_many2onereference(self):
+        """Many2oneReference with model_field renders model_field kwarg."""
+        model = {
+            "name": "test.model",
+            "description": "Test",
+            "fields": [
+                {"name": "res_model", "type": "Char", "string": "Resource Model"},
+                {
+                    "name": "res_id",
+                    "type": "Many2oneReference",
+                    "string": "Resource ID",
+                    "model_field": "res_model",
+                },
+            ],
+        }
+        output = _render_model_template(model)
+        assert 'model_field="res_model"' in output
+
+    def test_size_kwarg(self):
+        """Field with size renders size=N."""
+        model = {
+            "name": "test.model",
+            "description": "Test",
+            "fields": [
+                {"name": "code", "type": "Char", "string": "Code", "size": 16},
+            ],
+        }
+        output = _render_model_template(model)
+        assert "size=16" in output
+
+
+class TestDocConstraintDispatch:
+    """doc_file_validation renders with @api.constrains, doc_action_* as plain methods."""
+
+    def test_doc_file_validation_renders_with_api_constrains(self):
+        """doc_file_validation constraint renders with @api.constrains decorator."""
+        model = {
+            "name": "test.model",
+            "description": "Test",
+            "fields": [],
+            "complex_constraints": [
+                {
+                    "name": "doc_file_validation",
+                    "fields": ["file", "document_type_id"],
+                    "type": "doc_file_validation",
+                    "check_body": "for rec in self:\n    pass",
+                },
+            ],
+        }
+        output = _render_model_template(model)
+        assert "@api.constrains" in output
+        assert "_check_doc_file_validation" in output
+
+    def test_doc_action_verify_renders_as_plain_method(self):
+        """doc_action_verify renders as plain method (no @api.constrains, no _check_ prefix)."""
+        model = {
+            "name": "test.model",
+            "description": "Test",
+            "fields": [],
+            "has_document_verification": True,
+            "complex_constraints": [
+                {
+                    "name": "doc_action_verify",
+                    "fields": ["verification_state"],
+                    "type": "doc_action_verify",
+                    "check_body": 'self.ensure_one()\nself.write({"verification_state": "verified"})',
+                },
+            ],
+        }
+        output = _render_model_template(model)
+        assert "def doc_action_verify(self):" in output
+        assert "@api.constrains" not in output.split("def doc_action_verify")[0].rsplit("class ", 1)[-1] if "def doc_action_verify" in output else True
+
+    def test_doc_action_reject_renders_as_plain_method(self):
+        """doc_action_reject renders as plain method."""
+        model = {
+            "name": "test.model",
+            "description": "Test",
+            "fields": [],
+            "has_document_verification": True,
+            "complex_constraints": [
+                {
+                    "name": "doc_action_reject",
+                    "fields": ["verification_state"],
+                    "type": "doc_action_reject",
+                    "check_body": 'self.ensure_one()',
+                },
+            ],
+        }
+        output = _render_model_template(model)
+        assert "def doc_action_reject(self):" in output
+
+    def test_doc_action_reset_renders_as_plain_method(self):
+        """doc_action_reset renders as plain method def action_reset_to_pending(self):."""
+        model = {
+            "name": "test.model",
+            "description": "Test",
+            "fields": [],
+            "has_document_verification": True,
+            "complex_constraints": [
+                {
+                    "name": "doc_action_reset",
+                    "fields": ["verification_state"],
+                    "type": "doc_action_reset",
+                    "check_body": 'self.ensure_one()',
+                },
+            ],
+        }
+        output = _render_model_template(model)
+        assert "def doc_action_reset(self):" in output
+
+    def test_doc_action_upload_new_version_renders_as_plain_method(self):
+        """doc_action_upload_new_version renders as plain method."""
+        model = {
+            "name": "test.model",
+            "description": "Test",
+            "fields": [],
+            "has_document_versioning": True,
+            "complex_constraints": [
+                {
+                    "name": "doc_action_upload_new_version",
+                    "fields": ["version"],
+                    "type": "doc_action_upload_new_version",
+                    "check_body": 'self.ensure_one()',
+                },
+            ],
+        }
+        output = _render_model_template(model)
+        assert "def doc_action_upload_new_version(self):" in output
+
+
+class TestContextKeyDefaults:
+    """has_document_verification and has_document_versioning default to False for non-document models."""
+
+    def test_has_document_verification_defaults_false(self):
+        """has_document_verification defaults to False (no StrictUndefined crash)."""
+        from odoo_gen_utils.renderer_context import _build_model_context
+
+        spec = {"module_name": "test_module", "depends": ["base"], "models": []}
+        model = {"name": "test.model", "description": "Test", "fields": []}
+        ctx = _build_model_context(spec, model)
+        assert ctx["has_document_verification"] is False
+
+    def test_has_document_versioning_defaults_false(self):
+        """has_document_versioning defaults to False (no StrictUndefined crash)."""
+        from odoo_gen_utils.renderer_context import _build_model_context
+
+        spec = {"module_name": "test_module", "depends": ["base"], "models": []}
+        model = {"name": "test.model", "description": "Test", "fields": []}
+        ctx = _build_model_context(spec, model)
+        assert ctx["has_document_versioning"] is False
+
+
+class TestVersionGatesContext:
+    """VERSION_GATES dict is present in module context for all specs."""
+
+    def test_version_gates_in_module_context(self):
+        """VERSION_GATES dict is present in module context."""
+        from odoo_gen_utils.renderer_context import _build_module_context
+
+        spec = {"module_name": "test_module", "depends": ["base"], "models": [], "odoo_version": "17.0"}
+        ctx = _build_module_context(spec, "test_module")
+        assert "version_gates" in ctx
+        assert isinstance(ctx["version_gates"], dict)
+
+    def test_version_gates_has_18_0_entry(self):
+        """VERSION_GATES contains 18.0 entry with discuss.channel mapping."""
+        from odoo_gen_utils.renderer_context import _build_module_context
+
+        spec = {"module_name": "test_module", "depends": ["base"], "models": [], "odoo_version": "18.0"}
+        ctx = _build_module_context(spec, "test_module")
+        vg = ctx["version_gates"]
+        assert "18.0" in vg
+        assert vg["18.0"]["mail.channel"] == "discuss.channel"
+
+
+class TestNonDocumentSpecRenders:
+    """Existing non-document spec renders without errors after template changes."""
+
+    def test_non_document_model_renders_without_error(self):
+        """Non-document model with no document flags renders correctly."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [
+                {"name": "name", "type": "Char", "string": "Name", "required": True},
+                {"name": "notes", "type": "Text", "string": "Notes"},
+            ],
+        }
+        # Should not raise StrictUndefined or any other error
+        output = _render_model_template(model)
+        assert "class TestPlain" in output
+        assert 'name = fields.Char(' in output
+
+    def test_non_document_view_renders_without_error(self):
+        """Non-document model view renders correctly (no StrictUndefined crash)."""
+        model = {
+            "name": "test.plain",
+            "description": "Plain Model",
+            "fields": [
+                {"name": "name", "type": "Char", "string": "Name", "required": True},
+            ],
+        }
+        output = _render_view_template(model)
+        assert "test.plain" in output
+
+
+class TestViewDocumentVerificationButtons:
+    """Form view header has verification buttons + statusbar for document models."""
+
+    def test_verify_button_in_form_header(self):
+        """Verify button appears in form header when has_document_verification."""
+        spec = _make_spec(document_management=True)
+        result = _process(spec)
+        doc_model = _find_model(result, "document.document")
+        output = _render_view_template(doc_model, spec_overrides={"models": result["models"], "depends": result["depends"]})
+        assert 'name="doc_action_verify"' in output or 'string="Verify"' in output
+
+    def test_reject_button_in_form_header(self):
+        """Reject button appears in form header when has_document_verification."""
+        spec = _make_spec(document_management=True)
+        result = _process(spec)
+        doc_model = _find_model(result, "document.document")
+        output = _render_view_template(doc_model, spec_overrides={"models": result["models"], "depends": result["depends"]})
+        assert 'string="Reject"' in output or 'name="doc_action_reject"' in output
+
+    def test_verification_state_statusbar(self):
+        """verification_state statusbar appears in form header for document models."""
+        spec = _make_spec(document_management=True)
+        result = _process(spec)
+        doc_model = _find_model(result, "document.document")
+        output = _render_view_template(doc_model, spec_overrides={"models": result["models"], "depends": result["depends"]})
+        assert 'name="verification_state"' in output
+        assert 'widget="statusbar"' in output
+
+    def test_version_history_smart_button(self):
+        """Version history smart button appears when has_document_versioning."""
+        spec = _make_spec(document_management=True)
+        result = _process(spec)
+        doc_model = _find_model(result, "document.document")
+        output = _render_view_template(doc_model, spec_overrides={"models": result["models"], "depends": result["depends"]})
+        assert "fa-history" in output or "action_view_versions" in output
