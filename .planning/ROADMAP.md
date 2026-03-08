@@ -109,7 +109,7 @@
 **Milestone Goal:** Transform the system from a structural scaffolder (Jinja templates producing TODO stubs) into an AI code generator (LLM writes real method bodies), then add module extension, iterative refinement, computed chains, portal controllers, and bulk operations.
 
 - [x] **Phase 55: Cleanup** - Fix docker exec race condition and delete deprecated artifact_state.py (completed 2026-03-08)
-- [ ] **Phase 56: Logic Writer Core** - StubDetector infrastructure and LLM integration point for generating method bodies
+- [x] **Phase 56: Logic Writer Core** - StubDetector infrastructure and LLM integration point for generating method bodies (completed 2026-03-08)
 - [ ] **Phase 57: Logic Writer Computed & Constraints** - LLM generates _compute_*, _check_*, and validates output via semantic checker
 - [ ] **Phase 58: Logic Writer Overrides & Actions** - LLM generates create/write overrides, action_*, and _cron_* methods
 - [ ] **Phase 59: Module Extension Pattern** - Generate _inherit models, xpath view inheritance, and dependency validation
@@ -141,7 +141,7 @@ Plans:
   2. MethodContext builder assembles field definitions, spec business_rules, and model registry context for each detected stub
   3. Belt generates .odoo-gen-stubs.json with per-stub context; Claude Code reads this report externally to implement stubs
   4. Complexity classifier deterministically routes stubs as budget or quality based on cross-model depends, target count, conditional rules, and method type
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 56-01-PLAN.md — StubDetector + ContextBuilder (AST stub detection, per-stub context assembly)
 - [ ] 56-02-PLAN.md — Classifier + Report + CLI integration + Agent prompt
@@ -223,7 +223,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 55. Cleanup | 1/1 | Complete    | 2026-03-08 |
-| 56. Logic Writer Core | 1/2 | In Progress | - |
+| 56. Logic Writer Core | 2/2 | Complete   | 2026-03-08 |
 | 57. Logic Writer Computed & Constraints | 0/? | Not started | - |
 | 58. Logic Writer Overrides & Actions | 0/? | Not started | - |
 | 59. Module Extension Pattern | 0/? | Not started | - |

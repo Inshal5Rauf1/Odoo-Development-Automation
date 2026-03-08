@@ -15,7 +15,7 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 ### LLM Generation
 
 - [x] **LGEN-01**: Logic Writer infrastructure — StubDetector that identifies TODO method bodies in generated Python files, MethodContext builder that assembles field definitions + spec business_rules + model registry context for each stub
-- [ ] **LGEN-02**: LLM integration point — call LLM with method context + KB/Context7 patterns, parse response, write implementation back into generated .py file; model routing (quality for complex, budget for simple)
+- [x] **LGEN-02**: LLM integration point — call LLM with method context + KB/Context7 patterns, parse response, write implementation back into generated .py file; model routing (quality for complex, budget for simple)
 - [ ] **LGEN-03**: Computed field implementations — _compute_* methods with correct @api.depends, self.mapped/filtered patterns, store=True recomputation triggers
 - [ ] **LGEN-04**: Constraint implementations — _check_* methods with correct @api.constrains, ValidationError with user-facing messages, cross-field validation logic
 - [ ] **LGEN-05**: create()/write() override implementations — super() call pattern, business logic (auto-create related records, increment counters, trigger state changes), not audit/approval (already template-generated)
@@ -84,7 +84,7 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 | CLEN-01 | Phase 55 | Complete |
 | CLEN-02 | Phase 55 | Complete |
 | LGEN-01 | Phase 56 | Complete |
-| LGEN-02 | Phase 56 | Pending |
+| LGEN-02 | Phase 56 | Complete |
 | LGEN-03 | Phase 57 | Pending |
 | LGEN-04 | Phase 57 | Pending |
 | LGEN-05 | Phase 58 | Pending |
