@@ -679,3 +679,484 @@ class TestE2ECliIntegration:
         e3 = [i for i in result.errors if i.code == "E3"]
         assert len(e3) >= 1
         assert "nonexistent_field_xyz" in e3[0].message
+
+
+# ===========================================================================
+# Helpers for E7-E12 tests
+# ===========================================================================
+
+
+def _make_module_with_model(root: Path, model_source: str) -> Path:
+    """Scaffold a minimal module with a single model file from source string."""
+    mod = root / "test_module"
+    _write(mod / "__manifest__.py", """\
+        {
+            'name': 'Test Module',
+            'version': '17.0.1.0.0',
+            'depends': ['base'],
+            'data': [],
+        }
+    """)
+    _write(mod / "__init__.py", "from . import models\n")
+    _write(mod / "models" / "__init__.py", "from . import main\n")
+    (mod / "models" / "main.py").parent.mkdir(parents=True, exist_ok=True)
+    (mod / "models" / "main.py").write_text(model_source, encoding="utf-8")
+    return mod
+
+
+# ===========================================================================
+# E7: Missing Self Iteration
+# ===========================================================================
+
+
+class TestE7MissingSelfIteration:
+    """E7: @api.depends/@api.constrains methods must iterate over self."""
+
+    def test_bad_fill_triggers_e7(self, tmp_path: Path) -> None:
+        """Assigning to self.field without for-loop triggers E7."""
+        from tests.fixtures.logic_writer.e7_missing_self_iteration import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e7 = [i for i in result.errors if i.code == "E7"]
+        assert len(e7) == 1
+        assert "_compute_total" in e7[0].message
+        assert e7[0].severity == "error"
+
+    def test_good_fill_clean(self, tmp_path: Path) -> None:
+        """Correct compute with for-loop passes E7."""
+        from tests.fixtures.logic_writer.good_compute import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e7 = [i for i in result.errors if i.code == "E7"]
+        assert e7 == []
+
+    def test_api_model_exempt(self, tmp_path: Path) -> None:
+        """@api.model methods are exempt from E7 (don't operate on recordsets)."""
+        source = """\
+from odoo import api, fields, models
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    name = fields.Char()
+
+    @api.model
+    def create(self, vals):
+        self.name = vals.get('name', '')
+        return super().create(vals)
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e7 = [i for i in result.errors if i.code == "E7"]
+        assert e7 == []
+
+    def test_no_decorator_not_checked(self, tmp_path: Path) -> None:
+        """Methods without @api.depends/@api.constrains are not checked."""
+        source = """\
+from odoo import fields, models
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    name = fields.Char()
+
+    def do_something(self):
+        self.name = "test"
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e7 = [i for i in result.errors if i.code == "E7"]
+        assert e7 == []
+
+    def test_constrains_also_checked(self, tmp_path: Path) -> None:
+        """@api.constrains methods also trigger E7 if missing self iteration."""
+        source = """\
+from odoo import api, fields, models
+from odoo.exceptions import ValidationError
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    amount = fields.Float()
+
+    @api.constrains("amount")
+    def _check_amount(self):
+        if self.amount < 0:
+            raise ValidationError("Negative!")
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e7 = [i for i in result.errors if i.code == "E7"]
+        assert len(e7) == 1
+
+
+# ===========================================================================
+# E8: Compute Doesn't Set Target Field
+# ===========================================================================
+
+
+class TestE8NoTargetSet:
+    """E8: @api.depends methods must assign to their target fields."""
+
+    def test_bad_fill_triggers_e8(self, tmp_path: Path) -> None:
+        """Compute that never assigns to target field triggers E8."""
+        from tests.fixtures.logic_writer.e8_no_target_set import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e8 = [i for i in result.errors if i.code == "E8"]
+        assert len(e8) == 1
+        assert "total" in e8[0].message.lower()
+
+    def test_good_fill_clean(self, tmp_path: Path) -> None:
+        """Correct compute assigning to target field passes E8."""
+        from tests.fixtures.logic_writer.good_compute import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e8 = [i for i in result.errors if i.code == "E8"]
+        assert e8 == []
+
+    def test_sidecar_read(self, tmp_path: Path) -> None:
+        """E8 reads .odoo-gen-stubs.json sidecar for target_fields."""
+        source = """\
+from odoo import api, fields, models
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    total = fields.Float()
+    tax = fields.Float()
+
+    @api.depends("total")
+    def _compute_amounts(self):
+        for rec in self:
+            rec.total = 0.0
+"""
+        import json
+
+        mod = _make_module_with_model(tmp_path, source)
+        # Sidecar says target fields are total AND tax
+        sidecar = {
+            "stubs": [
+                {
+                    "method": "_compute_amounts",
+                    "target_fields": ["total", "tax"],
+                }
+            ]
+        }
+        (mod / ".odoo-gen-stubs.json").write_text(
+            json.dumps(sidecar), encoding="utf-8"
+        )
+        result = semantic_validate(mod)
+        e8 = [i for i in result.errors if i.code == "E8"]
+        # Should flag because `tax` is never set
+        assert len(e8) == 1
+        assert "tax" in e8[0].message.lower()
+
+    def test_name_inference_fallback(self, tmp_path: Path) -> None:
+        """E8 infers target from _compute_X -> field X when no sidecar."""
+        source = """\
+from odoo import api, fields, models
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    total = fields.Float()
+
+    @api.depends("total")
+    def _compute_total(self):
+        for rec in self:
+            pass  # never assigns to rec.total
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e8 = [i for i in result.errors if i.code == "E8"]
+        assert len(e8) == 1
+        assert "total" in e8[0].message.lower()
+
+
+# ===========================================================================
+# E9: Constraint Doesn't Raise ValidationError
+# ===========================================================================
+
+
+class TestE9NoValidationError:
+    """E9: @api.constrains methods must raise ValidationError."""
+
+    def test_bad_fill_triggers_e9(self, tmp_path: Path) -> None:
+        """Constraint that never raises ValidationError triggers E9."""
+        from tests.fixtures.logic_writer.e9_no_validation_error import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e9 = [i for i in result.errors if i.code == "E9"]
+        assert len(e9) == 1
+        assert "_check_amount" in e9[0].message
+
+    def test_good_fill_clean(self, tmp_path: Path) -> None:
+        """Correct constraint with raise ValidationError passes E9."""
+        from tests.fixtures.logic_writer.good_constraint import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e9 = [i for i in result.errors if i.code == "E9"]
+        assert e9 == []
+
+    def test_qualified_validation_error_accepted(self, tmp_path: Path) -> None:
+        """Both bare and qualified exceptions.ValidationError accepted."""
+        source = """\
+from odoo import api, fields, models
+from odoo import exceptions
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    amount = fields.Float()
+
+    @api.constrains("amount")
+    def _check_amount(self):
+        for rec in self:
+            if rec.amount < 0:
+                raise exceptions.ValidationError("Negative!")
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e9 = [i for i in result.errors if i.code == "E9"]
+        assert e9 == []
+
+
+# ===========================================================================
+# E10: Bare Field Access Without Record Variable
+# ===========================================================================
+
+
+class TestE10BareFieldAccess:
+    """E10: Bare field names in Load context inside for-loop are errors."""
+
+    def test_bad_fill_triggers_e10(self, tmp_path: Path) -> None:
+        """Bare field name in for-loop body triggers E10."""
+        from tests.fixtures.logic_writer.e10_bare_field_access import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e10 = [i for i in result.errors if i.code == "E10"]
+        assert len(e10) >= 1
+        # Should flag 'amount' or 'tax_amount'
+        messages = " ".join(i.message for i in e10)
+        assert "amount" in messages.lower()
+
+    def test_good_fill_clean(self, tmp_path: Path) -> None:
+        """Correct field access via record.field passes E10."""
+        from tests.fixtures.logic_writer.good_compute import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e10 = [i for i in result.errors if i.code == "E10"]
+        assert e10 == []
+
+    def test_local_vars_not_flagged(self, tmp_path: Path) -> None:
+        """Local variables on left side of assignment (Store) not flagged."""
+        source = """\
+from odoo import api, fields, models
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    amount = fields.Float()
+    total = fields.Float(compute="_compute_total")
+
+    @api.depends("amount")
+    def _compute_total(self):
+        for rec in self:
+            subtotal = rec.amount * 2
+            rec.total = subtotal
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e10 = [i for i in result.errors if i.code == "E10"]
+        assert e10 == []
+
+    def test_only_known_fields_flagged(self, tmp_path: Path) -> None:
+        """Only bare names matching model fields are flagged, not random variables."""
+        source = """\
+from odoo import api, fields, models
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    amount = fields.Float()
+    total = fields.Float(compute="_compute_total")
+
+    @api.depends("amount")
+    def _compute_total(self):
+        for rec in self:
+            multiplier = 2
+            rec.total = rec.amount * multiplier
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e10 = [i for i in result.errors if i.code == "E10"]
+        assert e10 == []
+
+
+# ===========================================================================
+# E11: Wrong mapped/filtered Syntax
+# ===========================================================================
+
+
+class TestE11WrongMappedFiltered:
+    """E11: mapped() and filtered() syntax validation."""
+
+    def test_bad_fill_triggers_e11(self, tmp_path: Path) -> None:
+        """mapped(bare_name) and filtered('comparison') trigger E11."""
+        from tests.fixtures.logic_writer.e11_wrong_mapped_filtered import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e11 = [i for i in result.errors if i.code == "E11"]
+        assert len(e11) >= 1
+
+    def test_good_fill_clean(self, tmp_path: Path) -> None:
+        """Correct mapped('field') passes E11."""
+        from tests.fixtures.logic_writer.good_compute import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e11 = [i for i in result.errors if i.code == "E11"]
+        assert e11 == []
+
+    def test_mapped_string_ok(self, tmp_path: Path) -> None:
+        """mapped('field_name') is correct syntax, no error."""
+        source = """\
+from odoo import api, fields, models
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    total = fields.Float(compute="_compute_total")
+    line_ids = fields.One2many("fee.invoice.line", "invoice_id")
+
+    @api.depends("line_ids.amount")
+    def _compute_total(self):
+        for rec in self:
+            rec.total = sum(rec.line_ids.mapped('amount'))
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e11 = [i for i in result.errors if i.code == "E11"]
+        assert e11 == []
+
+    def test_filtered_lambda_ok(self, tmp_path: Path) -> None:
+        """filtered(lambda r: ...) is correct syntax, no error."""
+        source = """\
+from odoo import api, fields, models
+from odoo.exceptions import ValidationError
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    state = fields.Selection([("draft", "Draft"), ("done", "Done")])
+    line_ids = fields.One2many("fee.invoice.line", "invoice_id")
+
+    @api.constrains("state")
+    def _check_state(self):
+        for rec in self:
+            done_lines = rec.line_ids.filtered(lambda r: r.state == 'done')
+            if not done_lines:
+                raise ValidationError("No done lines!")
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e11 = [i for i in result.errors if i.code == "E11"]
+        assert e11 == []
+
+
+# ===========================================================================
+# E12: write()/create()/unlink() in Compute
+# ===========================================================================
+
+
+class TestE12WriteInCompute:
+    """E12: self.write/create/unlink inside @api.depends methods."""
+
+    def test_bad_fill_triggers_e12(self, tmp_path: Path) -> None:
+        """self.write() inside compute triggers E12."""
+        from tests.fixtures.logic_writer.e12_write_in_compute import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e12 = [i for i in result.errors if i.code == "E12"]
+        assert len(e12) == 1
+        assert "write" in e12[0].message.lower()
+
+    def test_good_fill_clean(self, tmp_path: Path) -> None:
+        """Correct compute without write/create/unlink passes E12."""
+        from tests.fixtures.logic_writer.good_compute import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e12 = [i for i in result.errors if i.code == "E12"]
+        assert e12 == []
+
+    def test_env_create_not_flagged(self, tmp_path: Path) -> None:
+        """self.env['other.model'].create() is NOT flagged (different receiver)."""
+        source = """\
+from odoo import api, fields, models
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    total = fields.Float(compute="_compute_total")
+    line_ids = fields.One2many("fee.invoice.line", "invoice_id")
+
+    @api.depends("line_ids.amount")
+    def _compute_total(self):
+        for rec in self:
+            rec.total = sum(rec.line_ids.mapped('amount'))
+            self.env['audit.log'].create({'message': 'computed'})
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e12 = [i for i in result.errors if i.code == "E12"]
+        assert e12 == []
+
+
+# ===========================================================================
+# Clean Fills: Good Compute + Good Constraint pass all E7-E12
+# ===========================================================================
+
+
+class TestCleanFills:
+    """Good compute and constraint fixtures pass all E7-E12 checks."""
+
+    def test_good_compute_passes_all(self, tmp_path: Path) -> None:
+        """Good compute fixture passes all E7-E12 with zero errors."""
+        from tests.fixtures.logic_writer.good_compute import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        new_errors = [i for i in result.errors if i.code in ("E7", "E8", "E9", "E10", "E11", "E12")]
+        assert new_errors == [], f"Good compute produced errors: {[e.message for e in new_errors]}"
+
+    def test_good_constraint_passes_all(self, tmp_path: Path) -> None:
+        """Good constraint fixture passes all E7-E12 with zero errors."""
+        from tests.fixtures.logic_writer.good_constraint import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        new_errors = [i for i in result.errors if i.code in ("E7", "E8", "E9", "E10", "E11", "E12")]
+        assert new_errors == [], f"Good constraint produced errors: {[e.message for e in new_errors]}"
