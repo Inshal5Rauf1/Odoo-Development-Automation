@@ -29,7 +29,7 @@ Requirements for v3.3 Test Fixes, Domain Patterns & Architecture. Each maps to r
 
 ### Tooling
 
-- [ ] **TOOL-01**: Mermaid dependency graph + model ER diagram generation as `.mmd` files — module dependency DAG and field-level entity relationships, renders in GitHub/VS Code
+- [x] **TOOL-01**: Mermaid dependency graph + model ER diagram generation as `.mmd` files — module dependency DAG and field-level entity relationships, renders in GitHub/VS Code
 
 ### Test Infrastructure
 
@@ -80,7 +80,7 @@ Requirements for v3.3 Test Fixes, Domain Patterns & Architecture. Each maps to r
 | ARCH-03 | Phase 51 | Complete |
 | DOMN-01 | Phase 52 | Complete |
 | DOMN-04 | Phase 52 | Complete |
-| TOOL-01 | Phase 53 | Pending |
+| TOOL-01 | Phase 53 | Complete |
 | ARCH-04 | Phase 54 | Pending |
 | ARCH-05 | Phase 54 | Pending |
 | ARCH-06 | Phase 54 | Pending |

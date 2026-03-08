@@ -234,7 +234,7 @@ Plans:
   4. Node names with dots (e.g., `res.partner`) are sanitized to valid Mermaid identifiers with display labels preserving the original name
 **Plans:** 2 plans
 Plans:
-- [ ] 53-01-PLAN.md — Core mermaid.py module TDD: _mermaid_id, generate_dependency_dag, generate_er_diagram, field filtering, file writing
+- [x] 53-01-PLAN.md — Core mermaid.py module TDD: _mermaid_id, generate_dependency_dag, generate_er_diagram, field filtering, file writing
 - [ ] 53-02-PLAN.md — CLI mermaid command + auto-generation hook in render_module_cmd + integration tests
 
 ### Phase 54: Pipeline Quality of Life
@@ -275,7 +275,7 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 50. Academic Calendar | 2/2 | Complete    | 2026-03-08 | - |
 | 51. Semantic Validation | 2/2 | Complete    | 2026-03-08 | - |
 | 52. Document Management | 2/2 | Complete    | 2026-03-08 | - |
-| 53. Mermaid Graphs | v3.3 | 0/2 | Not started | - |
+| 53. Mermaid Graphs | v3.3 | 1/2 | In progress | - |
 | 54. Pipeline Quality of Life | v3.3 | 0/TBD | Not started | - |
 
 ---
