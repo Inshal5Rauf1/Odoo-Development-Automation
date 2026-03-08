@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v3.3
 milestone_name: Test Fixes, Domain Patterns & Architecture
-status: in_progress
-stopped_at: Completed 49-02 plan
-last_updated: "2026-03-08T03:36:31Z"
-last_activity: 2026-03-08 — Phase 49 Plan 02 executed (PKR rendering, pk_* template branch, 10 E2E tests)
+status: completed
+stopped_at: Completed 50-01-PLAN.md
+last_updated: "2026-03-08T08:14:31.589Z"
+last_activity: 2026-03-08 — Phase 50 Plan 01 executed (academic calendar preprocessor via TDD, 78 tests, 462 LOC)
 progress:
   total_phases: 10
   completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 12
+  completed_plans: 11
   percent: 100
 ---
 
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** Phase 49 — Pakistan/HEC Localization (v3.3)
+**Current focus:** Phase 50 — Academic Calendar (v3.3)
 
 ## Current Position
 
-Phase: 49 — fifth of 10 phases in v3.3 (Pakistan/HEC Localization) -- COMPLETE
-Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase 49 complete, ready for Phase 50
-Last activity: 2026-03-08 — Phase 49 Plan 02 executed (PKR rendering, pk_* template branch, 10 E2E tests)
+Phase: 50 — sixth of 10 phases in v3.3 (Academic Calendar)
+Plan: 1 of 2 in current phase
+Status: Plan 01 complete (preprocessor TDD), Plan 02 pending
+Last activity: 2026-03-08 — Phase 50 Plan 01 executed (academic calendar preprocessor via TDD, 78 tests, 462 LOC)
 
 Progress: [██████████] 100% (v3.3)
 
@@ -52,6 +52,7 @@ Progress: [██████████] 100% (v3.3)
 | Phase 48-model-registry P02 | 5min | 1 tasks | 4 files |
 | Phase 49-pakistan-hec-localization P01 | 4min | 1 tasks | 4 files |
 | Phase 49-pakistan-hec-localization P02 | 3min | 2 tasks | 5 files |
+| Phase 50-academic-calendar P01 | 7min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,8 @@ Progress: [██████████] 100% (v3.3)
 - [Phase 48-model-registry]: AST-based brownfield import for registry; post-render hook is best-effort (silent fail)
 - [Phase 49-pakistan-hec-localization]: phonenumbers>=8.13,<10.0 (not <9.0); SQL constraint names prefixed with model var; dispatch table pattern for injectors
 - [Phase 49-pakistan-hec-localization P02]: extra_data_files extension point (generic for future localizations); pk_* check_body rendered directly (no wrapping loop) since it includes its own for-loop
+- [Phase 50-academic-calendar]: ac_year_*/ac_term_* rendered with @api.constrains; ac_action_* rendered as plain methods (not _check_ prefixed)
+- [Phase 50-academic-calendar]: has_pk_constraints renamed to has_domain_constraints covering pk_ + ac_year_/ac_term_ prefixes for needs_api
 
 ### Pending Todos
 
@@ -107,7 +110,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T03:36:31Z
-Stopped at: Completed 49-02-PLAN.md
-Resume file: .planning/phases/50-*/50-01-PLAN.md
+Last session: 2026-03-08T08:14:31.588Z
+Stopped at: Completed 50-01-PLAN.md
+Resume file: None
 Next step: Execute Phase 50 (next phase in v3.3)

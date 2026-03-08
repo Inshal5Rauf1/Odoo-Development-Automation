@@ -188,10 +188,10 @@ Plans:
   3. `term_structure` Selection field on academic year (e.g., semester, trimester, quarter) drives automatic term generation with computed date splits
   4. Academic year is a Char field (e.g., "2025-2026"), not a Many2one to `account.fiscal.year`
   5. All academic calendar logic lives in `preprocessors/academic_calendar.py` -- zero changes to core preprocessor files
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
-- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
-- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
+- [ ] 50-01-PLAN.md — Academic calendar preprocessor with TDD: 3 model builders, overlap constraints, term auto-generation, config handling
+- [ ] 50-02-PLAN.md — Renderer integration: ac_* and ac_action_* template branches, needs_api extension, E2E tests, registry count update
 
 ### Phase 51: Semantic Validation
 **Goal**: A pre-Docker validation pass catches field reference errors, XML ID conflicts, ACL mismatches, and manifest gaps in under 1 second -- eliminating the 30-60 second Docker round-trip for the majority of bugs
@@ -271,8 +271,8 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 46. Test Infrastructure | 1/1 | Complete    | 2026-03-07 | - |
 | 47. Pydantic Spec Validation | 3/3 | Complete    | 2026-03-08 | - |
 | 48. Model Registry | 2/2 | Complete    | 2026-03-08 | - |
-| 49. Pakistan/HEC Localization | 2/2 | Complete   | 2026-03-08 | - |
-| 50. Academic Calendar | v3.3 | 0/TBD | Not started | - |
+| 49. Pakistan/HEC Localization | 2/2 | Complete    | 2026-03-08 | - |
+| 50. Academic Calendar | 1/2 | In Progress|  | - |
 | 51. Semantic Validation | v3.3 | 0/TBD | Not started | - |
 | 52. Document Management | v3.3 | 0/TBD | Not started | - |
 | 53. Mermaid Graphs | v3.3 | 0/TBD | Not started | - |

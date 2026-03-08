@@ -23,7 +23,7 @@ Requirements for v3.3 Test Fixes, Domain Patterns & Architecture. Each maps to r
 ### Domain Patterns
 
 - [x] **DOMN-02**: Pakistan/HEC localization — CNIC validation (normalize-then-validate, 5 edge cases: no-dash, province code, gender digit, old format, NICOP), Pakistani phone validation (phonenumbers lib, optional `pakistan` extra), PKR currency via Odoo `res.currency`, NTN/STRN tax identifiers for FBR, HEC fields (registration number, GPA 4.0 scale, credit hours, recognition status)
-- [ ] **DOMN-03**: Academic calendar — `academic.year`, `academic.term`, `academic.batch` models following OpenEduCat naming, date range overlap prevention via `@api.constrains`, automatic term generation from `term_structure` selection, academic year as Char field (not fiscal year Many2one)
+- [x] **DOMN-03**: Academic calendar — `academic.year`, `academic.term`, `academic.batch` models following OpenEduCat naming, date range overlap prevention via `@api.constrains`, automatic term generation from `term_structure` selection, academic year as Char field (not fiscal year Many2one)
 - [ ] **DOMN-01**: Document management — document type classification, Binary file storage with `attachment=True`, verification workflow using separate `verification_state` field (independent from approval `state`), simple version tracking
 - [ ] **DOMN-04**: Odoo 18 `discuss.channel` version gate — template conditional for mail.channel (17.0) vs discuss.channel (18.0) rename
 
@@ -76,7 +76,7 @@ Requirements for v3.3 Test Fixes, Domain Patterns & Architecture. Each maps to r
 | ARCH-01 | Phase 47 | Complete |
 | ARCH-02 | Phase 48 | Complete |
 | DOMN-02 | Phase 49 | Complete |
-| DOMN-03 | Phase 50 | Pending |
+| DOMN-03 | Phase 50 | Complete |
 | ARCH-03 | Phase 51 | Pending |
 | DOMN-01 | Phase 52 | Pending |
 | DOMN-04 | Phase 52 | Pending |
