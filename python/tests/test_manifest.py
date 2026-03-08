@@ -388,3 +388,292 @@ class TestGenerationSession:
         # Should be an ISO 8601 string
         assert "T" in manifest.generated_at
         assert manifest.generated_at.endswith("Z") or "+" in manifest.generated_at
+
+
+# ---------------------------------------------------------------------------
+# TestRenderModuleManifest (Integration)
+# ---------------------------------------------------------------------------
+
+
+class TestRenderModuleManifest:
+    """render_module() with ManifestHook produces .odoo-gen-manifest.json."""
+
+    def test_render_module_with_manifest_hook_produces_manifest(self, tmp_path, monkeypatch):
+        """render_module() with ManifestHook writes .odoo-gen-manifest.json."""
+        from unittest.mock import MagicMock
+
+        from odoo_gen_utils.hooks import ManifestHook
+        from odoo_gen_utils.manifest import MANIFEST_FILENAME, load_manifest
+        from odoo_gen_utils.renderer import STAGE_NAMES, render_module
+
+        module_name = "test_mod"
+        spec = {"module_name": module_name, "models": [], "odoo_version": "17.0"}
+        module_dir = tmp_path / module_name
+
+        # Mock all stage renderers to return Result.ok([])
+        from odoo_gen_utils.validation.types import Result
+
+        for stage in STAGE_NAMES:
+            fn_name = f"render_{stage}"
+            mock_fn = MagicMock(return_value=Result(success=True, data=[]))
+            monkeypatch.setattr(f"odoo_gen_utils.renderer.{fn_name}", mock_fn)
+
+        # Mock validate_spec, _validate_no_cycles, run_preprocessors, context7
+        monkeypatch.setattr("odoo_gen_utils.renderer.validate_spec", lambda s: MagicMock(model_dump=lambda **kw: spec))
+        monkeypatch.setattr("odoo_gen_utils.renderer._validate_no_cycles", lambda s: None)
+        monkeypatch.setattr("odoo_gen_utils.renderer.run_preprocessors", lambda s: s)
+        monkeypatch.setattr("odoo_gen_utils.renderer.build_context7_from_env", lambda: MagicMock())
+        monkeypatch.setattr("odoo_gen_utils.renderer.context7_enrich", lambda *a, **kw: {})
+
+        module_dir.mkdir(parents=True, exist_ok=True)
+        hooks = [ManifestHook(module_path=module_dir)]
+
+        files, warnings = render_module(
+            spec, tmp_path / "templates", tmp_path,
+            no_context7=True,
+            hooks=hooks,
+        )
+
+        manifest = load_manifest(module_dir)
+        assert manifest is not None
+        assert manifest.module == module_name
+        # All 11 stage names should be in manifest.stages
+        for name in STAGE_NAMES:
+            assert name in manifest.stages
+
+    def test_stage_names_constant_has_all_11_stages(self):
+        """STAGE_NAMES constant lists all 11 stages."""
+        from odoo_gen_utils.renderer import STAGE_NAMES
+
+        assert len(STAGE_NAMES) == 11
+        expected = [
+            "manifest", "models", "views", "security", "mail_templates",
+            "wizards", "tests", "static", "cron", "reports", "controllers",
+        ]
+        assert STAGE_NAMES == expected
+
+
+# ---------------------------------------------------------------------------
+# TestResumeFromStage (Integration)
+# ---------------------------------------------------------------------------
+
+
+class TestResumeFromStage:
+    """render_module(resume_from=manifest) skips completed stages with intact artifacts."""
+
+    def test_resume_skips_completed_stages(self, tmp_path, monkeypatch):
+        """Resume skips stages marked complete with intact artifacts."""
+        from unittest.mock import MagicMock, call
+
+        from odoo_gen_utils.manifest import (
+            ArtifactEntry,
+            ArtifactInfo,
+            GenerationManifest,
+            StageResult,
+            compute_spec_sha256,
+        )
+        from odoo_gen_utils.renderer import STAGE_NAMES, render_module
+        from odoo_gen_utils.validation.types import Result
+
+        module_name = "test_mod"
+        spec = {"module_name": module_name, "models": [], "odoo_version": "17.0"}
+        spec_sha = compute_spec_sha256(spec)
+        module_dir = tmp_path / module_name
+        module_dir.mkdir(parents=True)
+
+        # Create artifact files for completed stages
+        (module_dir / "manifest_file.py").write_text("# manifest", encoding="utf-8")
+        (module_dir / "models_file.py").write_text("# models", encoding="utf-8")
+
+        from odoo_gen_utils.manifest import compute_file_sha256
+
+        manifest_sha = compute_file_sha256(module_dir / "manifest_file.py")
+        models_sha = compute_file_sha256(module_dir / "models_file.py")
+
+        # Build a resume manifest with manifest + models complete
+        old_manifest = GenerationManifest(
+            module=module_name,
+            spec_sha256=spec_sha,
+            generated_at="2026-01-01T00:00:00Z",
+            generator_version="0.1.0",
+            stages={
+                "manifest": StageResult(status="complete", duration_ms=10, artifacts=["manifest_file.py"]),
+                "models": StageResult(status="complete", duration_ms=20, artifacts=["models_file.py"]),
+            },
+            artifacts=ArtifactInfo(
+                files=[
+                    ArtifactEntry(path="manifest_file.py", sha256=manifest_sha),
+                    ArtifactEntry(path="models_file.py", sha256=models_sha),
+                ],
+                total_files=2,
+                total_lines=2,
+            ),
+        )
+
+        # Mock stage renderers, track which ones are called
+        called_stages = []
+        for stage in STAGE_NAMES:
+            fn_name = f"render_{stage}"
+            def make_mock(s=stage):
+                def _mock(*args, **kwargs):
+                    called_stages.append(s)
+                    return Result(success=True, data=[])
+                return _mock
+            monkeypatch.setattr(f"odoo_gen_utils.renderer.{fn_name}", make_mock())
+
+        # Mock infrastructure
+        monkeypatch.setattr("odoo_gen_utils.renderer.validate_spec", lambda s: MagicMock(model_dump=lambda **kw: spec))
+        monkeypatch.setattr("odoo_gen_utils.renderer._validate_no_cycles", lambda s: None)
+        monkeypatch.setattr("odoo_gen_utils.renderer.run_preprocessors", lambda s: s)
+        monkeypatch.setattr("odoo_gen_utils.renderer.build_context7_from_env", lambda: MagicMock())
+        monkeypatch.setattr("odoo_gen_utils.renderer.context7_enrich", lambda *a, **kw: {})
+
+        files, warnings = render_module(
+            spec, tmp_path / "templates", tmp_path,
+            no_context7=True,
+            resume_from=old_manifest,
+        )
+
+        # manifest and models should NOT have been called (skipped)
+        assert "manifest" not in called_stages
+        assert "models" not in called_stages
+        # remaining 9 stages should have been called
+        remaining = [s for s in STAGE_NAMES if s not in ("manifest", "models")]
+        for s in remaining:
+            assert s in called_stages
+
+
+# ---------------------------------------------------------------------------
+# TestResumeSpecChanged (Integration)
+# ---------------------------------------------------------------------------
+
+
+class TestResumeSpecChanged:
+    """resume_from with different spec_sha256 triggers full re-run."""
+
+    def test_spec_change_triggers_full_rerun(self, tmp_path, monkeypatch):
+        """Changed spec_sha256 causes all stages to run (no skipping)."""
+        from unittest.mock import MagicMock
+
+        from odoo_gen_utils.manifest import GenerationManifest, StageResult
+        from odoo_gen_utils.renderer import STAGE_NAMES, render_module
+        from odoo_gen_utils.validation.types import Result
+
+        module_name = "test_mod"
+        spec = {"module_name": module_name, "models": [], "odoo_version": "17.0"}
+        module_dir = tmp_path / module_name
+        module_dir.mkdir(parents=True)
+
+        # Old manifest with DIFFERENT spec_sha256
+        old_manifest = GenerationManifest(
+            module=module_name,
+            spec_sha256="DIFFERENT_SHA256_VALUE",
+            generated_at="2026-01-01T00:00:00Z",
+            generator_version="0.1.0",
+            stages={
+                "manifest": StageResult(status="complete"),
+                "models": StageResult(status="complete"),
+            },
+        )
+
+        called_stages = []
+        for stage in STAGE_NAMES:
+            fn_name = f"render_{stage}"
+            def make_mock(s=stage):
+                def _mock(*args, **kwargs):
+                    called_stages.append(s)
+                    return Result(success=True, data=[])
+                return _mock
+            monkeypatch.setattr(f"odoo_gen_utils.renderer.{fn_name}", make_mock())
+
+        monkeypatch.setattr("odoo_gen_utils.renderer.validate_spec", lambda s: MagicMock(model_dump=lambda **kw: spec))
+        monkeypatch.setattr("odoo_gen_utils.renderer._validate_no_cycles", lambda s: None)
+        monkeypatch.setattr("odoo_gen_utils.renderer.run_preprocessors", lambda s: s)
+        monkeypatch.setattr("odoo_gen_utils.renderer.build_context7_from_env", lambda: MagicMock())
+        monkeypatch.setattr("odoo_gen_utils.renderer.context7_enrich", lambda *a, **kw: {})
+
+        files, warnings = render_module(
+            spec, tmp_path / "templates", tmp_path,
+            no_context7=True,
+            resume_from=old_manifest,
+        )
+
+        # ALL 11 stages should have been called (full re-run)
+        assert len(called_stages) == 11
+        assert called_stages == STAGE_NAMES
+
+
+# ---------------------------------------------------------------------------
+# TestResumeIntegrityCheck (Integration)
+# ---------------------------------------------------------------------------
+
+
+class TestResumeIntegrityCheck:
+    """resume_from with modified artifact file re-runs that stage."""
+
+    def test_tampered_artifact_reruns_stage(self, tmp_path, monkeypatch):
+        """A completed stage with modified artifact SHA256 re-runs."""
+        from unittest.mock import MagicMock
+
+        from odoo_gen_utils.manifest import (
+            ArtifactEntry,
+            ArtifactInfo,
+            GenerationManifest,
+            StageResult,
+            compute_file_sha256,
+            compute_spec_sha256,
+        )
+        from odoo_gen_utils.renderer import STAGE_NAMES, render_module
+        from odoo_gen_utils.validation.types import Result
+
+        module_name = "test_mod"
+        spec = {"module_name": module_name, "models": [], "odoo_version": "17.0"}
+        spec_sha = compute_spec_sha256(spec)
+        module_dir = tmp_path / module_name
+        module_dir.mkdir(parents=True)
+
+        # Create artifact file for manifest stage -- then tamper it
+        (module_dir / "manifest_file.py").write_text("# original", encoding="utf-8")
+        original_sha = compute_file_sha256(module_dir / "manifest_file.py")
+        # Now tamper the file
+        (module_dir / "manifest_file.py").write_text("# TAMPERED content", encoding="utf-8")
+
+        old_manifest = GenerationManifest(
+            module=module_name,
+            spec_sha256=spec_sha,
+            generated_at="2026-01-01T00:00:00Z",
+            generator_version="0.1.0",
+            stages={
+                "manifest": StageResult(status="complete", duration_ms=10, artifacts=["manifest_file.py"]),
+            },
+            artifacts=ArtifactInfo(
+                files=[ArtifactEntry(path="manifest_file.py", sha256=original_sha)],
+                total_files=1,
+                total_lines=1,
+            ),
+        )
+
+        called_stages = []
+        for stage in STAGE_NAMES:
+            fn_name = f"render_{stage}"
+            def make_mock(s=stage):
+                def _mock(*args, **kwargs):
+                    called_stages.append(s)
+                    return Result(success=True, data=[])
+                return _mock
+            monkeypatch.setattr(f"odoo_gen_utils.renderer.{fn_name}", make_mock())
+
+        monkeypatch.setattr("odoo_gen_utils.renderer.validate_spec", lambda s: MagicMock(model_dump=lambda **kw: spec))
+        monkeypatch.setattr("odoo_gen_utils.renderer._validate_no_cycles", lambda s: None)
+        monkeypatch.setattr("odoo_gen_utils.renderer.run_preprocessors", lambda s: s)
+        monkeypatch.setattr("odoo_gen_utils.renderer.build_context7_from_env", lambda: MagicMock())
+        monkeypatch.setattr("odoo_gen_utils.renderer.context7_enrich", lambda *a, **kw: {})
+
+        files, warnings = render_module(
+            spec, tmp_path / "templates", tmp_path,
+            no_context7=True,
+            resume_from=old_manifest,
+        )
+
+        # manifest stage SHOULD have been re-run (artifact tampered)
+        assert "manifest" in called_stages

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
@@ -25,8 +27,21 @@ from odoo_gen_utils.renderer_utils import (
 )
 
 from odoo_gen_utils.preprocessors import run_preprocessors
+from odoo_gen_utils.preprocessors._registry import get_registered_preprocessors
 from odoo_gen_utils.preprocessors.validation import _validate_no_cycles
 from odoo_gen_utils.spec_schema import validate_spec
+
+from odoo_gen_utils.manifest import (
+    ArtifactEntry,
+    ArtifactInfo,
+    GenerationSession,
+    PreprocessingInfo,
+    StageResult,
+    compute_file_sha256,
+    compute_spec_sha256,
+    load_manifest,
+)
+from odoo_gen_utils.hooks import RenderHook, notify_hooks, CheckpointPause
 
 # Backward-compatible re-exports: tests import these from renderer
 from odoo_gen_utils.preprocessors import (  # noqa: F401
@@ -48,9 +63,35 @@ from odoo_gen_utils.renderer_context import (
 )
 
 if TYPE_CHECKING:
+    from odoo_gen_utils.manifest import GenerationManifest
     from odoo_gen_utils.verifier import EnvironmentVerifier, VerificationWarning
 
+_logger = logging.getLogger("odoo-gen.renderer")
 
+STAGE_NAMES: list[str] = [
+    "manifest", "models", "views", "security", "mail_templates",
+    "wizards", "tests", "static", "cron", "reports", "controllers",
+]
+
+
+def _artifacts_intact(manifest: "GenerationManifest", stage_name: str, module_dir: Path) -> bool:
+    """Check if all artifacts for a stage still exist with matching SHA256."""
+    stage_result = manifest.stages.get(stage_name)
+    if not stage_result or not stage_result.artifacts:
+        return False
+    for rel_path in stage_result.artifacts:
+        full_path = module_dir / rel_path
+        if not full_path.exists():
+            return False
+        try:
+            actual_sha = compute_file_sha256(full_path)
+            # Find matching artifact entry in manifest
+            entry = next((e for e in manifest.artifacts.files if e.path == rel_path), None)
+            if entry and actual_sha != entry.sha256:
+                return False
+        except Exception:
+            return False
+    return True
 
 
 
@@ -793,14 +834,19 @@ def render_module(
     *,
     no_context7: bool = False,
     fresh_context7: bool = False,
+    hooks: list[RenderHook] | None = None,
+    resume_from: "GenerationManifest | None" = None,
 ) -> "tuple[list[Path], list[VerificationWarning]]":
-    """Orchestrate rendering of a complete Odoo module via 10 stage functions.
+    """Orchestrate rendering of a complete Odoo module via 11 named stage functions.
 
     Args:
         spec: Module specification dictionary with module_name, models, etc.
         template_dir: Path to Jinja2 template files (kept for backward compat).
         output_dir: Root directory where the module will be created.
         verifier: Optional EnvironmentVerifier for inline MCP-backed verification.
+        hooks: Optional list of RenderHook observers. None = zero overhead.
+        resume_from: Optional GenerationManifest from a previous run. Completed
+            stages with intact artifacts are skipped.
 
     Returns:
         Tuple of (created_files, verification_warnings).
@@ -813,8 +859,27 @@ def render_module(
     _validate_no_cycles(spec)
 
     env = create_versioned_renderer(spec.get("odoo_version", "17.0"))
+
+    # Phase 54: GenerationSession replaces artifact_state tracking
+    session = GenerationSession(
+        module_name=spec.get("module_name", "unknown"),
+        spec_sha256=compute_spec_sha256(spec),
+        odoo_version=spec.get("odoo_version", "17.0"),
+    )
+
+    # Phase 54: Resume spec SHA256 check
+    if resume_from and resume_from.spec_sha256 != session.spec_sha256:
+        _logger.warning(
+            "Spec changed since last run (sha256 mismatch). Running full generation."
+        )
+        resume_from = None  # Force full re-run
+
     # Phase 45: single call replaces 10 individual preprocessor calls + override_sources loop
+    t0_pre = time.perf_counter_ns()
     spec = run_preprocessors(spec)
+    pre_duration_ms = (time.perf_counter_ns() - t0_pre) // 1_000_000
+    preprocessors_run = [f"{name}:{order}" for order, name, _ in get_registered_preprocessors()]
+
     # Phase 42: Context7 documentation enrichment
     if no_context7:
         c7_hints: dict[str, str] = {}
@@ -833,36 +898,85 @@ def render_module(
     ctx["c7_hints"] = c7_hints  # Phase 42: inject Context7 hints
     all_warnings: list = []
 
-    try:
-        from odoo_gen_utils.artifact_state import ModuleState, save_state
-        _state: ModuleState | None = ModuleState(module_name=module_name)
-    except Exception:
-        _state = None
+    # Phase 54: Notify hooks after preprocessing
+    notify_hooks(hooks, "on_preprocess_complete", module_name, spec.get("models", []), preprocessors_run)
 
     created_files: list[Path] = []
-    stages = [
-        lambda: render_manifest(env, spec, module_dir, ctx),
-        lambda: render_models(env, spec, module_dir, ctx, verifier=verifier, warnings_out=all_warnings),
-        lambda: render_views(env, spec, module_dir, ctx),
-        lambda: render_security(env, spec, module_dir, ctx),
-        lambda: render_mail_templates(env, spec, module_dir, ctx),
-        lambda: render_wizards(env, spec, module_dir, ctx),
-        lambda: render_tests(env, spec, module_dir, ctx),
-        lambda: render_static(env, spec, module_dir, ctx),
-        lambda: render_cron(env, spec, module_dir, ctx),
-        lambda: render_reports(env, spec, module_dir, ctx),
-        lambda: render_controllers(env, spec, module_dir, ctx),
-    ]
-    for stage_fn in stages:
-        result = stage_fn()
-        if not result.success:
-            break
-        created_files.extend(result.data or [])
 
-    if _state is not None:
-        _state = _track_artifacts(_state, spec, module_dir)
-        try:
-            save_state(_state, module_dir)
-        except Exception:
-            pass
+    # Phase 54: Named stage tuples replace anonymous lambdas
+    stages: list[tuple[str, Callable[[], Result]]] = [
+        ("manifest", lambda: render_manifest(env, spec, module_dir, ctx)),
+        ("models", lambda: render_models(env, spec, module_dir, ctx, verifier=verifier, warnings_out=all_warnings)),
+        ("views", lambda: render_views(env, spec, module_dir, ctx)),
+        ("security", lambda: render_security(env, spec, module_dir, ctx)),
+        ("mail_templates", lambda: render_mail_templates(env, spec, module_dir, ctx)),
+        ("wizards", lambda: render_wizards(env, spec, module_dir, ctx)),
+        ("tests", lambda: render_tests(env, spec, module_dir, ctx)),
+        ("static", lambda: render_static(env, spec, module_dir, ctx)),
+        ("cron", lambda: render_cron(env, spec, module_dir, ctx)),
+        ("reports", lambda: render_reports(env, spec, module_dir, ctx)),
+        ("controllers", lambda: render_controllers(env, spec, module_dir, ctx)),
+    ]
+
+    for stage_name, stage_fn in stages:
+        # Phase 54: Resume -- skip completed stages with intact artifacts
+        if resume_from and resume_from.stages.get(stage_name, StageResult()).status == "complete":
+            if _artifacts_intact(resume_from, stage_name, module_dir):
+                session.record_stage(stage_name, StageResult(status="skipped", reason="resumed"))
+                # Collect existing files for return value
+                stage_artifacts = resume_from.stages[stage_name].artifacts
+                created_files.extend(module_dir / p for p in stage_artifacts)
+                notify_hooks(hooks, "on_stage_complete", module_name, stage_name,
+                    StageResult(status="skipped", reason="resumed"), stage_artifacts)
+                continue
+
+        t0 = time.perf_counter_ns()
+        result = stage_fn()
+        duration_ms = (time.perf_counter_ns() - t0) // 1_000_000
+
+        # Compute per-stage artifacts (relative paths)
+        stage_files = []
+        for p in (result.data or []):
+            try:
+                stage_files.append(str(p.relative_to(module_dir)))
+            except ValueError:
+                stage_files.append(str(p))
+
+        if not result.success:
+            stage_result = StageResult(
+                status="failed", duration_ms=duration_ms,
+                error="; ".join(result.errors), artifacts=stage_files,
+            )
+            session.record_stage(stage_name, stage_result)
+            notify_hooks(hooks, "on_stage_complete", module_name, stage_name, stage_result, stage_files)
+            break
+
+        stage_result = StageResult(
+            status="complete", duration_ms=duration_ms, artifacts=stage_files,
+        )
+        session.record_stage(stage_name, stage_result)
+        created_files.extend(result.data or [])
+        notify_hooks(hooks, "on_stage_complete", module_name, stage_name, stage_result, stage_files)
+
+    # Phase 54: Build artifact info and notify on_render_complete
+    artifact_entries = []
+    total_lines = 0
+    for fpath in created_files:
+        if fpath.exists():
+            try:
+                sha = compute_file_sha256(fpath)
+                rel = str(fpath.relative_to(module_dir))
+                artifact_entries.append(ArtifactEntry(path=rel, sha256=sha))
+                if fpath.suffix in ('.py', '.xml', '.csv', '.txt', '.js', '.css', '.scss'):
+                    total_lines += len(fpath.read_text(encoding="utf-8", errors="ignore").splitlines())
+            except Exception:
+                pass
+
+    manifest = session.to_manifest(
+        preprocessing=PreprocessingInfo(preprocessors_run=preprocessors_run, duration_ms=pre_duration_ms),
+        artifacts=ArtifactInfo(files=artifact_entries, total_files=len(artifact_entries), total_lines=total_lines),
+        models_registered=[m.get("model_name", "") for m in spec.get("models", [])],
+    )
+    notify_hooks(hooks, "on_render_complete", module_name, manifest)
+
     return created_files, all_warnings

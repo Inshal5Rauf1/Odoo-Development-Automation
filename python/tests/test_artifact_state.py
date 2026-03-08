@@ -401,39 +401,32 @@ class TestFormatStateTable:
 
 
 class TestRenderModuleStateIntegration:
-    """Integration tests: render_module emits artifact states."""
+    """Integration tests: render_module emits manifest (Phase 54 migration)."""
 
-    def test_render_module_creates_state_file(self, tmp_path: Path) -> None:
-        """render_module() creates .odoo-gen-state.json sidecar."""
+    def test_render_module_creates_manifest_with_hook(self, tmp_path: Path) -> None:
+        """render_module() with ManifestHook creates .odoo-gen-manifest.json sidecar."""
         spec = {
             "module_name": "test_state_mod",
             "models": [{"name": "test.model", "fields": []}],
         }
+        from odoo_gen_utils.hooks import ManifestHook
+        from odoo_gen_utils.manifest import MANIFEST_FILENAME
         from odoo_gen_utils.renderer import get_template_dir, render_module
 
         template_dir = get_template_dir()
-        files, warnings = render_module(spec, template_dir, tmp_path)
-        state_file = tmp_path / "test_state_mod" / ".odoo-gen-state.json"
-        assert state_file.exists(), "State sidecar file should be created"
-        data = json.loads(state_file.read_text())
-        assert data["module_name"] == "test_state_mod"
-        assert len(data["artifacts"]) > 0
-        # Check at least model and manifest artifacts tracked
-        kinds = {a["kind"] for a in data["artifacts"]}
-        assert "model" in kinds
-        assert "manifest" in kinds
+        module_dir = tmp_path / "test_state_mod"
+        hooks = [ManifestHook(module_path=module_dir)]
+        files, warnings = render_module(spec, template_dir, tmp_path, hooks=hooks)
+        manifest_file = module_dir / MANIFEST_FILENAME
+        assert manifest_file.exists(), "Manifest sidecar file should be created"
+        data = json.loads(manifest_file.read_text())
+        assert data["module"] == "test_state_mod"
+        assert len(data["stages"]) > 0
 
-    def test_render_module_state_failure_does_not_block(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    def test_render_module_without_hooks_still_succeeds(
+        self, tmp_path: Path,
     ) -> None:
-        """If state tracking fails, render_module still succeeds."""
-        import odoo_gen_utils.artifact_state as ast_mod
-
-        def _exploding_transition(self: object, *args: object, **kwargs: object) -> None:
-            raise RuntimeError("State tracking exploded")
-
-        monkeypatch.setattr(ast_mod.ModuleState, "transition", _exploding_transition)
-
+        """render_module() without hooks still succeeds (backward compat)."""
         spec = {
             "module_name": "test_no_block",
             "models": [{"name": "test.model", "fields": []}],

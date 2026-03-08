@@ -326,3 +326,152 @@ class TestZeroOverhead:
 
         with pytest.raises(CheckpointPause):
             notify_hooks([hook], "on_stage_complete", "mod", "stage")
+
+
+# ---------------------------------------------------------------------------
+# TestHookExceptionIsolation (Integration)
+# ---------------------------------------------------------------------------
+
+
+class TestHookExceptionIsolation:
+    """Hook exceptions do NOT kill the pipeline; CheckpointPause DOES propagate."""
+
+    def test_value_error_in_hook_does_not_kill_pipeline(self, tmp_path, monkeypatch):
+        """A hook raising ValueError in on_stage_complete does NOT crash render_module."""
+        from unittest.mock import MagicMock
+
+        from odoo_gen_utils.hooks import RenderHook
+        from odoo_gen_utils.renderer import STAGE_NAMES, render_module
+        from odoo_gen_utils.validation.types import Result
+
+        module_name = "test_mod"
+        spec = {"module_name": module_name, "models": [], "odoo_version": "17.0"}
+        module_dir = tmp_path / module_name
+        module_dir.mkdir(parents=True)
+
+        # Mock all stage renderers
+        for stage in STAGE_NAMES:
+            fn_name = f"render_{stage}"
+            mock_fn = MagicMock(return_value=Result(success=True, data=[]))
+            monkeypatch.setattr(f"odoo_gen_utils.renderer.{fn_name}", mock_fn)
+
+        monkeypatch.setattr("odoo_gen_utils.renderer.validate_spec", lambda s: MagicMock(model_dump=lambda **kw: spec))
+        monkeypatch.setattr("odoo_gen_utils.renderer._validate_no_cycles", lambda s: None)
+        monkeypatch.setattr("odoo_gen_utils.renderer.run_preprocessors", lambda s: s)
+        monkeypatch.setattr("odoo_gen_utils.renderer.build_context7_from_env", lambda: MagicMock())
+        monkeypatch.setattr("odoo_gen_utils.renderer.context7_enrich", lambda *a, **kw: {})
+
+        # Create a hook that raises ValueError
+        class BadHook:
+            def on_preprocess_complete(self, module_name, models, preprocessors_run):
+                raise ValueError("I am broken!")
+
+            def on_stage_complete(self, module_name, stage_name, result, artifacts):
+                raise ValueError("I am broken!")
+
+            def on_render_complete(self, module_name, manifest):
+                raise ValueError("I am broken!")
+
+        files, warnings = render_module(
+            spec, tmp_path / "templates", tmp_path,
+            no_context7=True,
+            hooks=[BadHook()],
+        )
+        # Pipeline should complete without error
+        assert isinstance(files, list)
+
+    def test_checkpoint_pause_propagates_through_pipeline(self, tmp_path, monkeypatch):
+        """CheckpointPause from a hook DOES propagate through render_module."""
+        from unittest.mock import MagicMock
+
+        from odoo_gen_utils.hooks import CheckpointPause
+        from odoo_gen_utils.renderer import STAGE_NAMES, render_module
+        from odoo_gen_utils.validation.types import Result
+
+        module_name = "test_mod"
+        spec = {"module_name": module_name, "models": [], "odoo_version": "17.0"}
+        module_dir = tmp_path / module_name
+        module_dir.mkdir(parents=True)
+
+        # Mock all stage renderers
+        for stage in STAGE_NAMES:
+            fn_name = f"render_{stage}"
+            mock_fn = MagicMock(return_value=Result(success=True, data=[]))
+            monkeypatch.setattr(f"odoo_gen_utils.renderer.{fn_name}", mock_fn)
+
+        monkeypatch.setattr("odoo_gen_utils.renderer.validate_spec", lambda s: MagicMock(model_dump=lambda **kw: spec))
+        monkeypatch.setattr("odoo_gen_utils.renderer._validate_no_cycles", lambda s: None)
+        monkeypatch.setattr("odoo_gen_utils.renderer.run_preprocessors", lambda s: s)
+        monkeypatch.setattr("odoo_gen_utils.renderer.build_context7_from_env", lambda: MagicMock())
+        monkeypatch.setattr("odoo_gen_utils.renderer.context7_enrich", lambda *a, **kw: {})
+
+        # Create a hook that raises CheckpointPause on first stage
+        class PauseHook:
+            def on_preprocess_complete(self, module_name, models, preprocessors_run):
+                pass
+
+            def on_stage_complete(self, module_name, stage_name, result, artifacts):
+                raise CheckpointPause(module_name=module_name, stage_name=stage_name, message="Pause!")
+
+            def on_render_complete(self, module_name, manifest):
+                pass
+
+        with pytest.raises(CheckpointPause):
+            render_module(
+                spec, tmp_path / "templates", tmp_path,
+                no_context7=True,
+                hooks=[PauseHook()],
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestZeroOverheadIntegration
+# ---------------------------------------------------------------------------
+
+
+class TestZeroOverheadIntegration:
+    """render_module() with hooks=None calls no hook methods."""
+
+    def test_render_module_hooks_none_no_notify_hooks_calls(self, tmp_path, monkeypatch):
+        """render_module() with hooks=None never calls notify_hooks with non-None hooks."""
+        from unittest.mock import MagicMock
+
+        from odoo_gen_utils.renderer import STAGE_NAMES, render_module
+        from odoo_gen_utils.validation.types import Result
+
+        module_name = "test_mod"
+        spec = {"module_name": module_name, "models": [], "odoo_version": "17.0"}
+        module_dir = tmp_path / module_name
+        module_dir.mkdir(parents=True)
+
+        for stage in STAGE_NAMES:
+            fn_name = f"render_{stage}"
+            mock_fn = MagicMock(return_value=Result(success=True, data=[]))
+            monkeypatch.setattr(f"odoo_gen_utils.renderer.{fn_name}", mock_fn)
+
+        monkeypatch.setattr("odoo_gen_utils.renderer.validate_spec", lambda s: MagicMock(model_dump=lambda **kw: spec))
+        monkeypatch.setattr("odoo_gen_utils.renderer._validate_no_cycles", lambda s: None)
+        monkeypatch.setattr("odoo_gen_utils.renderer.run_preprocessors", lambda s: s)
+        monkeypatch.setattr("odoo_gen_utils.renderer.build_context7_from_env", lambda: MagicMock())
+        monkeypatch.setattr("odoo_gen_utils.renderer.context7_enrich", lambda *a, **kw: {})
+
+        # Patch notify_hooks to track calls
+        original_calls = []
+
+        def spy_notify_hooks(hooks, method, *args, **kwargs):
+            original_calls.append((hooks, method))
+            # Original behavior: if hooks is None, return immediately
+            if not hooks:
+                return
+
+        monkeypatch.setattr("odoo_gen_utils.renderer.notify_hooks", spy_notify_hooks)
+
+        files, warnings = render_module(
+            spec, tmp_path / "templates", tmp_path,
+            no_context7=True,
+            hooks=None,
+        )
+
+        # All calls to notify_hooks should have hooks=None
+        for hooks_arg, method in original_calls:
+            assert hooks_arg is None, f"notify_hooks called with non-None hooks for method {method}"
