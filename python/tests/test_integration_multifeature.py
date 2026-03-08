@@ -361,15 +361,16 @@ class TestKitchenSinkIntegration:
         assert errors == [], f"Comodel name errors: {errors}"
 
     def test_override_sources_has_audit(self, tmp_path: Path) -> None:
-        """After render, processed spec's first model has audit in override_sources['write']."""
+        """After render, generated model contains audit trail write override."""
         spec = _get_kitchen_sink()
         render_module(spec, get_template_dir(), tmp_path, no_context7=True)
-        model = spec["models"][0]
-        sources = model.get("override_sources", {})
-        write_sources = sources.get("write", set())
-        assert "audit" in write_sources, (
-            f"Expected 'audit' in override_sources['write'], got: {write_sources}"
-        )
+        # Verify audit trail is present in generated model file
+        model_py = (
+            tmp_path / "test_kitchen_sink" / "models"
+            / "test_integration_record.py"
+        ).read_text()
+        assert "def write(" in model_py, "write() override not found in generated model"
+        assert "_audit_" in model_py, "Audit trail code not found in write() override"
 
     def test_all_features_present_in_model_py(self, tmp_path: Path) -> None:
         """Generated model.py contains markers for all features."""
