@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.3
 milestone_name: Test Fixes, Domain Patterns & Architecture
 status: completed
-stopped_at: Completed 54-01-PLAN.md
-last_updated: "2026-03-08T13:06:27.355Z"
-last_activity: 2026-03-08 — Phase 54 Plan 01 executed (manifest models + hooks, 47 tests)
+stopped_at: Completed 54-02-PLAN.md
+last_updated: "2026-03-08T13:19:08Z"
+last_activity: 2026-03-08 — Phase 54 Plan 02 executed (pipeline integration: hooks, resume, CLI, deprecation)
 progress:
   total_phases: 10
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 20
-  completed_plans: 19
-  percent: 97
+  completed_plans: 20
+  percent: 100
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 54 — tenth of 10 phases in v3.3 (Pipeline Quality of Life)
-Plan: 1 of 2 in current phase (COMPLETE)
-Status: Phase 54 Plan 01 complete (manifest models + hooks + 47 tests)
-Last activity: 2026-03-08 — Phase 54 Plan 01 executed (manifest models + hooks, 47 tests)
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase 54 complete -- all pipeline QoL plans done (manifest + hooks + pipeline integration)
+Last activity: 2026-03-08 — Phase 54 Plan 02 executed (pipeline integration: hooks, resume, CLI, deprecation)
 
-Progress: [██████████] 97% (v3.3)
+Progress: [██████████] 100% (v3.3)
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [██████████] 97% (v3.3)
 | Phase 53-mermaid-graphs P01 | 8min | 1 tasks | 2 files |
 | Phase 53-mermaid-graphs P02 | 10min | 2 tasks | 3 files |
 | Phase 54-pipeline-quality-of-life P01 | 7min | 2 tasks | 4 files |
+| Phase 54-pipeline-quality-of-life P02 | 11min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -100,6 +101,7 @@ Progress: [██████████] 97% (v3.3)
 - [Phase 53-mermaid-graphs]: Access registry private attributes directly (_models, _dependency_graph) for mermaid.py; graph TD (not flowchart TD) per user spec; field filtering heuristic with frozenset exclusion + inclusion rules
 - [Phase 53-mermaid-graphs P02]: CLI mermaid command writes to <cwd>/<module>/docs/ (module) or .planning/diagrams/ (project); auto-gen hook gated on not skip_validation, inner try/except for best-effort
 - [Phase 54-pipeline-quality-of-life P01]: GenerationSession is mutable dataclass converting to immutable GenerationManifest via to_manifest(); LoggingHook uses click.echo; ManifestHook wraps save_manifest in try/except; notify_hooks propagates CheckpointPause but isolates all other exceptions
+- [Phase 54-pipeline-quality-of-life P02]: Named stage tuples replace anonymous lambdas; resume checks spec_sha256 first (mismatch triggers full re-run); _artifacts_intact verifies SHA256 per file; LoggingHook+ManifestHook auto-instantiated in CLI; artifact_state.py deprecated but retained for backward compat
 
 ### Pending Todos
 
@@ -122,11 +124,11 @@ None yet.
 - v3.1 Design Flaws & Feature Gaps (10 phases, 12 plans) -- 2026-03-05
 - v3.2 Security, Business Logic & Context7 (9 phases, 15 plans) -- 2026-03-07
 
-**Total:** 44 phases, 77 plans, 405+ commits, 1454+ tests, ~36,000+ LOC Python
+**Total:** 44 phases, 78 plans, 407+ commits, 1468+ tests, ~36,500+ LOC Python
 
 ## Session Continuity
 
-Last session: 2026-03-08T13:06:27.353Z
-Stopped at: Completed 54-01-PLAN.md
+Last session: 2026-03-08T13:19:08Z
+Stopped at: Completed 54-02-PLAN.md
 Resume file: None
-Next step: Execute Phase 54 Plan 02 (pipeline integration -- wire hooks into renderer, CLI resume).
+Next step: v3.3 milestone complete. All 10 phases, 20 plans executed.
