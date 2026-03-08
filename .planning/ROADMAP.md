@@ -111,7 +111,7 @@
 - [x] **Phase 55: Cleanup** - Fix docker exec race condition and delete deprecated artifact_state.py (completed 2026-03-08)
 - [x] **Phase 56: Logic Writer Core** - StubDetector infrastructure and LLM integration point for generating method bodies (completed 2026-03-08)
 - [x] **Phase 57: Logic Writer Computed & Constraints** - LLM generates _compute_*, _check_*, and validates output via semantic checker (completed 2026-03-08)
-- [ ] **Phase 58: Logic Writer Overrides & Actions** - LLM generates create/write overrides, action_*, and _cron_* methods
+- [x] **Phase 58: Logic Writer Overrides & Actions** - LLM generates create/write overrides, action_*, and _cron_* methods (completed 2026-03-08)
 - [ ] **Phase 59: Module Extension Pattern** - Generate _inherit models, xpath view inheritance, and dependency validation
 - [ ] **Phase 60: Iterative Refinement** - Add field/model to existing modules without full regeneration
 - [ ] **Phase 61: Computed Chain Generator** - Cross-model computed field chains with dependency ordering and cycle detection
@@ -167,7 +167,7 @@ Plans:
   1. Generated create()/write() overrides call super() correctly, implement business logic (auto-create related records, increment counters, trigger state changes), and do not duplicate audit/approval logic already handled by templates
   2. Generated action_* methods implement workflow state transitions with correct domain queries and recordset operations
   3. Generated _cron_* methods include @api.model decorator, use domain-based queries to select target records, and implement scheduled processing logic
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 58-01-PLAN.md — Template markers + stub zone detection + context enrichment (action_context, cron_context, stub_zone)
 - [ ] 58-02-PLAN.md — Semantic validation E13, W5, E15, E16 + skeleton preservation
@@ -231,7 +231,7 @@ Plans:
 | 55. Cleanup | 1/1 | Complete    | 2026-03-08 |
 | 56. Logic Writer Core | 2/2 | Complete    | 2026-03-08 |
 | 57. Logic Writer Computed & Constraints | 2/2 | Complete    | 2026-03-08 |
-| 58. Logic Writer Overrides & Actions | 1/2 | In Progress|  |
+| 58. Logic Writer Overrides & Actions | 2/2 | Complete   | 2026-03-08 |
 | 59. Module Extension Pattern | 0/? | Not started | - |
 | 60. Iterative Refinement | 0/? | Not started | - |
 | 61. Computed Chain Generator | 0/? | Not started | - |
