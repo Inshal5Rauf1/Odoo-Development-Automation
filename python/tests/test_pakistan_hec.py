@@ -6,6 +6,8 @@ Phase 49: CNIC, phone, NTN/STRN, HEC academic fields, PKR currency injection.
 from __future__ import annotations
 
 import copy
+import tempfile
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -658,3 +660,195 @@ class TestMultipleFieldsCombined:
             assert name.startswith("test_entity_"), (
                 f"SQL constraint '{name}' not prefixed with model var"
             )
+
+
+# ===========================================================================
+# TestPakistanE2E -- End-to-end integration tests
+# ===========================================================================
+
+
+def _make_e2e_spec(
+    localization: str | None = None,
+    pk_models: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Build a full spec suitable for render_module() E2E testing."""
+    models = pk_models or [
+        {
+            "name": "university.student",
+            "description": "University Student",
+            "fields": [
+                {"name": "name", "type": "Char", "required": True},
+                {"name": "email", "type": "Char"},
+            ],
+            "pk_fields": ["cnic", "phone", "gpa"],
+        },
+        {
+            "name": "university.company",
+            "description": "University Company",
+            "fields": [
+                {"name": "name", "type": "Char", "required": True},
+            ],
+            "pk_fields": ["ntn", "degree_level"],
+        },
+    ]
+    spec: dict[str, Any] = {
+        "module_name": "test_pk_module",
+        "module_title": "Test PK Module",
+        "summary": "Test module for Pakistan E2E",
+        "author": "Test Author",
+        "website": "https://test.example.com",
+        "license": "LGPL-3",
+        "category": "Education",
+        "odoo_version": "17.0",
+        "depends": ["base"],
+        "application": True,
+        "models": models,
+    }
+    if localization is not None:
+        spec["localization"] = localization
+    return spec
+
+
+class TestPakistanE2E:
+    """End-to-end integration tests: full module render with Pakistan localization."""
+
+    def _render(self, spec: dict[str, Any]) -> tuple[Path, list[Path]]:
+        """Render a spec to a temp directory and return (module_dir, files)."""
+        from odoo_gen_utils.renderer import render_module, get_template_dir
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+            files, warnings = render_module(
+                spec, get_template_dir(), output_dir, no_context7=True
+            )
+            module_dir = output_dir / spec["module_name"]
+            # Read results before temp dir is cleaned up
+            results: dict[str, str] = {}
+            for f in files:
+                if f.exists():
+                    results[str(f.relative_to(module_dir))] = f.read_text(
+                        encoding="utf-8"
+                    )
+            return module_dir, files, results
+
+    def test_pkr_currency_xml_exists(self):
+        """data/pk_currency_data.xml exists and contains base.PKR record."""
+        spec = _make_e2e_spec(localization="pk")
+        _module_dir, _files, results = self._render(spec)
+        pkr_path = "data/pk_currency_data.xml"
+        assert pkr_path in results, (
+            f"PKR currency file not found in output. Keys: {list(results.keys())}"
+        )
+        content = results[pkr_path]
+        assert 'id="base.PKR"' in content
+        assert 'model="res.currency"' in content
+        assert 'forcecreate="false"' in content
+        assert 'eval="True"' in content
+
+    def test_manifest_includes_pkr_data_file(self):
+        """__manifest__.py data list includes data/pk_currency_data.xml."""
+        spec = _make_e2e_spec(localization="pk")
+        _module_dir, _files, results = self._render(spec)
+        manifest = results.get("__manifest__.py", "")
+        assert "data/pk_currency_data.xml" in manifest, (
+            "PKR data file not in manifest data list"
+        )
+
+    def test_cnic_constraint_with_api_constrains(self):
+        """Generated model .py has _check_cnic with @api.constrains('cnic')."""
+        spec = _make_e2e_spec(localization="pk")
+        _module_dir, _files, results = self._render(spec)
+        model_py = results.get("models/university_student.py", "")
+        assert "@api.constrains" in model_py, "Missing @api.constrains decorator"
+        assert "_check_cnic" in model_py, "Missing _check_cnic method"
+        # Should have @api.constrains("cnic") before _check_cnic
+        lines = model_py.splitlines()
+        constrains_line = None
+        check_line = None
+        for i, line in enumerate(lines):
+            if '@api.constrains("cnic")' in line:
+                constrains_line = i
+            if "def _check_cnic" in line:
+                check_line = i
+                break
+        assert constrains_line is not None, "No @api.constrains('cnic') found"
+        assert check_line is not None, "No _check_cnic method found"
+        assert constrains_line < check_line, (
+            "@api.constrains must be before _check_cnic"
+        )
+
+    def test_cnic_normalization_in_generated_code(self):
+        """Generated model contains re.sub normalization for CNIC."""
+        spec = _make_e2e_spec(localization="pk")
+        _module_dir, _files, results = self._render(spec)
+        model_py = results.get("models/university_student.py", "")
+        assert "re.sub(r'[^0-9]', '', rec.cnic)" in model_py, (
+            "CNIC normalization with re.sub not found"
+        )
+
+    def test_phone_phonenumbers_import_pattern(self):
+        """Generated model contains phonenumbers try/except import pattern."""
+        spec = _make_e2e_spec(localization="pk")
+        _module_dir, _files, results = self._render(spec)
+        model_py = results.get("models/university_student.py", "")
+        assert "import phonenumbers" in model_py
+        assert "ImportError" in model_py
+
+    def test_gpa_constraint_range(self):
+        """Generated model contains GPA 0.00-4.00 constraint."""
+        spec = _make_e2e_spec(localization="pk")
+        _module_dir, _files, results = self._render(spec)
+        model_py = results.get("models/university_student.py", "")
+        assert "_check_gpa" in model_py, "Missing _check_gpa method"
+        assert "4.0" in model_py, "Missing GPA upper bound 4.0"
+
+    def test_ntn_and_degree_level_fields(self):
+        """Generated model contains NTN field and degree_level Selection."""
+        spec = _make_e2e_spec(localization="pk")
+        _module_dir, _files, results = self._render(spec)
+        company_py = results.get("models/university_company.py", "")
+        assert "ntn" in company_py, "NTN field not found in generated model"
+        assert "degree_level" in company_py, "degree_level field not found"
+        # degree_level should render as Selection
+        assert "Selection" in company_py, "degree_level should be Selection type"
+        # Check some selection values
+        assert "matriculation" in company_py
+        assert "phd" in company_py
+
+    def test_sql_constraints_with_model_prefix(self):
+        """Generated model SQL constraints include model-prefixed unique constraints."""
+        spec = _make_e2e_spec(localization="pk")
+        _module_dir, _files, results = self._render(spec)
+        student_py = results.get("models/university_student.py", "")
+        assert "university_student_cnic_unique" in student_py, (
+            "Model-prefixed CNIC unique constraint not found"
+        )
+
+    def test_needs_api_import(self):
+        """Generated model with pk_* constraints imports api from odoo."""
+        spec = _make_e2e_spec(localization="pk")
+        _module_dir, _files, results = self._render(spec)
+        student_py = results.get("models/university_student.py", "")
+        assert "from odoo import api," in student_py, (
+            "api import missing -- needs_api should be True for pk_* constraints"
+        )
+
+    def test_no_localization_renders_normally(self):
+        """Spec without localization key renders identically to before (no regression)."""
+        spec = _make_e2e_spec(localization=None)
+        _module_dir, _files, results = self._render(spec)
+        # No PKR data file
+        assert "data/pk_currency_data.xml" not in results, (
+            "PKR file should not exist without localization"
+        )
+        # No pk_* constraint methods in model
+        student_py = results.get("models/university_student.py", "")
+        assert "_check_cnic" not in student_py, (
+            "CNIC constraint should not exist without localization"
+        )
+        assert "phonenumbers" not in student_py, (
+            "phonenumbers should not appear without localization"
+        )
+        # Manifest should not include pk_currency_data.xml
+        manifest = results.get("__manifest__.py", "")
+        assert "pk_currency_data" not in manifest

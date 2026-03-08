@@ -231,11 +231,13 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
     # Phase 34: also need api when bulk or cacheable (for @api.model_create_multi)
     # Phase 38: also need api when audit (for @api.model on _audit_tracked_fields)
     has_temporal = any(c.get("type") == "temporal" for c in complex_constraints)
+    # Phase 49: pk_* constraints need @api.constrains decorator
+    has_pk_constraints = any(c.get("type", "").startswith("pk_") for c in complex_constraints)
     needs_api = bool(
         computed_fields or onchange_fields or constrained_fields
         or sequence_fields or has_temporal or has_create_override
         or cron_methods or is_bulk or is_cacheable or is_archival
-        or has_audit
+        or has_audit or has_pk_constraints
     )
 
     return {

@@ -220,6 +220,11 @@ class {{ model_name | to_class }}(models.Model):
                 raise ValidationError(
                     _("{{ constraint.message }}")
                 )
+{% elif constraint.type.startswith('pk_') %}
+
+    @api.constrains({% for f in constraint.fields %}"{{ f }}"{% if not loop.last %}, {% endif %}{% endfor %})
+    def _check_{{ constraint.name }}(self):
+        {{ constraint.check_body | indent(8) }}
 {% else %}
 
     def _check_{{ constraint.name }}(self):
