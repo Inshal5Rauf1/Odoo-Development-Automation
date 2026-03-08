@@ -5,9 +5,9 @@ manifest dependency gaps, and ORM pattern violations in rendered output
 files -- eliminating the Docker round-trip for the majority of
 generation bugs.
 
-20 checks total:
-  ERRORS (E1-E13, E15-E16) -- generation is broken, will fail at install
-  WARNINGS (W1-W5) -- might be wrong, might be intentional
+21 checks total:
+  ERRORS (E1-E13, E15-E17) -- generation is broken, will fail at install
+  WARNINGS (W1-W6) -- might be wrong, might be intentional
 
 All stdlib: ast, xml.etree, csv, difflib, dataclasses, time, pathlib.
 """
@@ -1612,6 +1612,127 @@ def _lines_outside_zones(
 
 
 # ---------------------------------------------------------------------------
+# E17: Extension xpath references non-existent base field
+# W6: Unknown base model warning
+# ---------------------------------------------------------------------------
+
+_XPATH_FIELD_RE = re.compile(r"field\[@name=['\"](\w+)['\"]\]")
+
+
+def _check_e17(
+    output_dir: Path,
+    known_models: dict[str, Any],
+    registry: "ModelRegistry | None" = None,
+) -> tuple[list[ValidationIssue], list[ValidationIssue]]:
+    """E17: Extension xpath references non-existent base field.
+
+    Returns (errors, warnings) tuple.
+    Errors for Tier 1/2 (known/registry models with bad field refs).
+    Warnings (W6) for Tier 3 (unknown models -- cannot validate).
+    """
+    errors: list[ValidationIssue] = []
+    warnings: list[ValidationIssue] = []
+
+    # Track which unknown models we've already warned about to avoid duplicates
+    warned_models: set[str] = set()
+
+    for xml_path in output_dir.rglob("*.xml"):
+        rel = str(xml_path.relative_to(output_dir))
+        try:
+            tree = ET.parse(xml_path)  # noqa: S314
+        except ET.ParseError:
+            continue  # E2 already catches parse errors
+
+        root = tree.getroot()
+        for record in root.iter("record"):
+            # Only check ir.ui.view records
+            if record.get("model") != "ir.ui.view":
+                continue
+
+            # Check if this is an inherited view (has inherit_id field with ref)
+            inherit_field = None
+            model_field = None
+            arch_field = None
+            for field_elem in record.findall("field"):
+                field_name = field_elem.get("name")
+                if field_name == "inherit_id" and field_elem.get("ref"):
+                    inherit_field = field_elem
+                elif field_name == "model":
+                    model_field = field_elem
+                elif field_name == "arch":
+                    arch_field = field_elem
+
+            # Skip non-inherited views
+            if inherit_field is None or model_field is None or arch_field is None:
+                continue
+
+            model_name = (model_field.text or "").strip()
+            if not model_name:
+                continue
+
+            # Collect all field references from xpath expressions inside arch
+            for xpath_elem in arch_field.iter("xpath"):
+                expr = xpath_elem.get("expr", "")
+                matches = _XPATH_FIELD_RE.findall(expr)
+                if not matches:
+                    # Non-field xpath (page, group, etc.) -- skip
+                    continue
+
+                for field_ref in matches:
+                    # Determine which tier the model belongs to
+                    known_entry = known_models.get(model_name)
+                    registry_entry = None
+                    if registry is not None:
+                        registry_entry = registry.show_model(model_name)
+
+                    if known_entry is not None:
+                        # Tier 1: Known Odoo model
+                        known_fields = known_entry.get("fields", {})
+                        if field_ref not in known_fields:
+                            errors.append(ValidationIssue(
+                                code="E17",
+                                severity="error",
+                                file=rel,
+                                line=None,
+                                message=(
+                                    f"xpath references field '{field_ref}' not "
+                                    f"found on model '{model_name}'"
+                                ),
+                            ))
+                    elif registry_entry is not None:
+                        # Tier 2: Registry model
+                        reg_fields = registry_entry.fields
+                        if field_ref not in reg_fields:
+                            errors.append(ValidationIssue(
+                                code="E17",
+                                severity="error",
+                                file=rel,
+                                line=None,
+                                message=(
+                                    f"xpath references field '{field_ref}' not "
+                                    f"found on model '{model_name}'"
+                                ),
+                            ))
+                    else:
+                        # Tier 3: Unknown model -- warn once per model
+                        if model_name not in warned_models:
+                            warned_models.add(model_name)
+                            warnings.append(ValidationIssue(
+                                code="W6",
+                                severity="warning",
+                                file=rel,
+                                line=None,
+                                message=(
+                                    f"Base model '{model_name}' not in known "
+                                    f"models or registry. Cannot validate "
+                                    f"field references."
+                                ),
+                            ))
+
+    return errors, warnings
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -1620,7 +1741,7 @@ def semantic_validate(
     output_dir: Path,
     registry: ModelRegistry | None = None,
 ) -> SemanticValidationResult:
-    """Run all 20 semantic checks on a generated module directory.
+    """Run all 21 semantic checks on a generated module directory.
 
     Parameters
     ----------
@@ -1725,6 +1846,11 @@ def semantic_validate(
 
     # W5: Action method modifies state without checking
     result.warnings.extend(_check_w5(output_dir, module_models))
+
+    # E17: Extension xpath field references + W6: Unknown base model
+    e17_errors, w6_warnings = _check_e17(output_dir, known_models, registry)
+    result.errors.extend(e17_errors)
+    result.warnings.extend(w6_warnings)
 
     elapsed = time.perf_counter() - start
     result.duration_ms = int(elapsed * 1000)

@@ -628,3 +628,36 @@ class TestRendererIntegration:
         from odoo_gen_utils.renderer import STAGE_NAMES
 
         assert "extensions" in STAGE_NAMES
+
+
+class TestExtensionSemanticValidation:
+    """Test that generated extension modules pass semantic_validate() cleanly."""
+
+    def test_full_extension_semantic_validate(self, extension_spec: dict[str, Any]) -> None:
+        """Generated extension module passes full semantic_validate() with zero issues.
+
+        Proves that E1-E17 and W1-W6 produce no false positives on properly
+        generated extension output.
+        """
+        from odoo_gen_utils.renderer import get_template_dir, render_module
+        from odoo_gen_utils.validation.semantic import semantic_validate
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+            template_dir = get_template_dir()
+
+            created, warnings = render_module(
+                extension_spec, template_dir, output_dir, no_context7=True,
+            )
+            module_dir = output_dir / extension_spec["module_name"]
+            assert module_dir.exists()
+
+            result = semantic_validate(module_dir)
+            assert result.errors == [], (
+                f"Extension module produced errors: "
+                f"{[(e.code, e.message) for e in result.errors]}"
+            )
+            assert result.warnings == [], (
+                f"Extension module produced warnings: "
+                f"{[(w.code, w.message) for w in result.warnings]}"
+            )

@@ -1475,3 +1475,249 @@ class TestCleanOverrideActionCron:
         new_warnings = [i for i in result.warnings if i.code == "W5"]
         assert new_errors == [], f"Good cron produced errors: {[e.message for e in new_errors]}"
         assert new_warnings == [], f"Good cron produced warnings: {[w.message for w in new_warnings]}"
+
+
+# ===========================================================================
+# E17: Extension xpath references non-existent base field
+# W6: Unknown base model warning
+# ===========================================================================
+
+
+def _make_extension_module(
+    root: Path,
+    model_name: str,
+    inherit_view_xml: str,
+    module_name: str = "test_ext_module",
+) -> Path:
+    """Scaffold a minimal extension module with an inherited view XML."""
+    mod = root / module_name
+    _write(mod / "__manifest__.py", f"""\
+        {{
+            'name': 'Test Extension',
+            'version': '17.0.1.0.0',
+            'depends': ['base', 'hr'],
+            'data': [
+                'views/hr_employee_views.xml',
+            ],
+        }}
+    """)
+    _write(mod / "__init__.py", "from . import models\n")
+    _write(mod / "models" / "__init__.py", "from . import hr_employee\n")
+    _write(mod / "models" / "hr_employee.py", f"""\
+        from odoo import fields, models
+
+        class HrEmployee(models.Model):
+            _inherit = '{model_name}'
+
+            test_field = fields.Char(string='Test')
+    """)
+    _write(mod / "views" / "hr_employee_views.xml", inherit_view_xml)
+    return mod
+
+
+class TestE17ExtensionXpathValidation:
+    """E17: Extension xpath references non-existent base field."""
+
+    def test_e17_known_model_bad_field(self, tmp_path: Path) -> None:
+        """E17 error when xpath references field not on known model (Tier 1)."""
+        xml = textwrap.dedent("""\
+            <?xml version="1.0" encoding="utf-8"?>
+            <odoo>
+                <record id="view_hr_employee_form_inherit_test" model="ir.ui.view">
+                    <field name="name">hr.employee.form.inherit.test</field>
+                    <field name="model">hr.employee</field>
+                    <field name="inherit_id" ref="hr.view_employee_form"/>
+                    <field name="arch" type="xml">
+                        <xpath expr="//field[@name='nonexistent_field']" position="after">
+                            <field name="test_field"/>
+                        </xpath>
+                    </field>
+                </record>
+            </odoo>
+        """)
+        mod = _make_extension_module(tmp_path, "hr.employee", xml)
+        result = semantic_validate(mod)
+        e17_errors = [i for i in result.errors if i.code == "E17"]
+        assert len(e17_errors) == 1
+        assert "nonexistent_field" in e17_errors[0].message
+        assert "hr.employee" in e17_errors[0].message
+
+    def test_e17_known_model_good_field(self, tmp_path: Path) -> None:
+        """E17 passes when xpath references valid field on known model."""
+        xml = textwrap.dedent("""\
+            <?xml version="1.0" encoding="utf-8"?>
+            <odoo>
+                <record id="view_hr_employee_form_inherit_test" model="ir.ui.view">
+                    <field name="name">hr.employee.form.inherit.test</field>
+                    <field name="model">hr.employee</field>
+                    <field name="inherit_id" ref="hr.view_employee_form"/>
+                    <field name="arch" type="xml">
+                        <xpath expr="//field[@name='department_id']" position="after">
+                            <field name="test_field"/>
+                        </xpath>
+                    </field>
+                </record>
+            </odoo>
+        """)
+        mod = _make_extension_module(tmp_path, "hr.employee", xml)
+        result = semantic_validate(mod)
+        e17_errors = [i for i in result.errors if i.code == "E17"]
+        assert len(e17_errors) == 0
+
+    def test_e17_registry_tier2(self, tmp_path: Path) -> None:
+        """E17 error when xpath references field not in registry model (Tier 2)."""
+        from odoo_gen_utils.registry import ModelRegistry
+
+        # Create a registry with uni.student model via register_module
+        reg = ModelRegistry(tmp_path / "registry.json")
+        reg.register_module("uni_core", {
+            "depends": ["base"],
+            "models": [
+                {
+                    "_name": "uni.student",
+                    "fields": {"name": {"type": "Char"}, "gpa": {"type": "Float"}},
+                }
+            ],
+        })
+
+        xml = textwrap.dedent("""\
+            <?xml version="1.0" encoding="utf-8"?>
+            <odoo>
+                <record id="view_uni_student_form_inherit_test" model="ir.ui.view">
+                    <field name="name">uni.student.form.inherit.test</field>
+                    <field name="model">uni.student</field>
+                    <field name="inherit_id" ref="uni_core.view_student_form"/>
+                    <field name="arch" type="xml">
+                        <xpath expr="//field[@name='missing_field']" position="after">
+                            <field name="test_field"/>
+                        </xpath>
+                    </field>
+                </record>
+            </odoo>
+        """)
+        mod = _make_extension_module(tmp_path, "uni.student", xml, module_name="test_ext_uni")
+        result = semantic_validate(mod, registry=reg)
+        e17_errors = [i for i in result.errors if i.code == "E17"]
+        assert len(e17_errors) == 1
+        assert "missing_field" in e17_errors[0].message
+
+    def test_e17_unknown_model(self, tmp_path: Path) -> None:
+        """W6 warning for unknown base model not in known_models or registry."""
+        xml = textwrap.dedent("""\
+            <?xml version="1.0" encoding="utf-8"?>
+            <odoo>
+                <record id="view_oca_custom_form_inherit_test" model="ir.ui.view">
+                    <field name="name">oca.custom.model.form.inherit.test</field>
+                    <field name="model">oca.custom.model</field>
+                    <field name="inherit_id" ref="oca_module.view_custom_form"/>
+                    <field name="arch" type="xml">
+                        <xpath expr="//field[@name='some_field']" position="after">
+                            <field name="test_field"/>
+                        </xpath>
+                    </field>
+                </record>
+            </odoo>
+        """)
+        mod = _make_extension_module(tmp_path, "oca.custom.model", xml, module_name="test_ext_oca")
+        result = semantic_validate(mod)
+        w6_warnings = [i for i in result.warnings if i.code == "W6"]
+        assert len(w6_warnings) == 1
+        assert "oca.custom.model" in w6_warnings[0].message
+        # No E17 error for unknown models
+        e17_errors = [i for i in result.errors if i.code == "E17"]
+        assert len(e17_errors) == 0
+
+    def test_e17_non_inherited_view_ignored(self, tmp_path: Path) -> None:
+        """E17 skips non-inherited (regular) view records."""
+        xml = textwrap.dedent("""\
+            <?xml version="1.0" encoding="utf-8"?>
+            <odoo>
+                <record id="view_test_form" model="ir.ui.view">
+                    <field name="name">test.form</field>
+                    <field name="model">hr.employee</field>
+                    <field name="arch" type="xml">
+                        <form>
+                            <field name="nonexistent_field"/>
+                        </form>
+                    </field>
+                </record>
+            </odoo>
+        """)
+        mod = _make_extension_module(tmp_path, "hr.employee", xml)
+        result = semantic_validate(mod)
+        e17_errors = [i for i in result.errors if i.code == "E17"]
+        assert len(e17_errors) == 0
+
+    def test_e17_page_xpath_skipped(self, tmp_path: Path) -> None:
+        """E17 skips non-field xpaths like //page[@name='public']."""
+        xml = textwrap.dedent("""\
+            <?xml version="1.0" encoding="utf-8"?>
+            <odoo>
+                <record id="view_hr_employee_form_inherit_test" model="ir.ui.view">
+                    <field name="name">hr.employee.form.inherit.test</field>
+                    <field name="model">hr.employee</field>
+                    <field name="inherit_id" ref="hr.view_employee_form"/>
+                    <field name="arch" type="xml">
+                        <xpath expr="//page[@name='public']" position="after">
+                            <page string="Test" name="test_page">
+                                <group>
+                                    <field name="test_field"/>
+                                </group>
+                            </page>
+                        </xpath>
+                    </field>
+                </record>
+            </odoo>
+        """)
+        mod = _make_extension_module(tmp_path, "hr.employee", xml)
+        result = semantic_validate(mod)
+        e17_errors = [i for i in result.errors if i.code == "E17"]
+        assert len(e17_errors) == 0
+
+    def test_e17_group_xpath_skipped(self, tmp_path: Path) -> None:
+        """E17 skips non-field xpaths like //group[@name='settings']."""
+        xml = textwrap.dedent("""\
+            <?xml version="1.0" encoding="utf-8"?>
+            <odoo>
+                <record id="view_hr_employee_form_inherit_test" model="ir.ui.view">
+                    <field name="name">hr.employee.form.inherit.test</field>
+                    <field name="model">hr.employee</field>
+                    <field name="inherit_id" ref="hr.view_employee_form"/>
+                    <field name="arch" type="xml">
+                        <xpath expr="//group[@name='settings']" position="inside">
+                            <field name="test_field"/>
+                        </xpath>
+                    </field>
+                </record>
+            </odoo>
+        """)
+        mod = _make_extension_module(tmp_path, "hr.employee", xml)
+        result = semantic_validate(mod)
+        e17_errors = [i for i in result.errors if i.code == "E17"]
+        assert len(e17_errors) == 0
+
+    def test_known_models_common_views(self) -> None:
+        """known_odoo_models.json has common_views for frequently extended models."""
+        import json
+
+        data_path = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "odoo_gen_utils" / "data" / "known_odoo_models.json"
+        )
+        data = json.loads(data_path.read_text(encoding="utf-8"))
+        models = data["models"]
+
+        expected_models_with_views = [
+            "hr.employee", "res.partner", "sale.order",
+            "purchase.order", "account.move", "product.template",
+            "stock.picking", "crm.lead",
+        ]
+        for model_name in expected_models_with_views:
+            assert model_name in models, f"Missing model: {model_name}"
+            assert "common_views" in models[model_name], (
+                f"Missing common_views for {model_name}"
+            )
+            views = models[model_name]["common_views"]
+            assert "form" in views, f"Missing form view for {model_name}"
+            assert "tree" in views, f"Missing tree view for {model_name}"
+            assert "search" in views, f"Missing search view for {model_name}"
