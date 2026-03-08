@@ -268,10 +268,18 @@ class {{ model_name | to_class }}(models.Model):
 {% if is_cacheable %}
         self.clear_caches()
 {% endif %}
+        # --- BUSINESS LOGIC START ---
+        # TODO: implement pre-create business logic
+        pass
+        # --- BUSINESS LOGIC END ---
         records = super().create(vals_list)
 {% for c in create_constraints %}
         records._check_{{ c.name }}()
 {% endfor %}
+        # --- BUSINESS LOGIC START ---
+        # TODO: implement post-create business logic
+        pass
+        # --- BUSINESS LOGIC END ---
 {% if is_bulk %}
         for record in records:
             record._post_create_processing()
@@ -326,6 +334,10 @@ class {{ model_name | to_class }}(models.Model):
 {% endif %}
             self._check_{{ c.name }}()
 {% endfor %}
+        # --- BUSINESS LOGIC START ---
+        # TODO: implement post-write business logic
+        pass
+        # --- BUSINESS LOGIC END ---
 {% if has_audit %}
         # Log AFTER super() succeeds
         self._audit_log_changes(old_values, vals)

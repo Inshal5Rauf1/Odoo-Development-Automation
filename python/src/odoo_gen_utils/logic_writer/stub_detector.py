@@ -16,8 +16,16 @@ import ast
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Marker constants
+# ---------------------------------------------------------------------------
+
+_MARKER_START = "# --- BUSINESS LOGIC START ---"
+_MARKER_END = "# --- BUSINESS LOGIC END ---"
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +109,34 @@ def detect_stubs(module_dir: Path) -> list[StubInfo]:
                     )
 
     return stubs
+
+
+def _find_stub_zones(source_lines: list[str]) -> list[dict[str, Any]]:
+    """Find ``BUSINESS LOGIC START/END`` marker-delimited zones in *source_lines*.
+
+    Returns a list of zone dicts, each with:
+    - ``start_line`` (1-based, line of the START marker)
+    - ``end_line`` (1-based, line of the END marker)
+    - ``marker``: always ``"BUSINESS LOGIC"``
+
+    Unclosed markers (START without a matching END) are silently ignored.
+    """
+    zones: list[dict[str, Any]] = []
+    pending_start: int | None = None
+
+    for idx, line in enumerate(source_lines, start=1):
+        stripped = line.strip()
+        if stripped == _MARKER_START:
+            pending_start = idx
+        elif stripped == _MARKER_END and pending_start is not None:
+            zones.append({
+                "start_line": pending_start,
+                "end_line": idx,
+                "marker": "BUSINESS LOGIC",
+            })
+            pending_start = None
+
+    return zones
 
 
 # ---------------------------------------------------------------------------
