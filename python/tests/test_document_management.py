@@ -1242,3 +1242,269 @@ class TestViewDocumentVerificationButtons:
         doc_model = _find_model(result, "document.document")
         output = _render_view_template(doc_model, spec_overrides={"models": result["models"], "depends": result["depends"]})
         assert "fa-history" in output or "action_view_versions" in output
+
+
+# ===========================================================================
+# E2E Integration Tests (Phase 52-02 Task 2)
+# ===========================================================================
+
+
+def _make_e2e_spec(**overrides: Any) -> dict[str, Any]:
+    """Build a spec suitable for render_module() E2E testing with document management."""
+    spec: dict[str, Any] = {
+        "module_name": "test_doc_mgmt",
+        "module_title": "Test Document Management",
+        "summary": "Test document management module",
+        "author": "Test Author",
+        "website": "https://test.example.com",
+        "license": "LGPL-3",
+        "category": "Education",
+        "odoo_version": "17.0",
+        "depends": ["base"],
+        "models": [],
+        "document_management": True,
+    }
+    spec.update(overrides)
+    return spec
+
+
+class TestDocumentManagementE2E:
+    """End-to-end integration tests: full module render with document management."""
+
+    def _render(
+        self, spec: dict[str, Any], tmp_path: Any
+    ) -> dict[str, str]:
+        """Render a spec and return dict of relative_path -> file content."""
+        from pathlib import Path
+
+        from odoo_gen_utils.renderer import get_template_dir, render_module
+
+        output_dir = Path(tmp_path)
+        files, _warnings = render_module(
+            spec, get_template_dir(), output_dir, no_context7=True
+        )
+        module_dir = output_dir / spec["module_name"]
+        results: dict[str, str] = {}
+        for f in files:
+            if f.exists():
+                results[str(f.relative_to(module_dir))] = f.read_text(
+                    encoding="utf-8"
+                )
+        return results
+
+    def test_generates_document_type_model_file(self, tmp_path):
+        """render_module() produces models/document_type.py."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        assert "models/document_type.py" in rendered
+
+    def test_generates_document_document_model_file(self, tmp_path):
+        """render_module() produces models/document_document.py."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        assert "models/document_document.py" in rendered
+
+    def test_attachment_true_in_generated_file(self, tmp_path):
+        """Generated document_document.py contains attachment=True on file field."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("models/document_document.py", "")
+        assert "attachment=True" in content
+
+    def test_readonly_true_in_generated_file(self, tmp_path):
+        """Generated document_document.py contains readonly=True on metadata fields."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("models/document_document.py", "")
+        assert "readonly=True" in content
+
+    def test_tracking_true_in_generated_file(self, tmp_path):
+        """Generated document_document.py contains tracking=True on name and verification_state."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("models/document_document.py", "")
+        assert "tracking=True" in content
+
+    def test_model_field_in_generated_file(self, tmp_path):
+        """Generated document_document.py contains model_field='res_model' on res_id."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("models/document_document.py", "")
+        assert 'model_field="res_model"' in content
+
+    def test_action_verify_as_plain_method(self, tmp_path):
+        """Generated document_document.py contains def doc_action_verify(self): (plain method)."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("models/document_document.py", "")
+        assert "def doc_action_verify(self):" in content
+        # Should NOT have _check_ prefix
+        assert "_check_doc_action_verify" not in content
+
+    def test_action_reject_as_plain_method(self, tmp_path):
+        """Generated document_document.py contains def doc_action_reject(self): method."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("models/document_document.py", "")
+        assert "def doc_action_reject(self):" in content
+
+    def test_action_upload_new_version_as_plain_method(self, tmp_path):
+        """Generated document_document.py contains def doc_action_upload_new_version(self):."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("models/document_document.py", "")
+        assert "def doc_action_upload_new_version(self):" in content
+
+    def test_file_validation_with_api_constrains(self, tmp_path):
+        """Generated document_document.py has @api.constrains for file validation."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("models/document_document.py", "")
+        assert '@api.constrains("file", "document_type_id")' in content
+
+    def test_imports_user_error(self, tmp_path):
+        """Generated document_document.py imports UserError."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("models/document_document.py", "")
+        assert "from odoo.exceptions import UserError" in content
+
+    def test_imports_translate(self, tmp_path):
+        """Generated document_document.py imports _ from odoo.tools.translate."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("models/document_document.py", "")
+        assert "from odoo.tools.translate import _" in content
+
+    def test_manifest_includes_mail_depends(self, tmp_path):
+        """Generated __manifest__.py includes 'mail' in depends."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("__manifest__.py", "")
+        assert "'mail'" in content or '"mail"' in content
+
+    def test_init_imports_both_models(self, tmp_path):
+        """Generated models/__init__.py imports both document_type and document_document."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("models/__init__.py", "")
+        assert "document_type" in content
+        assert "document_document" in content
+
+    def test_security_groups_include_all_roles(self, tmp_path):
+        """Generated security/security.xml includes viewer/uploader/verifier/manager groups."""
+        spec = _make_e2e_spec()
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("security/security.xml", "")
+        assert "viewer" in content.lower()
+        assert "uploader" in content.lower()
+        assert "verifier" in content.lower()
+        assert "manager" in content.lower()
+
+
+class TestVersionGatesE2E:
+    """E2E tests for VERSION_GATES rendering with different Odoo versions."""
+
+    def _render(
+        self, spec: dict[str, Any], tmp_path: Any
+    ) -> dict[str, str]:
+        """Render a spec and return dict of relative_path -> file content."""
+        from pathlib import Path
+
+        from odoo_gen_utils.renderer import get_template_dir, render_module
+
+        output_dir = Path(tmp_path)
+        files, _warnings = render_module(
+            spec, get_template_dir(), output_dir, no_context7=True
+        )
+        module_dir = output_dir / spec["module_name"]
+        results: dict[str, str] = {}
+        for f in files:
+            if f.exists():
+                results[str(f.relative_to(module_dir))] = f.read_text(
+                    encoding="utf-8"
+                )
+        return results
+
+    def test_version_gates_context_available_17(self, tmp_path):
+        """VERSION_GATES context is available when rendering with 17.0."""
+        from odoo_gen_utils.renderer_context import _build_module_context
+
+        spec = _make_e2e_spec(odoo_version="17.0")
+        ctx = _build_module_context(spec, spec["module_name"])
+        assert "version_gates" in ctx
+        assert isinstance(ctx["version_gates"], dict)
+
+    def test_version_gates_context_available_18(self, tmp_path):
+        """VERSION_GATES context is available when rendering with 18.0."""
+        from odoo_gen_utils.renderer_context import _build_module_context
+
+        spec = _make_e2e_spec(odoo_version="18.0")
+        ctx = _build_module_context(spec, spec["module_name"])
+        assert "version_gates" in ctx
+        vg = ctx["version_gates"]
+        assert "18.0" in vg
+        assert vg["18.0"]["mail.channel"] == "discuss.channel"
+
+    def test_18_0_render_produces_valid_output(self, tmp_path):
+        """Rendering with odoo_version=18.0 produces valid module files."""
+        spec = _make_e2e_spec(odoo_version="18.0")
+        rendered = self._render(spec, tmp_path)
+        # Basic sanity: model files generated
+        assert "models/document_document.py" in rendered
+        assert "models/document_type.py" in rendered
+
+
+class TestDocumentTypeSeedData:
+    """E2E tests for document type seed data XML generation."""
+
+    def _render(
+        self, spec: dict[str, Any], tmp_path: Any
+    ) -> dict[str, str]:
+        """Render a spec and return dict of relative_path -> file content."""
+        from pathlib import Path
+
+        from odoo_gen_utils.renderer import get_template_dir, render_module
+
+        output_dir = Path(tmp_path)
+        files, _warnings = render_module(
+            spec, get_template_dir(), output_dir, no_context7=True
+        )
+        module_dir = output_dir / spec["module_name"]
+        results: dict[str, str] = {}
+        for f in files:
+            if f.exists():
+                results[str(f.relative_to(module_dir))] = f.read_text(
+                    encoding="utf-8"
+                )
+        return results
+
+    def test_document_type_data_xml_generated(self, tmp_path):
+        """document_type_data.xml generated when default_types configured."""
+        spec = _make_e2e_spec(
+            document_config={
+                "default_types": [
+                    {"name": "CNIC Copy", "code": "cnic", "required_for": "admission"},
+                    {"name": "Transcript", "code": "transcript", "required_for": "enrollment"},
+                ],
+            },
+        )
+        rendered = self._render(spec, tmp_path)
+        assert "data/document_type_data.xml" in rendered
+
+    def test_document_type_data_xml_content(self, tmp_path):
+        """document_type_data.xml has correct record IDs and field values."""
+        spec = _make_e2e_spec(
+            document_config={
+                "default_types": [
+                    {"name": "CNIC Copy", "code": "cnic", "required_for": "admission"},
+                ],
+            },
+        )
+        rendered = self._render(spec, tmp_path)
+        content = rendered.get("data/document_type_data.xml", "")
+        assert "document_type_cnic" in content
+        assert "CNIC Copy" in content
+        assert "cnic" in content
+        assert "admission" in content
+        assert 'noupdate="1"' in content

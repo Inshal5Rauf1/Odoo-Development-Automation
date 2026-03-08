@@ -299,8 +299,16 @@ def _inject_legacy_security(spec: dict[str, Any]) -> dict[str, Any]:
         scopes = _security_detect_record_rule_scopes(model)
         enriched_models.append({**model, "record_rule_scopes": scopes})
 
-    result = {**spec, "security_roles": roles, "models": enriched_models}
-    result = _security_enrich_fields(result, roles)
+    # Phase 52: preserve existing security_roles from domain preprocessors (e.g., document_management)
+    existing_roles = list(spec.get("security_roles", []))
+    existing_names = {r["name"] for r in existing_roles}
+    merged_roles = list(existing_roles)
+    for role in roles:
+        if role["name"] not in existing_names:
+            merged_roles.append(role)
+
+    result = {**spec, "security_roles": merged_roles, "models": enriched_models}
+    result = _security_enrich_fields(result, merged_roles)
     result = _security_auto_fix_views(result)
     return result
 
@@ -340,7 +348,15 @@ def _process_security_patterns(spec: dict[str, Any]) -> dict[str, Any]:
         scopes = _security_detect_record_rule_scopes(model)
         enriched_models.append({**model, "record_rule_scopes": scopes})
 
-    result = {**spec, "security_roles": roles, "models": enriched_models}
-    result = _security_enrich_fields(result, roles)
+    # Phase 52: preserve existing security_roles from domain preprocessors (e.g., document_management)
+    existing_roles = list(spec.get("security_roles", []))
+    existing_names = {r["name"] for r in existing_roles}
+    merged_roles = list(existing_roles)
+    for role in roles:
+        if role["name"] not in existing_names:
+            merged_roles.append(role)
+
+    result = {**spec, "security_roles": merged_roles, "models": enriched_models}
+    result = _security_enrich_fields(result, merged_roles)
     result = _security_auto_fix_views(result)
     return result
