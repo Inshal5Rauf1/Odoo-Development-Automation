@@ -1,8 +1,16 @@
-"""Artifact state tracker for the Odoo module generation pipeline.
+"""DEPRECATED: Artifact state tracker for the Odoo module generation pipeline.
 
+.. deprecated:: 0.2.0
+    This module is superseded by ``manifest.py`` which provides Pydantic-based
+    ``GenerationManifest``, ``GenerationSession``, and SHA256 integrity tracking.
+    The new ``.odoo-gen-manifest.json`` format replaces ``.odoo-gen-state.json``.
+    This module is retained for backward compatibility and will be removed in a
+    future version.
+
+Original description:
 Tracks each artifact's lifecycle state (pending/generated/validated/approved)
 as structured JSON metadata.  State tracking is observability-only and must
-never block generation — all I/O operations handle errors gracefully.
+never block generation -- all I/O operations handle errors gracefully.
 
 Requirement: OBS-01
 """

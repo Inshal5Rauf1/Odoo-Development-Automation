@@ -443,7 +443,8 @@ def _parse_module_dir_to_spec(
 @click.option("--no-context7", is_flag=True, default=False, help="Skip Context7 documentation hints")
 @click.option("--fresh-context7", is_flag=True, default=False, help="Ignore Context7 cache, force re-query")
 @click.option("--skip-validation", is_flag=True, default=False, help="Skip semantic validation after rendering")
-def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_context7: bool, skip_validation: bool) -> None:
+@click.option("--resume", is_flag=True, default=False, help="Resume from last generation (skip completed stages)")
+def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_context7: bool, skip_validation: bool, resume: bool) -> None:
     """Render a complete Odoo module from a JSON specification file."""
     from pydantic import ValidationError as PydanticValidationError
 
@@ -467,11 +468,30 @@ def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_
     template_dir = get_template_dir()
     output_path = Path(output_dir)
 
+    # Phase 54: Load manifest for resume and instantiate hooks
+    resume_manifest = None
+    if resume:
+        from odoo_gen_utils.manifest import load_manifest
+
+        module_name = spec["module_name"]
+        resume_manifest = load_manifest(output_path / module_name)
+        if resume_manifest is None:
+            click.echo("No previous manifest found. Running full generation.", err=True)
+
     try:
+        from odoo_gen_utils.hooks import LoggingHook, ManifestHook
+
+        module_name = spec["module_name"]
+        render_hooks = [
+            LoggingHook(),
+            ManifestHook(module_path=output_path / module_name),
+        ]
+
         verifier = build_verifier_from_env()
         files, warnings = render_module(
             spec, template_dir, output_path, verifier=verifier,
             no_context7=no_context7, fresh_context7=fresh_context7,
+            hooks=render_hooks, resume_from=resume_manifest,
         )
         for f in files:
             click.echo(str(f))
@@ -1180,11 +1200,42 @@ def extend_module_cmd(
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def show_state(module_path: str, json_output: bool) -> None:
     """Show artifact generation state for a module."""
+    mod_path = Path(module_path).resolve()
+
+    # Phase 54: Try new manifest format first
+    from odoo_gen_utils.manifest import MANIFEST_FILENAME, load_manifest
+
+    manifest = load_manifest(mod_path)
+
+    if manifest is not None:
+        if json_output:
+            data = manifest.model_dump(exclude_none=True)
+            click.echo(json.dumps(data, indent=2))
+            return
+        # Human-readable summary
+        click.echo(f"Module: {manifest.module}")
+        click.echo(f"Generated: {manifest.generated_at}")
+        click.echo(f"Odoo version: {manifest.odoo_version}")
+        click.echo(f"Spec SHA256: {manifest.spec_sha256[:12]}...")
+        click.echo(f"Files: {manifest.artifacts.total_files} ({manifest.artifacts.total_lines} lines)")
+        click.echo("")
+        click.echo("Stages:")
+        for name, stage in manifest.stages.items():
+            icon = {"complete": "[OK]", "skipped": "[--]", "failed": "[!!]", "pending": "[..]"}.get(stage.status, "[??]")
+            duration = f" ({stage.duration_ms}ms)" if stage.duration_ms else ""
+            click.echo(f"  {icon} {name}{duration}")
+            if stage.error:
+                click.echo(f"       ERROR: {stage.error}")
+        if manifest.preprocessing.preprocessors_run:
+            click.echo(f"\nPreprocessors: {len(manifest.preprocessing.preprocessors_run)} ran ({manifest.preprocessing.duration_ms}ms)")
+        if manifest.models_registered:
+            click.echo(f"Models: {', '.join(manifest.models_registered)}")
+        return
+
+    # Fallback to old state format
     from odoo_gen_utils.artifact_state import format_state_table, load_state
 
-    mod_path = Path(module_path).resolve()
     state = load_state(mod_path)
-
     if state is None:
         click.echo("No state file found. Module has not been tracked.")
         return

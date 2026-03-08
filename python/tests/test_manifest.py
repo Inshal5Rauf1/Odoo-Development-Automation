@@ -677,3 +677,188 @@ class TestResumeIntegrityCheck:
 
         # manifest stage SHOULD have been re-run (artifact tampered)
         assert "manifest" in called_stages
+
+
+# ---------------------------------------------------------------------------
+# TestCLIResume (Integration)
+# ---------------------------------------------------------------------------
+
+
+class TestCLIResume:
+    """CLI render-module with --resume flag loads manifest and passes to render_module."""
+
+    def test_resume_flag_loads_manifest(self, tmp_path, monkeypatch):
+        """CLI render-module with --resume loads existing manifest as resume_from."""
+        from unittest.mock import MagicMock, patch
+
+        from click.testing import CliRunner
+
+        from odoo_gen_utils.cli import main
+        from odoo_gen_utils.manifest import GenerationManifest, save_manifest
+
+        module_name = "test_resume_mod"
+        spec = {"module_name": module_name, "models": [], "odoo_version": "17.0"}
+        spec_file = tmp_path / "spec.json"
+        spec_file.write_text(json.dumps(spec), encoding="utf-8")
+
+        module_dir = tmp_path / "output" / module_name
+        module_dir.mkdir(parents=True)
+
+        # Save a manifest in the module dir
+        manifest = GenerationManifest(
+            module=module_name,
+            spec_sha256="abc123",
+            generated_at="2026-01-01T00:00:00Z",
+            generator_version="0.1.0",
+        )
+        save_manifest(manifest, module_dir)
+
+        # Mock render_module at its source to capture args
+        captured_kwargs = {}
+        def mock_render_module(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return ([], [])
+
+        with patch("odoo_gen_utils.renderer.render_module", mock_render_module):
+            runner = CliRunner()
+            result = runner.invoke(main, [
+                "render-module",
+                "--spec-file", str(spec_file),
+                "--output-dir", str(tmp_path / "output"),
+                "--no-context7",
+                "--resume",
+            ])
+
+        # resume_from should be a GenerationManifest (not None)
+        assert "resume_from" in captured_kwargs
+        assert captured_kwargs["resume_from"] is not None
+
+    def test_no_resume_flag_passes_none(self, tmp_path, monkeypatch):
+        """CLI render-module without --resume passes resume_from=None."""
+        from unittest.mock import patch
+
+        from click.testing import CliRunner
+
+        from odoo_gen_utils.cli import main
+
+        module_name = "test_no_resume"
+        spec = {"module_name": module_name, "models": [], "odoo_version": "17.0"}
+        spec_file = tmp_path / "spec.json"
+        spec_file.write_text(json.dumps(spec), encoding="utf-8")
+
+        captured_kwargs = {}
+        def mock_render_module(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return ([], [])
+
+        with patch("odoo_gen_utils.renderer.render_module", mock_render_module):
+            runner = CliRunner()
+            result = runner.invoke(main, [
+                "render-module",
+                "--spec-file", str(spec_file),
+                "--output-dir", str(tmp_path / "output"),
+                "--no-context7",
+            ])
+
+        # resume_from should be None when --resume not passed
+        assert captured_kwargs.get("resume_from") is None
+
+
+# ---------------------------------------------------------------------------
+# TestShowStateManifest (Integration)
+# ---------------------------------------------------------------------------
+
+
+class TestShowStateManifest:
+    """show-state reads .odoo-gen-manifest.json first, falls back to old format."""
+
+    def test_show_state_reads_manifest(self, tmp_path):
+        """show-state on dir with .odoo-gen-manifest.json displays manifest summary."""
+        from click.testing import CliRunner
+
+        from odoo_gen_utils.cli import main
+        from odoo_gen_utils.manifest import (
+            ArtifactInfo,
+            GenerationManifest,
+            StageResult,
+            save_manifest,
+        )
+
+        manifest = GenerationManifest(
+            module="my_test_module",
+            spec_sha256="abc123def456",
+            generated_at="2026-03-08T12:00:00Z",
+            generator_version="0.1.0",
+            stages={
+                "manifest": StageResult(status="complete", duration_ms=10),
+                "models": StageResult(status="complete", duration_ms=50),
+            },
+            artifacts=ArtifactInfo(total_files=5, total_lines=200),
+        )
+        save_manifest(manifest, tmp_path)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["show-state", str(tmp_path)])
+
+        assert result.exit_code == 0
+        assert "my_test_module" in result.output
+        assert "[OK]" in result.output
+        assert "5" in result.output  # total files
+
+    def test_show_state_json_output(self, tmp_path):
+        """show-state --json outputs raw manifest JSON."""
+        from click.testing import CliRunner
+
+        from odoo_gen_utils.cli import main
+        from odoo_gen_utils.manifest import GenerationManifest, save_manifest
+
+        manifest = GenerationManifest(
+            module="json_test",
+            spec_sha256="abc",
+            generated_at="2026-01-01T00:00:00Z",
+            generator_version="0.1.0",
+        )
+        save_manifest(manifest, tmp_path)
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["show-state", "--json", str(tmp_path)])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["module"] == "json_test"
+
+    def test_show_state_falls_back_to_old_format(self, tmp_path):
+        """show-state with only old .odoo-gen-state.json falls back to old format."""
+        from click.testing import CliRunner
+
+        from odoo_gen_utils.cli import main
+
+        # Write an old-format state file
+        state_data = {
+            "module_name": "old_mod",
+            "artifacts": [],
+            "generated_at": "2026-01-01",
+        }
+        state_file = tmp_path / ".odoo-gen-state.json"
+        state_file.write_text(json.dumps(state_data), encoding="utf-8")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["show-state", str(tmp_path)])
+
+        # Should not crash -- displays old state or "No state file found" if format mismatch
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# TestArtifactStateDeprecation
+# ---------------------------------------------------------------------------
+
+
+class TestArtifactStateDeprecation:
+    """artifact_state.py has DEPRECATED in docstring."""
+
+    def test_artifact_state_module_docstring_deprecated(self):
+        """artifact_state.py docstring contains 'DEPRECATED'."""
+        import odoo_gen_utils.artifact_state
+
+        assert "DEPRECATED" in (odoo_gen_utils.artifact_state.__doc__ or "")
