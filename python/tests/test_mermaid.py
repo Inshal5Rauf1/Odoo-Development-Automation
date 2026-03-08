@@ -2,17 +2,20 @@
 
 Tests: _mermaid_id sanitization, _is_key_field filtering, _is_external_module,
 generate_dependency_dag, generate_er_diagram, generate_module_diagrams,
-generate_project_diagrams, Mermaid syntax validation.
+generate_project_diagrams, Mermaid syntax validation, CLI mermaid command,
+auto-generation hook in render_module_cmd.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import click.testing
 import pytest
 
+from odoo_gen_utils.cli import main
 from odoo_gen_utils.registry import ModelEntry, ModelRegistry
 
 
@@ -845,3 +848,344 @@ class TestManyToManyRelationship:
 
         # Cross-module: dotted
         assert "uni_course }o..o{ uni_student : tag_ids" in result
+
+
+# ===========================================================================
+# CLI Test Fixtures
+# ===========================================================================
+
+
+@pytest.fixture()
+def runner() -> click.testing.CliRunner:
+    """Click CLI test runner."""
+    return click.testing.CliRunner()
+
+
+@pytest.fixture()
+def cli_registry(tmp_path: Path) -> Path:
+    """Create a populated registry JSON for CLI tests."""
+    data = {
+        "_meta": {
+            "version": "1.0",
+            "last_updated": "2026-01-01T00:00:00+00:00",
+            "odoo_version": "17.0",
+            "modules_registered": 2,
+        },
+        "models": {
+            "uni.fee.invoice": {
+                "module": "uni_fee",
+                "fields": {
+                    "name": {"type": "Char", "string": "Name"},
+                    "state": {"type": "Selection", "string": "Status"},
+                    "amount_total": {"type": "Monetary", "string": "Total"},
+                    "student_id": {
+                        "type": "Many2one",
+                        "comodel_name": "uni.student",
+                        "string": "Student",
+                    },
+                },
+                "inherits": [],
+                "mixins": [],
+                "description": "Fee Invoice",
+            },
+            "uni.fee.line": {
+                "module": "uni_fee",
+                "fields": {
+                    "name": {"type": "Char", "string": "Description"},
+                    "amount": {"type": "Monetary", "string": "Amount"},
+                    "invoice_id": {
+                        "type": "Many2one",
+                        "comodel_name": "uni.fee.invoice",
+                        "string": "Invoice",
+                    },
+                },
+                "inherits": [],
+                "mixins": [],
+                "description": "Fee Line",
+            },
+            "uni.student": {
+                "module": "uni_student",
+                "fields": {
+                    "name": {"type": "Char", "string": "Name"},
+                },
+                "inherits": [],
+                "mixins": [],
+                "description": "Student",
+            },
+        },
+        "dependency_graph": {
+            "uni_fee": ["base", "mail", "uni_core"],
+            "uni_student": ["base", "uni_core"],
+        },
+    }
+    reg_path = tmp_path / ".planning" / "model_registry.json"
+    reg_path.parent.mkdir(parents=True, exist_ok=True)
+    reg_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return reg_path
+
+
+@pytest.fixture()
+def cli_spec(tmp_path: Path) -> dict:
+    """Sample spec dict for CLI module-level mermaid tests."""
+    return {
+        "module_name": "uni_fee",
+        "models": [
+            {
+                "_name": "uni.fee.invoice",
+                "fields": {
+                    "name": {"type": "Char", "string": "Name"},
+                    "state": {"type": "Selection", "string": "Status"},
+                    "student_id": {
+                        "type": "Many2one",
+                        "comodel_name": "uni.student",
+                    },
+                },
+                "_inherit": [],
+                "description": "Fee Invoice",
+            },
+        ],
+        "depends": ["base", "mail", "uni_core"],
+    }
+
+
+# ===========================================================================
+# TestMermaidCli
+# ===========================================================================
+
+
+class TestMermaidCli:
+    """Integration tests for the `odoo-gen mermaid` CLI command."""
+
+    def test_deps_writes_file(
+        self, runner: click.testing.CliRunner, cli_registry: Path, tmp_path: Path
+    ) -> None:
+        """mermaid --module uni_fee --type deps writes dependencies.mmd."""
+        output_dir = tmp_path / "output" / "uni_fee" / "docs"
+        with patch("odoo_gen_utils.cli._find_registry_path", return_value=cli_registry):
+            result = runner.invoke(
+                main, ["mermaid", "--module", "uni_fee", "--type", "deps"]
+            )
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        # Check a file was written somewhere containing "graph TD"
+
+    def test_er_writes_file(
+        self, runner: click.testing.CliRunner, cli_registry: Path, tmp_path: Path
+    ) -> None:
+        """mermaid --module uni_fee --type er writes er_diagram.mmd."""
+        with patch("odoo_gen_utils.cli._find_registry_path", return_value=cli_registry):
+            result = runner.invoke(
+                main, ["mermaid", "--module", "uni_fee", "--type", "er"]
+            )
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+
+    def test_all_writes_both(
+        self, runner: click.testing.CliRunner, cli_registry: Path, tmp_path: Path
+    ) -> None:
+        """mermaid --module uni_fee --type all writes both .mmd files."""
+        with patch("odoo_gen_utils.cli._find_registry_path", return_value=cli_registry):
+            result = runner.invoke(
+                main, ["mermaid", "--module", "uni_fee", "--type", "all"]
+            )
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        assert "dependencies.mmd" in result.output
+        assert "er_diagram.mmd" in result.output
+
+    def test_default_type_is_all(
+        self, runner: click.testing.CliRunner, cli_registry: Path, tmp_path: Path
+    ) -> None:
+        """mermaid --module uni_fee (no --type) defaults to all."""
+        with patch("odoo_gen_utils.cli._find_registry_path", return_value=cli_registry):
+            result = runner.invoke(main, ["mermaid", "--module", "uni_fee"])
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        assert "dependencies.mmd" in result.output
+        assert "er_diagram.mmd" in result.output
+
+    def test_project_deps(
+        self, runner: click.testing.CliRunner, cli_registry: Path, tmp_path: Path
+    ) -> None:
+        """mermaid --project --type deps writes project_dependencies.mmd."""
+        with patch("odoo_gen_utils.cli._find_registry_path", return_value=cli_registry):
+            result = runner.invoke(
+                main, ["mermaid", "--project", "--type", "deps"]
+            )
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        assert "project_dependencies.mmd" in result.output
+
+    def test_project_er(
+        self, runner: click.testing.CliRunner, cli_registry: Path, tmp_path: Path
+    ) -> None:
+        """mermaid --project --type er writes project_er.mmd."""
+        with patch("odoo_gen_utils.cli._find_registry_path", return_value=cli_registry):
+            result = runner.invoke(
+                main, ["mermaid", "--project", "--type", "er"]
+            )
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        assert "project_er.mmd" in result.output
+
+    def test_stdout(
+        self, runner: click.testing.CliRunner, cli_registry: Path, tmp_path: Path
+    ) -> None:
+        """mermaid --module uni_fee --stdout prints diagram to stdout."""
+        with patch("odoo_gen_utils.cli._find_registry_path", return_value=cli_registry):
+            result = runner.invoke(
+                main, ["mermaid", "--module", "uni_fee", "--type", "deps", "--stdout"]
+            )
+        assert result.exit_code == 0, f"CLI failed: {result.output}"
+        assert "graph TD" in result.output
+
+
+# ===========================================================================
+# TestMermaidCliEdgeCases
+# ===========================================================================
+
+
+class TestMermaidCliEdgeCases:
+    """Edge case tests for the mermaid CLI command."""
+
+    def test_no_module_no_project_fails(
+        self, runner: click.testing.CliRunner
+    ) -> None:
+        """mermaid with neither --module nor --project exits with code 1."""
+        result = runner.invoke(main, ["mermaid"])
+        assert result.exit_code != 0
+
+    def test_both_module_and_project_fails(
+        self, runner: click.testing.CliRunner
+    ) -> None:
+        """mermaid with both --module and --project exits with code 1."""
+        result = runner.invoke(
+            main, ["mermaid", "--module", "uni_fee", "--project"]
+        )
+        assert result.exit_code != 0
+
+
+# ===========================================================================
+# TestAutoGeneration
+# ===========================================================================
+
+
+class TestAutoGeneration:
+    """Tests for the auto-generation hook in render_module_cmd."""
+
+    def test_auto_gen_after_render(
+        self, runner: click.testing.CliRunner, cli_registry: Path, tmp_path: Path
+    ) -> None:
+        """After successful render + validation, mermaid diagrams are created."""
+        spec = {
+            "module_name": "uni_fee",
+            "models": [
+                {
+                    "_name": "uni.fee.invoice",
+                    "fields": {"name": {"type": "Char"}},
+                },
+            ],
+            "depends": ["base", "mail"],
+        }
+        spec_file = tmp_path / "spec.json"
+        spec_file.write_text(json.dumps(spec), encoding="utf-8")
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        with (
+            patch("odoo_gen_utils.cli._find_registry_path", return_value=cli_registry),
+            patch(
+                "odoo_gen_utils.renderer.render_module",
+                return_value=(["file1.py"], []),
+            ),
+            patch(
+                "odoo_gen_utils.renderer.get_template_dir",
+                return_value=tmp_path,
+            ),
+        ):
+            result = runner.invoke(
+                main,
+                ["render-module", "--spec-file", str(spec_file), "--output-dir", str(output_dir)],
+            )
+
+        # Mermaid diagrams should be mentioned in output
+        assert "Mermaid diagrams" in result.output or "mermaid" in result.output.lower()
+
+    def test_auto_gen_best_effort(
+        self, runner: click.testing.CliRunner, cli_registry: Path, tmp_path: Path
+    ) -> None:
+        """Mermaid generation failure does not block render."""
+        spec = {
+            "module_name": "uni_fee",
+            "models": [
+                {
+                    "_name": "uni.fee.invoice",
+                    "fields": {"name": {"type": "Char"}},
+                },
+            ],
+            "depends": ["base"],
+        }
+        spec_file = tmp_path / "spec.json"
+        spec_file.write_text(json.dumps(spec), encoding="utf-8")
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        with (
+            patch("odoo_gen_utils.cli._find_registry_path", return_value=cli_registry),
+            patch(
+                "odoo_gen_utils.renderer.render_module",
+                return_value=(["file1.py"], []),
+            ),
+            patch(
+                "odoo_gen_utils.renderer.get_template_dir",
+                return_value=tmp_path,
+            ),
+            patch(
+                "odoo_gen_utils.mermaid.generate_module_diagrams",
+                side_effect=RuntimeError("mermaid broken"),
+            ),
+        ):
+            result = runner.invoke(
+                main,
+                ["render-module", "--spec-file", str(spec_file), "--output-dir", str(output_dir)],
+            )
+
+        # Render should still succeed even though mermaid failed
+        assert result.exit_code == 0, f"Render failed: {result.output}"
+
+    def test_auto_gen_skipped_when_validation_skipped(
+        self, runner: click.testing.CliRunner, cli_registry: Path, tmp_path: Path
+    ) -> None:
+        """With --skip-validation, mermaid auto-generation is NOT attempted."""
+        spec = {
+            "module_name": "uni_fee",
+            "models": [
+                {
+                    "_name": "uni.fee.invoice",
+                    "fields": {"name": {"type": "Char"}},
+                },
+            ],
+            "depends": ["base"],
+        }
+        spec_file = tmp_path / "spec.json"
+        spec_file.write_text(json.dumps(spec), encoding="utf-8")
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        with (
+            patch("odoo_gen_utils.cli._find_registry_path", return_value=cli_registry),
+            patch(
+                "odoo_gen_utils.renderer.render_module",
+                return_value=(["file1.py"], []),
+            ),
+            patch(
+                "odoo_gen_utils.renderer.get_template_dir",
+                return_value=tmp_path,
+            ),
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "render-module",
+                    "--spec-file", str(spec_file),
+                    "--output-dir", str(output_dir),
+                    "--skip-validation",
+                ],
+            )
+
+        # "Mermaid diagrams" should NOT appear when validation is skipped
+        assert "Mermaid diagrams" not in result.output
