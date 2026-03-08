@@ -220,8 +220,8 @@ Plans:
   5. All document management logic lives in `preprocessors/document_management.py` -- zero changes to core preprocessor files
 **Plans:** 2 plans
 Plans:
-- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
-- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
+- [ ] 52-01-PLAN.md — Document management preprocessor TDD: model builders, verification workflow, version tracking, security roles, file validation
+- [ ] 52-02-PLAN.md — Renderer integration: template field kwargs + doc_* constraint dispatch + VERSION_GATES + E2E tests + registry count
 
 ### Phase 53: Mermaid Graphs
 **Goal**: Developers can visualize module dependencies and model relationships as Mermaid diagrams renderable in GitHub and VS Code
@@ -273,8 +273,8 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 48. Model Registry | 2/2 | Complete    | 2026-03-08 | - |
 | 49. Pakistan/HEC Localization | 2/2 | Complete    | 2026-03-08 | - |
 | 50. Academic Calendar | 2/2 | Complete    | 2026-03-08 | - |
-| 51. Semantic Validation | 2/2 | Complete   | 2026-03-08 | - |
-| 52. Document Management | v3.3 | 0/TBD | Not started | - |
+| 51. Semantic Validation | 2/2 | Complete    | 2026-03-08 | - |
+| 52. Document Management | v3.3 | 0/2 | Planning complete | - |
 | 53. Mermaid Graphs | v3.3 | 0/TBD | Not started | - |
 | 54. Pipeline Quality of Life | v3.3 | 0/TBD | Not started | - |
 
