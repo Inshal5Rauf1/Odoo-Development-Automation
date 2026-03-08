@@ -11,6 +11,7 @@ from odoo_gen_utils.logic_writer.stub_detector import (
     _extract_decorator_string,
     _extract_model_name,
     _extract_target_fields,
+    _find_stub_zones,
     _is_stub_body,
     detect_stubs,
 )
@@ -503,3 +504,143 @@ class UniFee(models.Model):
         stubs = detect_stubs(tmp_path)
         assert len(stubs) == 1
         assert stubs[0].file == "models/fee.py"
+
+
+# ---------------------------------------------------------------------------
+# Marker zone detection: _find_stub_zones()
+# ---------------------------------------------------------------------------
+
+
+class TestMarkerZones:
+    """_find_stub_zones() detects BUSINESS LOGIC marker pairs in source."""
+
+    def test_single_zone_detected(self) -> None:
+        """Source with one marker pair returns one zone dict."""
+        lines = [
+            "    def write(self, vals):",
+            "        result = super().write(vals)",
+            "        # --- BUSINESS LOGIC START ---",
+            "        # TODO: implement post-write business logic",
+            "        pass",
+            "        # --- BUSINESS LOGIC END ---",
+            "        return result",
+        ]
+        zones = _find_stub_zones(lines)
+        assert len(zones) == 1
+        zone = zones[0]
+        assert zone["start_line"] == 3  # 1-based
+        assert zone["end_line"] == 6
+        assert zone["marker"] == "BUSINESS LOGIC"
+
+    def test_dual_zones_detected(self) -> None:
+        """Source with two marker pairs (pre-super + post-super) returns 2 zones."""
+        lines = [
+            "    @api.model_create_multi",
+            "    def create(self, vals_list):",
+            "        # --- BUSINESS LOGIC START ---",
+            "        # TODO: implement pre-create business logic",
+            "        pass",
+            "        # --- BUSINESS LOGIC END ---",
+            "        records = super().create(vals_list)",
+            "        # --- BUSINESS LOGIC START ---",
+            "        # TODO: implement post-create business logic",
+            "        pass",
+            "        # --- BUSINESS LOGIC END ---",
+            "        return records",
+        ]
+        zones = _find_stub_zones(lines)
+        assert len(zones) == 2
+        assert zones[0]["start_line"] == 3
+        assert zones[0]["end_line"] == 6
+        assert zones[1]["start_line"] == 8
+        assert zones[1]["end_line"] == 11
+
+    def test_no_markers_returns_empty(self) -> None:
+        """Source with no markers returns empty list."""
+        lines = [
+            "    def write(self, vals):",
+            "        result = super().write(vals)",
+            "        return result",
+        ]
+        zones = _find_stub_zones(lines)
+        assert zones == []
+
+    def test_unclosed_marker_ignored(self) -> None:
+        """START without matching END is ignored (returns empty list)."""
+        lines = [
+            "    def write(self, vals):",
+            "        # --- BUSINESS LOGIC START ---",
+            "        pass",
+            "        result = super().write(vals)",
+            "        return result",
+        ]
+        zones = _find_stub_zones(lines)
+        assert zones == []
+
+    def test_detect_stubs_works_with_markers(self, tmp_path: Path) -> None:
+        """detect_stubs still works on files containing BUSINESS LOGIC markers."""
+        _write_py(
+            tmp_path,
+            "models/fee.py",
+            '''\
+from odoo import models, api
+
+class UniFee(models.Model):
+    _name = "uni.fee"
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        # --- BUSINESS LOGIC START ---
+        # TODO: implement pre-create business logic
+        pass
+        # --- BUSINESS LOGIC END ---
+        records = super().create(vals_list)
+        # --- BUSINESS LOGIC START ---
+        # TODO: implement post-create business logic
+        pass
+        # --- BUSINESS LOGIC END ---
+        return records
+
+    def action_confirm(self):
+        pass
+''',
+        )
+        stubs = detect_stubs(tmp_path)
+        # action_confirm is detected as stub; create is NOT detected because
+        # its body is more than just bare pass (it has marker comments + super call)
+        assert len(stubs) == 1
+        assert stubs[0].method_name == "action_confirm"
+
+    def test_jinja_create_template_markers(self) -> None:
+        """Create method template has pre-super and post-super marker zones."""
+        # Simulate what the Jinja template would produce for create
+        rendered = [
+            "    @api.model_create_multi",
+            "    def create(self, vals_list):",
+            "        # --- BUSINESS LOGIC START ---",
+            "        # TODO: implement pre-create business logic",
+            "        pass",
+            "        # --- BUSINESS LOGIC END ---",
+            "        records = super().create(vals_list)",
+            "        # --- BUSINESS LOGIC START ---",
+            "        # TODO: implement post-create business logic",
+            "        pass",
+            "        # --- BUSINESS LOGIC END ---",
+            "        return records",
+        ]
+        zones = _find_stub_zones(rendered)
+        assert len(zones) == 2
+
+    def test_jinja_write_template_markers(self) -> None:
+        """Write method template has post-super marker zone only."""
+        rendered = [
+            "    def write(self, vals):",
+            "        result = super().write(vals)",
+            "        # --- BUSINESS LOGIC START ---",
+            "        # TODO: implement post-write business logic",
+            "        pass",
+            "        # --- BUSINESS LOGIC END ---",
+            "        return result",
+        ]
+        zones = _find_stub_zones(rendered)
+        assert len(zones) == 1
