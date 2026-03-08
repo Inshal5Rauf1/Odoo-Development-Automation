@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -931,6 +932,21 @@ def render_module(
         session.record_stage(stage_name, stage_result)
         created_files.extend(result.data or [])
         notify_hooks(hooks, "on_stage_complete", module_name, stage_name, stage_result, stage_files)
+
+    # Phase 58: Skeleton copy for E16 baseline comparison
+    try:
+        skeleton_dir = output_dir / ".odoo-gen-skeleton" / module_name
+        # Copy only .py files from the rendered module for E16 comparison
+        if module_dir.exists():
+            skeleton_dir.mkdir(parents=True, exist_ok=True)
+            for py_file in module_dir.rglob("*.py"):
+                rel = py_file.relative_to(module_dir)
+                dest = skeleton_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(py_file, dest)
+            _logger.info("Skeleton copy: %s -> %s", module_dir, skeleton_dir)
+    except Exception as exc:
+        _logger.warning("Skeleton copy failed (non-blocking): %s", exc)
 
     # Phase 54: Build artifact info and notify on_render_complete
     artifact_entries = []

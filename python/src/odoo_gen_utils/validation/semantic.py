@@ -5,9 +5,9 @@ manifest dependency gaps, and ORM pattern violations in rendered output
 files -- eliminating the Docker round-trip for the majority of
 generation bugs.
 
-16 checks total:
-  ERRORS (E1-E12) -- generation is broken, will fail at install
-  WARNINGS (W1-W4) -- might be wrong, might be intentional
+20 checks total:
+  ERRORS (E1-E13, E15-E16) -- generation is broken, will fail at install
+  WARNINGS (W1-W5) -- might be wrong, might be intentional
 
 All stdlib: ast, xml.etree, csv, difflib, dataclasses, time, pathlib.
 """
@@ -1312,6 +1312,306 @@ def _check_e12(
 
 
 # ---------------------------------------------------------------------------
+# E13-E16, W5 check functions
+# ---------------------------------------------------------------------------
+
+
+def _has_super_call(func: ast.FunctionDef) -> bool:
+    """Return True if *func* body contains a ``super()`` call.
+
+    Detects both Python 3 style (``super().method()``) and old style
+    (``super(ClassName, self).method()``).
+    """
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Call):
+            continue
+        # super() -- bare call
+        if isinstance(node.func, ast.Name) and node.func.id == "super":
+            return True
+        # super().create(...) -- Attribute on super() call
+        if isinstance(node.func, ast.Attribute):
+            value = node.func.value
+            if isinstance(value, ast.Call):
+                if isinstance(value.func, ast.Name) and value.func.id == "super":
+                    return True
+    return False
+
+
+def _check_e13(
+    module_dir: Path,
+    module_models: dict[str, _ParsedModel],
+) -> list[ValidationIssue]:
+    """E13: Override method (create/write) doesn't call super().
+
+    Only checks methods inside classes with ``_name`` or ``_inherit``.
+    """
+    issues: list[ValidationIssue] = []
+
+    for py_file in module_dir.rglob("*.py"):
+        rel = str(py_file.relative_to(module_dir))
+        try:
+            source = py_file.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel)
+        except (SyntaxError, OSError):
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            model_info = _extract_model_info(node, rel)
+            if model_info is None:
+                continue
+
+            for stmt in node.body:
+                if not isinstance(stmt, ast.FunctionDef):
+                    continue
+                if stmt.name not in ("create", "write"):
+                    continue
+
+                if not _has_super_call(stmt):
+                    issues.append(ValidationIssue(
+                        code="E13",
+                        severity="error",
+                        file=rel,
+                        line=stmt.lineno,
+                        message=(
+                            f"Override '{stmt.name}' does not call super()"
+                        ),
+                    ))
+
+    return issues
+
+
+def _check_w5(
+    module_dir: Path,
+    module_models: dict[str, _ParsedModel],
+) -> list[ValidationIssue]:
+    """W5: Action method modifies state without checking current state.
+
+    Checks ``action_*`` methods that assign to ``self.state`` or
+    ``record.state`` for a preceding ``if`` check on ``state`` or
+    ``self.filtered(lambda ...)`` with state reference.
+    """
+    issues: list[ValidationIssue] = []
+
+    for py_file in module_dir.rglob("*.py"):
+        rel = str(py_file.relative_to(module_dir))
+        try:
+            source = py_file.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel)
+        except (SyntaxError, OSError):
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            model_info = _extract_model_info(node, rel)
+            if model_info is None:
+                continue
+
+            for stmt in node.body:
+                if not isinstance(stmt, ast.FunctionDef):
+                    continue
+                if not stmt.name.startswith("action_"):
+                    continue
+
+                # Check if method assigns to state
+                has_state_assign = False
+                for inner in ast.walk(stmt):
+                    if isinstance(inner, ast.Assign):
+                        for target in inner.targets:
+                            if (
+                                isinstance(target, ast.Attribute)
+                                and target.attr == "state"
+                            ):
+                                has_state_assign = True
+
+                if not has_state_assign:
+                    continue  # No state assignment, exempt
+
+                # Check for state precondition: if-check on state or filtered(lambda)
+                has_state_check = _has_state_precondition(stmt)
+
+                if not has_state_check:
+                    issues.append(ValidationIssue(
+                        code="W5",
+                        severity="warning",
+                        file=rel,
+                        line=stmt.lineno,
+                        message=(
+                            f"Action method '{stmt.name}' modifies state "
+                            f"without checking current state"
+                        ),
+                    ))
+
+    return issues
+
+
+def _has_state_precondition(func: ast.FunctionDef) -> bool:
+    """Return True if *func* contains a state precondition check.
+
+    Detects:
+    - ``if self.state ...`` or ``if rec.state ...``
+    - ``self.filtered(lambda r: r.state ...)``
+    """
+    for node in ast.walk(func):
+        # Check for: if <expr>.state ...
+        if isinstance(node, ast.If):
+            if _references_state_attr(node.test):
+                return True
+
+        # Check for: self.filtered(lambda r: r.state ...)
+        if isinstance(node, ast.Call):
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "filtered"
+                and node.args
+            ):
+                arg = node.args[0]
+                if isinstance(arg, ast.Lambda):
+                    if _references_state_attr(arg.body):
+                        return True
+
+    return False
+
+
+def _references_state_attr(node: ast.expr) -> bool:
+    """Return True if *node* contains an ``X.state`` attribute access."""
+    for child in ast.walk(node):
+        if isinstance(child, ast.Attribute) and child.attr == "state":
+            return True
+    return False
+
+
+def _check_e15(
+    module_dir: Path,
+    module_models: dict[str, _ParsedModel],
+) -> list[ValidationIssue]:
+    """E15: Cron method ``_cron_*`` missing ``@api.model`` decorator."""
+    issues: list[ValidationIssue] = []
+
+    for py_file in module_dir.rglob("*.py"):
+        rel = str(py_file.relative_to(module_dir))
+        try:
+            source = py_file.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel)
+        except (SyntaxError, OSError):
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            model_info = _extract_model_info(node, rel)
+            if model_info is None:
+                continue
+
+            for stmt in node.body:
+                if not isinstance(stmt, ast.FunctionDef):
+                    continue
+                if not stmt.name.startswith("_cron_"):
+                    continue
+
+                if not _has_api_decorator(stmt, "model"):
+                    issues.append(ValidationIssue(
+                        code="E15",
+                        severity="error",
+                        file=rel,
+                        line=stmt.lineno,
+                        message=(
+                            f"Cron method '{stmt.name}' missing @api.model decorator"
+                        ),
+                    ))
+
+    return issues
+
+
+def _check_e16(
+    module_dir: Path,
+    module_models: dict[str, _ParsedModel],
+) -> list[ValidationIssue]:
+    """E16: Exclusion zone violation -- template code outside markers modified.
+
+    Compares filled ``.py`` files against ``.odoo-gen-skeleton/`` baseline.
+    Lines outside ``BUSINESS LOGIC START/END`` marker zones must match.
+    Silently returns ``[]`` when skeleton directory does not exist.
+
+    Since stub filling may add/remove lines inside marker zones, we extract
+    the lines OUTSIDE zones from both files and compare those sequences.
+    """
+    from odoo_gen_utils.logic_writer.stub_detector import _find_stub_zones
+
+    issues: list[ValidationIssue] = []
+
+    skeleton_dir = module_dir.parent / ".odoo-gen-skeleton" / module_dir.name
+    if not skeleton_dir.exists():
+        return issues
+
+    for py_file in module_dir.rglob("*.py"):
+        rel = str(py_file.relative_to(module_dir))
+        skeleton_file = skeleton_dir / rel
+        if not skeleton_file.exists():
+            continue
+
+        try:
+            filled_lines = py_file.read_text(encoding="utf-8").splitlines()
+            skeleton_lines = skeleton_file.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+
+        # Extract lines outside stub zones from both files
+        skel_outside = _lines_outside_zones(skeleton_lines)
+        fill_outside = _lines_outside_zones(filled_lines)
+
+        # Compare the sequences of outside-zone lines
+        max_count = max(len(skel_outside), len(fill_outside))
+        for i in range(max_count):
+            skel_item = skel_outside[i] if i < len(skel_outside) else (0, "")
+            fill_item = fill_outside[i] if i < len(fill_outside) else (0, "")
+
+            if skel_item[1].strip() != fill_item[1].strip():
+                # Report the line number from the filled file
+                line_num = fill_item[0] if fill_item[0] else skel_item[0]
+                issues.append(ValidationIssue(
+                    code="E16",
+                    severity="error",
+                    file=rel,
+                    line=line_num,
+                    message=(
+                        f"Template code modified outside BUSINESS LOGIC zone "
+                        f"(line {line_num})"
+                    ),
+                ))
+
+    return issues
+
+
+def _lines_outside_zones(
+    source_lines: list[str],
+) -> list[tuple[int, str]]:
+    """Return ``(line_number, text)`` tuples for lines outside marker zones.
+
+    Marker lines (START/END) are considered outside the zone (they are
+    template-generated) but the content between them is inside.
+    """
+    from odoo_gen_utils.logic_writer.stub_detector import _find_stub_zones
+
+    zones = _find_stub_zones(source_lines)
+
+    # Build set of line numbers strictly INSIDE zones (excluding markers)
+    inside_lines: set[int] = set()
+    for zone in zones:
+        # Lines between START and END markers (exclusive of markers themselves)
+        for ln in range(zone["start_line"] + 1, zone["end_line"]):
+            inside_lines.add(ln)
+
+    result: list[tuple[int, str]] = []
+    for idx, line in enumerate(source_lines, start=1):
+        if idx not in inside_lines:
+            result.append((idx, line))
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -1320,7 +1620,7 @@ def semantic_validate(
     output_dir: Path,
     registry: ModelRegistry | None = None,
 ) -> SemanticValidationResult:
-    """Run all 16 semantic checks on a generated module directory.
+    """Run all 20 semantic checks on a generated module directory.
 
     Parameters
     ----------
@@ -1399,6 +1699,15 @@ def semantic_validate(
     # E12: write/create/unlink in compute
     result.errors.extend(_check_e12(output_dir, module_models))
 
+    # E13: Override method missing super() call
+    result.errors.extend(_check_e13(output_dir, module_models))
+
+    # E15: Cron method missing @api.model
+    result.errors.extend(_check_e15(output_dir, module_models))
+
+    # E16: Exclusion zone violation (skeleton diff)
+    result.errors.extend(_check_e16(output_dir, module_models))
+
     # W1: Comodel references
     result.warnings.extend(_check_w1(module_models, known_models, registry))
 
@@ -1413,6 +1722,9 @@ def semantic_validate(
 
     # W4: Rule domains
     result.warnings.extend(_check_w4(parsed_xmls, module_models))
+
+    # W5: Action method modifies state without checking
+    result.warnings.extend(_check_w5(output_dir, module_models))
 
     elapsed = time.perf_counter() - start
     result.duration_ms = int(elapsed * 1000)
