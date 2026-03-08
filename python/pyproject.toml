@@ -23,6 +23,9 @@ test = [
     "pytest>=8.0",
     "pytest-asyncio>=1.0,<2.0",
 ]
+pakistan = [
+    "phonenumbers>=8.13,<10.0",
+]
 search = [
     "chromadb>=1.5,<2.0",
     "PyGithub>=2.8",
