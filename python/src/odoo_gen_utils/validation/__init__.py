@@ -23,6 +23,12 @@ from odoo_gen_utils.validation.report import (  # noqa: F401
     format_report_json,
     format_report_markdown,
 )
+from odoo_gen_utils.validation.semantic import (  # noqa: F401
+    SemanticValidationResult,
+    ValidationIssue,
+    print_validation_report,
+    semantic_validate,
+)
 from odoo_gen_utils.validation.types import (  # noqa: F401
     InstallResult,
     Result,
@@ -32,6 +38,8 @@ from odoo_gen_utils.validation.types import (  # noqa: F401
 )
 
 __all__ = [
+    "SemanticValidationResult",
+    "ValidationIssue",
     "InstallResult",
     "Result",
     "TestResult",
@@ -49,5 +57,7 @@ __all__ = [
     "parse_install_log",
     "parse_pylint_output",
     "parse_test_log",
+    "print_validation_report",
     "run_pylint_odoo",
+    "semantic_validate",
 ]
