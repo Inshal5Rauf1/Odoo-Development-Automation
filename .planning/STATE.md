@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: LLM Logic Writer & Generation Capabilities
-status: defining_requirements
+status: ready_to_plan
 stopped_at: null
 last_updated: "2026-03-08"
-last_activity: "2026-03-08 — Milestone v4.0 started"
+last_activity: "2026-03-08 — v4.0 roadmap created (9 phases, 24 requirements)"
 progress:
-  total_phases: 0
+  total_phases: 9
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v4.0 — LLM Logic Writer & Generation Capabilities
+**Current focus:** v4.0 Phase 55 — Cleanup (docker exec fix + artifact_state deletion)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-08 — Milestone v4.0 started
+Phase: 55 (Cleanup) — first of 9 phases in v4.0
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-03-08 — v4.0 roadmap created
 
 Progress: [░░░░░░░░░░] 0% (v4.0)
 
@@ -44,12 +44,11 @@ Progress: [░░░░░░░░░░] 0% (v4.0)
 
 ### Decisions
 
-- v4.0 build order: BUG-H2 + DEBT-04 → Logic Writer → Module Extension → Iterative Refinement → Computed Chains → Portals → Bulk Ops
+- v4.0 build order: Cleanup -> Logic Writer -> Module Extension -> Iterative Refinement -> Computed Chains -> Portals -> Bulk Ops
 - Logic Writer is Pass 2 only — Jinja for structure, LLM for method bodies
 - Quality profile (Opus/Sonnet) for Logic Writer; budget (Haiku) for simple methods
 - Pattern retriever (IMP-00A) deferred — use KB/Context7 directly
-- odoo-gsd orchestrator fork deferred — use manual orchestration
-- CUT: IMP-03B, NEW-07, IMP-17, IMP-22, IMP-19, IMP-23, IMP-24
+- Phase 57/58 can parallelize after 56; Phase 59 can parallelize with 56-58
 
 ### Pending Todos
 
@@ -76,6 +75,6 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-08
-Stopped at: Milestone v4.0 started
+Stopped at: v4.0 roadmap created
 Resume file: None
-Next step: Define requirements, create roadmap
+Next step: `/gsd:plan-phase 55`

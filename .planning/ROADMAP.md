@@ -11,6 +11,7 @@
 - **v3.1 Design Flaws & Feature Gaps** — Phases 26-35 (shipped 2026-03-05)
 - **v3.2 Security, Business Logic & Context7** — Phases 36-44 (shipped 2026-03-07) | [Archive](milestones/v3.2-ROADMAP.md)
 - **v3.3 Test Fixes, Domain Patterns & Architecture** — Phases 45-54 (shipped 2026-03-08) | [Archive](milestones/v3.3-ROADMAP.md)
+- **v4.0 LLM Logic Writer & Generation Capabilities** — Phases 55-63 (in progress)
 
 ## Phases
 
@@ -103,6 +104,129 @@
 
 </details>
 
+## v4.0 LLM Logic Writer & Generation Capabilities (In Progress)
+
+**Milestone Goal:** Transform the system from a structural scaffolder (Jinja templates producing TODO stubs) into an AI code generator (LLM writes real method bodies), then add module extension, iterative refinement, computed chains, portal controllers, and bulk operations.
+
+- [ ] **Phase 55: Cleanup** - Fix docker exec race condition and delete deprecated artifact_state.py
+- [ ] **Phase 56: Logic Writer Core** - StubDetector infrastructure and LLM integration point for generating method bodies
+- [ ] **Phase 57: Logic Writer Computed & Constraints** - LLM generates _compute_*, _check_*, and validates output via semantic checker
+- [ ] **Phase 58: Logic Writer Overrides & Actions** - LLM generates create/write overrides, action_*, and _cron_* methods
+- [ ] **Phase 59: Module Extension Pattern** - Generate _inherit models, xpath view inheritance, and dependency validation
+- [ ] **Phase 60: Iterative Refinement** - Add field/model to existing modules without full regeneration
+- [ ] **Phase 61: Computed Chain Generator** - Cross-model computed field chains with dependency ordering and cycle detection
+- [ ] **Phase 62: Portal Controllers** - Generate portal.CustomerPortal controllers, QWeb templates, and portal record rules
+- [ ] **Phase 63: Bulk Operations** - Generate model_create_multi, batch wizards, and chunked processing helpers
+
+## Phase Details
+
+### Phase 55: Cleanup
+**Goal**: Eliminate known tech debt blocking v4.0 work -- the docker exec race condition and the deprecated artifact_state module
+**Depends on**: Nothing (first phase of v4.0)
+**Requirements**: CLEN-01, CLEN-02
+**Success Criteria** (what must be TRUE):
+  1. Running `docker compose run --rm` for module installation completes without serialization failures (no concurrent DB writes)
+  2. No file named artifact_state.py exists in the codebase and no imports reference ModuleState, ArtifactState, save_state, or load_state
+  3. All existing tests pass after the cleanup changes
+**Plans**: TBD
+
+### Phase 56: Logic Writer Core
+**Goal**: Users can invoke a Logic Writer pass that detects TODO method stubs in generated Python files and replaces them with LLM-generated implementations
+**Depends on**: Phase 55
+**Requirements**: LGEN-01, LGEN-02
+**Success Criteria** (what must be TRUE):
+  1. StubDetector scans a generated .py file and returns a list of methods containing TODO/pass/raise NotImplementedError bodies with their line ranges
+  2. MethodContext builder assembles field definitions, spec business_rules, and model registry context for each detected stub
+  3. LLM receives method context, returns a syntactically valid Python method body, and the Logic Writer writes it back into the .py file replacing the stub
+  4. Model routing sends complex methods (multi-model, business rules) to quality model and simple methods (single-field compute) to budget model
+**Plans**: TBD
+
+### Phase 57: Logic Writer Computed & Constraints
+**Goal**: Logic Writer generates correct _compute_* and _check_* method implementations that pass semantic validation
+**Depends on**: Phase 56
+**Requirements**: LGEN-03, LGEN-04, LGEN-07
+**Success Criteria** (what must be TRUE):
+  1. Generated _compute_* methods include correct @api.depends decorators matching the fields they read, and use self.mapped/filtered patterns for recordset operations
+  2. Generated _check_* methods include correct @api.constrains decorators, raise ValidationError with user-facing messages, and handle cross-field validation logic
+  3. Logic Writer output for computed and constraint methods passes the Phase 51 semantic validator (AST + XML cross-check) without errors -- field names resolve, ORM patterns are valid
+**Plans**: TBD
+
+### Phase 58: Logic Writer Overrides & Actions
+**Goal**: Logic Writer generates correct create/write overrides, action workflow methods, and cron scheduled logic
+**Depends on**: Phase 56
+**Requirements**: LGEN-05, LGEN-06
+**Success Criteria** (what must be TRUE):
+  1. Generated create()/write() overrides call super() correctly, implement business logic (auto-create related records, increment counters, trigger state changes), and do not duplicate audit/approval logic already handled by templates
+  2. Generated action_* methods implement workflow state transitions with correct domain queries and recordset operations
+  3. Generated _cron_* methods include @api.model decorator, use domain-based queries to select target records, and implement scheduled processing logic
+**Plans**: TBD
+
+### Phase 59: Module Extension Pattern
+**Goal**: Users can generate extension modules that inherit and extend existing Odoo modules with new fields, modified views, and correct dependencies
+**Depends on**: Phase 55
+**Requirements**: MEXT-01, MEXT-02, MEXT-03
+**Success Criteria** (what must be TRUE):
+  1. Generated _inherit model files correctly extend base Odoo models (e.g., _inherit = "hr.payslip") with new fields and proper super() call patterns in overridden methods
+  2. Generated xpath view XML injects fields into existing form/tree/search views from base modules at correct insertion points
+  3. Generated __manifest__.py includes the extended module in depends and the model registry validates the base module exists before generation proceeds
+**Plans**: TBD
+
+### Phase 60: Iterative Refinement
+**Goal**: Users can add fields or models to an already-generated module without regenerating unchanged files
+**Depends on**: Phase 56, Phase 59
+**Requirements**: ITER-01, ITER-02, ITER-03
+**Success Criteria** (what must be TRUE):
+  1. Adding a field to an existing model updates only the model file, relevant view XML, and security CSV -- other files remain untouched (verified by checksum or manifest comparison)
+  2. Adding a new model creates its model file, updates __init__.py, adds views/security, and updates manifest depends -- existing model files are not regenerated
+  3. Generation manifest tracks what exists, and only affected pipeline stages re-run (not the full pipeline) -- the model registry validates new references against existing models
+**Plans**: TBD
+
+### Phase 61: Computed Chain Generator
+**Goal**: Users can define cross-model computed field chains (e.g., exam result grade -> enrollment grade points -> student CGPA) and the system generates correct implementations across all models in the chain
+**Depends on**: Phase 57
+**Requirements**: CCHN-01, CCHN-02, CCHN-03
+**Success Criteria** (what must be TRUE):
+  1. Spec defines chain steps across models, and Logic Writer generates compute method implementations in each model that correctly read from source fields and write to target fields
+  2. Generated @api.depends decorators use related field dot notation for cross-model triggers (e.g., @api.depends('enrollment_ids.grade_points')) and store=True is set for fields needing recomputation
+  3. Chain validator detects dependency cycles, verifies all intermediate fields exist in the model registry, and confirms correct computation order before generation
+**Plans**: TBD
+
+### Phase 62: Portal Controllers
+**Goal**: Users can generate portal-facing features with controllers, QWeb templates, and security rules that restrict data to the portal user's linked records
+**Depends on**: Phase 58, Phase 59
+**Requirements**: PRTL-01, PRTL-02, PRTL-03
+**Success Criteria** (what must be TRUE):
+  1. Generated portal controllers inherit portal.CustomerPortal with ir.http routes, proper authentication decorators, and JSON serialization of record data
+  2. Generated QWeb templates inherit portal.portal_my_home, add portal menu items, and render page templates with correct t-field/t-foreach directives
+  3. Generated portal record rules restrict data access to the portal user's linked records (e.g., parent sees only their child's enrollment data) with correct domain expressions
+**Plans**: TBD
+
+### Phase 63: Bulk Operations
+**Goal**: Users can generate bulk operation patterns -- mass creation with batched post-processing, wizard-based batch operations, and chunked processing with progress notifications
+**Depends on**: Phase 58
+**Requirements**: BULK-01, BULK-02, BULK-03
+**Success Criteria** (what must be TRUE):
+  1. Generated @api.model_create_multi methods batch post-processing operations (notifications, sequence assignment) instead of running them per-record
+  2. Generated bulk wizard TransientModels include domain-based record selection, a preview step showing affected records, confirmation action, and error collection for partial failures
+  3. Generated _process_batch() helpers accept configurable batch_size, process records in chunks, and emit bus.bus progress notifications during long operations
+**Plans**: TBD
+
+## Progress
+
+**Execution Order:** Phases 55-63 execute sequentially, with 57/58 parallelizable after 56, and 59 parallelizable with 56-58.
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 55. Cleanup | 0/? | Not started | - |
+| 56. Logic Writer Core | 0/? | Not started | - |
+| 57. Logic Writer Computed & Constraints | 0/? | Not started | - |
+| 58. Logic Writer Overrides & Actions | 0/? | Not started | - |
+| 59. Module Extension Pattern | 0/? | Not started | - |
+| 60. Iterative Refinement | 0/? | Not started | - |
+| 61. Computed Chain Generator | 0/? | Not started | - |
+| 62. Portal Controllers | 0/? | Not started | - |
+| 63. Bulk Operations | 0/? | Not started | - |
+
 ---
 *Roadmap created: 2026-03-01*
 *v1.0 shipped: 2026-03-03*
@@ -114,3 +238,4 @@
 *v3.1 shipped: 2026-03-05*
 *v3.2 shipped: 2026-03-07*
 *v3.3 shipped: 2026-03-08*
+*v4.0 roadmap created: 2026-03-08*
