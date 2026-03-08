@@ -1292,3 +1292,155 @@ def gen_migration(old_spec: str, new_spec: str, migration_version: str, output_d
             "Review migration scripts carefully.",
             err=True,
         )
+
+
+@main.command("mermaid")
+@click.option("--module", default=None, help="Module name")
+@click.option(
+    "--project", "is_project", is_flag=True, default=False,
+    help="Generate project-level diagrams",
+)
+@click.option(
+    "--type", "diagram_type",
+    type=click.Choice(["deps", "er", "all"]),
+    default="all",
+    help="Diagram type (default: all)",
+)
+@click.option(
+    "--stdout", "use_stdout", is_flag=True, default=False,
+    help="Print to stdout instead of writing files",
+)
+def mermaid_cmd(
+    module: str | None,
+    is_project: bool,
+    diagram_type: str,
+    use_stdout: bool,
+) -> None:
+    """Generate Mermaid dependency DAG and ER diagrams.
+
+    Either --module or --project must be specified, but not both.
+
+    With --module, generates diagrams for a single module and writes them
+    to <cwd>/<module>/docs/.
+
+    With --project, generates combined project-level diagrams and writes
+    them to .planning/diagrams/.
+
+    Use --stdout to print diagram content to the console instead of writing files.
+    """
+    from odoo_gen_utils.mermaid import (
+        generate_dependency_dag,
+        generate_er_diagram,
+        generate_module_diagrams,
+        generate_project_diagrams,
+    )
+    from odoo_gen_utils.registry import ModelRegistry
+
+    # Validate: exactly one of --module or --project must be specified
+    if module and is_project:
+        click.echo("Error: specify either --module or --project, not both.", err=True)
+        sys.exit(1)
+    if not module and not is_project:
+        click.echo("Error: specify either --module or --project.", err=True)
+        sys.exit(1)
+
+    # Load registry
+    reg_path = _find_registry_path()
+    reg = ModelRegistry(reg_path)
+    reg.load()
+    reg.load_known_models()
+
+    if is_project:
+        if use_stdout:
+            project_modules = set(reg._dependency_graph.keys())
+            if diagram_type in ("deps", "all"):
+                # Build combined DAG inline
+                lines: list[str] = ["graph TD"]
+                all_nodes: set[str] = set()
+                all_edges: list[str] = []
+                from odoo_gen_utils.mermaid import _mermaid_id, _is_external_module, _EXTERNAL_CLASSDEF
+                for mod, deps in reg._dependency_graph.items():
+                    mod_id = _mermaid_id(mod)
+                    if mod_id not in all_nodes:
+                        all_nodes.add(mod_id)
+                        lines.append(f'    {mod_id}["{mod}"]')
+                    for dep in deps:
+                        dep_id = _mermaid_id(dep)
+                        if dep_id not in all_nodes:
+                            all_nodes.add(dep_id)
+                            if _is_external_module(dep, project_modules):
+                                lines.append(f'    {dep_id}["{dep}"]:::external')
+                            else:
+                                lines.append(f'    {dep_id}["{dep}"]')
+                        all_edges.append(f"    {mod_id} --> {dep_id}")
+                lines.extend(all_edges)
+                lines.append(f"    {_EXTERNAL_CLASSDEF}")
+                click.echo("\n".join(lines))
+            if diagram_type in ("er", "all"):
+                from odoo_gen_utils.mermaid import generate_er_diagram as _gen_er
+                # Generate combined ER for all modules
+                all_models = dict(reg._models)
+                # Use first module as context -- pass all as a single "module"
+                er_content = _gen_er("__project__", all_models, reg)
+                click.echo(er_content)
+        else:
+            output_dir = Path.cwd() / ".planning" / "diagrams"
+            if diagram_type == "deps":
+                generate_project_diagrams(reg, output_dir)
+                click.echo(str(output_dir / "project_dependencies.mmd"))
+            elif diagram_type == "er":
+                generate_project_diagrams(reg, output_dir)
+                click.echo(str(output_dir / "project_er.mmd"))
+            else:
+                generate_project_diagrams(reg, output_dir)
+                click.echo(str(output_dir / "project_dependencies.mmd"))
+                click.echo(str(output_dir / "project_er.mmd"))
+    else:
+        # Module-level diagrams
+        assert module is not None
+
+        # Build spec from registry data
+        module_models = {
+            name: entry
+            for name, entry in reg._models.items()
+            if entry.module == module
+        }
+        deps = reg._dependency_graph.get(module, [])
+        project_modules = set(reg._dependency_graph.keys())
+        project_modules.add(module)
+
+        if use_stdout:
+            if diagram_type in ("deps", "all"):
+                dep_graph = dict(reg._dependency_graph)
+                dep_graph.setdefault(module, deps)
+                dag_content = generate_dependency_dag(module, dep_graph, project_modules)
+                click.echo(dag_content)
+            if diagram_type in ("er", "all"):
+                er_content = generate_er_diagram(module, module_models, reg)
+                click.echo(er_content)
+        else:
+            # Build a spec dict for generate_module_diagrams
+            models_list = []
+            for model_name, entry in module_models.items():
+                models_list.append({
+                    "_name": model_name,
+                    "fields": entry.fields,
+                    "_inherit": list(entry.inherits),
+                    "description": entry.description,
+                })
+            spec = {
+                "module_name": module,
+                "models": models_list,
+                "depends": deps,
+            }
+            output_dir = Path.cwd() / module / "docs"
+            if diagram_type == "deps":
+                generate_module_diagrams(module, spec, reg, output_dir)
+                click.echo(str(output_dir / "dependencies.mmd"))
+            elif diagram_type == "er":
+                generate_module_diagrams(module, spec, reg, output_dir)
+                click.echo(str(output_dir / "er_diagram.mmd"))
+            else:
+                generate_module_diagrams(module, spec, reg, output_dir)
+                click.echo(str(output_dir / "dependencies.mmd"))
+                click.echo(str(output_dir / "er_diagram.mmd"))
