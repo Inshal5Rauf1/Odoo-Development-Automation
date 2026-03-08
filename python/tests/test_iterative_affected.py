@@ -181,7 +181,9 @@ class TestViewHintChangedStages:
         new = json.loads(json.dumps(old))
         new["models"][0]["view_hints"] = {"tree_fields": ["name", "amount"]}
         diff = diff_specs(old, new)
-        result = determine_affected_stages(diff)
+        # view_hints is not tracked by spec_differ, so we pass raw specs
+        # for attribute-level detection
+        result = determine_affected_stages(diff, old_spec=old, new_spec=new)
         assert "views" in result.stages
 
 
