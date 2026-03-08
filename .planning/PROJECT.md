@@ -22,6 +22,16 @@ A domain-specific extension of the GSD (Get Shit Done) framework that automates 
 - 1,730 tests passing, ~35,500+ LOC Python
 - See: `.planning/MILESTONES.md` for full history
 
+**Building:** v4.0 — LLM Logic Writer & Generation Capabilities
+- The system transitions from "scaffolder" to "generator"
+- Jinja templates still produce structural code (models, views, security, manifest)
+- NEW: LLM Logic Writer generates real method bodies instead of TODO stubs
+- Module extension pattern (_inherit + xpath views)
+- Iterative refinement (add field/model without full regeneration)
+- Computed chain generator for cross-model dependencies
+- Portal controller generation
+- Bulk operation patterns
+
 ## Core Value
 
 Compress months of repetitive Odoo module development into days by leveraging GSD's orchestration + existing open-source modules as foundations + Odoo-specialized AI agents, so developers focus on business logic and design decisions.
@@ -133,26 +143,21 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 
 ### Active
 
-## Current Milestone: v3.3 Test Fixes, Domain Patterns & Architecture
+## Current Milestone: v4.0 LLM Logic Writer & Generation Capabilities
 
-**Goal:** Fix all 36 pre-existing broken tests, add domain-specific generation patterns (document management, Pakistan/HEC localization, academic calendar), strengthen architecture (model registry, generation manifest, semantic validation, checkpoints, state persistence), and add developer tooling (devcontainer generation, dependency visualization).
+**Goal:** Transform the system from a structural scaffolder (Jinja templates producing TODO stubs) into an AI code generator (LLM writes real method bodies). Then add module extension, iterative refinement, computed chains, portal controllers, and bulk operations.
 
 **Target features:**
-- Fix 36 pre-existing test failures (MCP server, search index, verifier, ChromaDB, deepdiff)
-- Document management pattern with verification workflow
-- Pakistan/HEC localization framework (CNIC, phone, PKR currency)
-- Semester/academic calendar awareness
-- Project context / model registry for cross-module awareness
-- Structured generation manifest for checker
-- Semantic validation beyond pylint+Docker
-- Human checkpoint hooks in generation pipeline
-- Generation state persistence with resume
-- Dev environment generation (docker-compose.dev.yml, devcontainer)
-- Module dependency visualization (Mermaid graph)
-- Pydantic spec validation
-- Odoo 18 discuss.channel support
+- Fix docker_install_module() exec race condition (BUG-H2)
+- Delete deprecated artifact_state.py (DEBT-04)
+- LLM Logic Writer pass — generates real method bodies for _compute_*, _check_*, create/write overrides, action_*, _cron_*
+- Odoo native module extension pattern (_inherit + xpath views)
+- Iterative refinement — add field/model without full regeneration
+- Cross-model computed chain generator (CGPA, fee penalties)
+- Portal controller generation (student/parent/alumni)
+- Bulk operation patterns (mass create, batch processing, progress tracking)
 
-**Parallel execution:** Two-track git worktree strategy (infra track + features track) with strict file ownership for zero-conflict development.
+**Build order:** BUG-H2 + DEBT-04 → Logic Writer → Module Extension → Iterative Refinement → Computed Chains → Portals → Bulk Ops
 
 ### Out of Scope
 
@@ -220,6 +225,10 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 | Renderer decomposition (7 stages) | Each stage independently testable, under 80 lines | Good — render_module maintainable |
 | Lazy CLI imports | Fast startup, heavy deps only when needed | Good — no import-time penalties |
 | Docker run --rm (not exec) | Eliminates serialization race with entrypoint server | Good — reliable validation |
+| Jinja structure + LLM method bodies | Templates for deterministic structure, LLM for business logic creativity | Pending — v4.0 |
+| Logic Writer Pass 2 only (not full 7-pass pipeline) | Start minimal, add passes when needed | Pending — v4.0 |
+| No odoo-gsd fork yet | Use manual orchestration until pain demands it; belt infra already supports external orchestrator | Pending |
+| Pattern retriever deferred | Logic Writer uses KB/Context7 directly; build full ChromaDB retriever when output quality plateaus | Pending |
 
 ## Prior Art
 
@@ -238,4 +247,4 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 | **Context7** | INTEGRATE | Live documentation MCP for real-time Odoo API reference |
 
 ---
-*Last updated: 2026-03-08 after v3.3 milestone*
+*Last updated: 2026-03-08 after v4.0 milestone start*
