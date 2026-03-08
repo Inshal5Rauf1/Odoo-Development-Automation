@@ -158,7 +158,10 @@ Plans:
   3. `depends` list in `__manifest__.py` is automatically inferred from comodel references found in the registry (no manual depends required for registered modules)
   4. Circular dependency between modules is detected and reported before generation proceeds
   5. Registry operations are called from the CLI layer (not inside render pipeline) -- render_module() has no knowledge of the registry
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
+- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
 
 ### Phase 49: Pakistan/HEC Localization
 **Goal**: Specs requesting Pakistan localization generate models with properly validated CNIC, phone, NTN/STRN, PKR currency, and HEC academic fields -- covering the first Pakistan-specific Odoo generation capability in the ecosystem
@@ -170,7 +173,10 @@ Plans:
   3. PKR currency is injected via `res.currency` reference (not hardcoded symbol), and NTN/STRN tax identifier fields are generated for FBR compliance
   4. HEC fields (registration number, GPA on 4.0 scale, credit hours, recognition status) are generated when `hec: true` is present in the localization config
   5. All Pakistan-specific logic lives in `preprocessors/pakistan_hec.py` -- zero changes to core preprocessor files
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
+- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
 
 ### Phase 50: Academic Calendar
 **Goal**: Specs requesting academic calendar generate a complete semester/term management system with overlap prevention and automatic term generation, following OpenEduCat naming conventions
@@ -182,7 +188,10 @@ Plans:
   3. `term_structure` Selection field on academic year (e.g., semester, trimester, quarter) drives automatic term generation with computed date splits
   4. Academic year is a Char field (e.g., "2025-2026"), not a Many2one to `account.fiscal.year`
   5. All academic calendar logic lives in `preprocessors/academic_calendar.py` -- zero changes to core preprocessor files
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
+- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
 
 ### Phase 51: Semantic Validation
 **Goal**: A pre-Docker validation pass catches field reference errors, XML ID conflicts, ACL mismatches, and manifest gaps in under 1 second -- eliminating the 30-60 second Docker round-trip for the majority of bugs
@@ -194,7 +203,10 @@ Plans:
   3. ACL CSV entries reference models that actually exist in the generated module (no typos in `model_id:id` column)
   4. Manifest `depends` list is validated for completeness: if generated code imports from `odoo.addons.X`, then `X` must appear in depends
   5. Full semantic validation completes in under 2 seconds for a typical module (5 models, 10 views)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
+- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
 
 ### Phase 52: Document Management
 **Goal**: Specs requesting document management generate a complete document lifecycle system with type classification, file storage, verification workflow, and Odoo 18 discuss.channel compatibility
@@ -206,7 +218,10 @@ Plans:
   3. Simple version tracking is generated: new uploads create version records, previous versions remain accessible
   4. Templates generate `mail.channel` references for Odoo 17.0 and `discuss.channel` for Odoo 18.0 via version-conditional blocks
   5. All document management logic lives in `preprocessors/document_management.py` -- zero changes to core preprocessor files
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
+- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
 
 ### Phase 53: Mermaid Graphs
 **Goal**: Developers can visualize module dependencies and model relationships as Mermaid diagrams renderable in GitHub and VS Code
@@ -217,7 +232,10 @@ Plans:
   2. `odoo-gen mermaid-er <module>` generates a `.mmd` file with an entity-relationship diagram showing models, fields, and relational links
   3. Generated `.mmd` files render correctly in GitHub markdown preview and VS Code Mermaid extension without manual editing
   4. Node names with dots (e.g., `res.partner`) are sanitized to valid Mermaid identifiers with display labels preserving the original name
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
+- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
 
 ### Phase 54: Pipeline Quality of Life
 **Goal**: The generation pipeline produces a manifest of what it generated, supports human checkpoint callbacks at key stages, and can resume from where it left off after interruption
@@ -229,7 +247,10 @@ Plans:
   3. GSD workflows can instantiate a hook object that pauses for human review at configured pipeline stages (post-preprocess, post-stage, post-render)
   4. `GenerationSession` dataclass tracks which stages have completed, persisted to the artifact state sidecar
   5. `render_module(resume_from=<stage>)` skips already-completed stages and resumes from the specified point, enabling recovery from interruptions
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
+- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
 
 ## Progress
 
@@ -248,8 +269,8 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 36-44 | v3.2 | 15/15 | Complete | 2026-03-07 |
 | 45. Preprocessor Split | 2/2 | Complete    | 2026-03-07 | - |
 | 46. Test Infrastructure | 1/1 | Complete    | 2026-03-07 | - |
-| 47. Pydantic Spec Validation | 3/3 | Complete   | 2026-03-08 | - |
-| 48. Model Registry | v3.3 | 0/TBD | Not started | - |
+| 47. Pydantic Spec Validation | 3/3 | Complete    | 2026-03-08 | - |
+| 48. Model Registry | v3.3 | 0/2 | Planned | - |
 | 49. Pakistan/HEC Localization | v3.3 | 0/TBD | Not started | - |
 | 50. Academic Calendar | v3.3 | 0/TBD | Not started | - |
 | 51. Semantic Validation | v3.3 | 0/TBD | Not started | - |
