@@ -96,7 +96,7 @@
 - [x] **Phase 47: Pydantic Spec Validation** - Pydantic v2 spec schema with protected_namespaces, backward-compatible defaults, JSON Schema export (gap closure: model_dump regression fix) (completed 2026-03-08)
 - [x] **Phase 48: Model Registry** - Cross-module model registry with JSON persistence, comodel validation, cycle detection (completed 2026-03-08)
 - [x] **Phase 49: Pakistan/HEC Localization** - CNIC, phone, PKR, NTN/STRN, HEC fields as generation patterns (completed 2026-03-08)
-- [ ] **Phase 50: Academic Calendar** - academic.year, academic.term, academic.batch models with overlap prevention
+- [x] **Phase 50: Academic Calendar** - academic.year, academic.term, academic.batch models with overlap prevention (completed 2026-03-08)
 - [ ] **Phase 51: Semantic Validation** - Pre-Docker AST + XML cross-check catching 60-70% of bugs in <1 second
 - [ ] **Phase 52: Document Management** - Document types, Binary storage, verification workflow, Odoo 18 discuss.channel gate
 - [ ] **Phase 53: Mermaid Graphs** - Module dependency DAG and model ER diagrams as .mmd files
@@ -188,7 +188,7 @@ Plans:
   3. `term_structure` Selection field on academic year (e.g., semester, trimester, quarter) drives automatic term generation with computed date splits
   4. Academic year is a Char field (e.g., "2025-2026"), not a Many2one to `account.fiscal.year`
   5. All academic calendar logic lives in `preprocessors/academic_calendar.py` -- zero changes to core preprocessor files
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 50-01-PLAN.md — Academic calendar preprocessor with TDD: 3 model builders, overlap constraints, term auto-generation, config handling
 - [ ] 50-02-PLAN.md — Renderer integration: ac_* and ac_action_* template branches, needs_api extension, E2E tests, registry count update
@@ -272,7 +272,7 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 47. Pydantic Spec Validation | 3/3 | Complete    | 2026-03-08 | - |
 | 48. Model Registry | 2/2 | Complete    | 2026-03-08 | - |
 | 49. Pakistan/HEC Localization | 2/2 | Complete    | 2026-03-08 | - |
-| 50. Academic Calendar | 1/2 | In Progress|  | - |
+| 50. Academic Calendar | 2/2 | Complete   | 2026-03-08 | - |
 | 51. Semantic Validation | v3.3 | 0/TBD | Not started | - |
 | 52. Document Management | v3.3 | 0/TBD | Not started | - |
 | 53. Mermaid Graphs | v3.3 | 0/TBD | Not started | - |
