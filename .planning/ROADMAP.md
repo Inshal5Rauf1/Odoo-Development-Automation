@@ -205,8 +205,8 @@ Plans:
   5. Full semantic validation completes in under 2 seconds for a typical module (5 models, 10 views)
 **Plans:** 2 plans
 Plans:
-- [ ] 48-01-PLAN.md — Registry core module + known_odoo_models.json + TDD tests
-- [ ] 48-02-PLAN.md — CLI command group + post-render hook + gitignore fix
+- [ ] 51-01-PLAN.md — Semantic validation module with all 10 checks (E1-E6, W1-W4) + TDD tests
+- [ ] 51-02-PLAN.md — CLI integration with --skip-validation flag + E2E tests
 
 ### Phase 52: Document Management
 **Goal**: Specs requesting document management generate a complete document lifecycle system with type classification, file storage, verification workflow, and Odoo 18 discuss.channel compatibility
@@ -272,8 +272,8 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 47. Pydantic Spec Validation | 3/3 | Complete    | 2026-03-08 | - |
 | 48. Model Registry | 2/2 | Complete    | 2026-03-08 | - |
 | 49. Pakistan/HEC Localization | 2/2 | Complete    | 2026-03-08 | - |
-| 50. Academic Calendar | 2/2 | Complete   | 2026-03-08 | - |
-| 51. Semantic Validation | v3.3 | 0/TBD | Not started | - |
+| 50. Academic Calendar | 2/2 | Complete    | 2026-03-08 | - |
+| 51. Semantic Validation | v3.3 | 0/2 | Not started | - |
 | 52. Document Management | v3.3 | 0/TBD | Not started | - |
 | 53. Mermaid Graphs | v3.3 | 0/TBD | Not started | - |
 | 54. Pipeline Quality of Life | v3.3 | 0/TBD | Not started | - |
