@@ -626,3 +626,56 @@ class TestResultStructure:
         print_validation_report(result)
         captured = capsys.readouterr()
         assert "Semantic Validation" in captured.out or "validation" in captured.out.lower()
+
+
+# ===========================================================================
+# E2E: CLI Integration
+# ===========================================================================
+
+
+class TestE2ECliIntegration:
+    """E2E tests for CLI render-module + semantic validation pipeline."""
+
+    def test_full_module_validation(self, tmp_path: Path) -> None:
+        """Render a valid module scaffold and validate it -- zero errors expected."""
+        mod = _make_valid_module(tmp_path, "my_module")
+        result = semantic_validate(mod)
+        assert result.has_errors is False, (
+            f"Valid module produced errors: {[e.message for e in result.errors]}"
+        )
+
+    def test_cli_skip_validation_flag_exists(self) -> None:
+        """--skip-validation flag is accepted by the render-module CLI command."""
+        from click.testing import CliRunner
+
+        from odoo_gen_utils.cli import main
+
+        runner = CliRunner()
+        # Invoke with --help to verify the flag is listed (no spec needed)
+        result = runner.invoke(main, ["render-module", "--help"])
+        assert result.exit_code == 0
+        assert "--skip-validation" in result.output
+
+    def test_validation_gates_registry(self, tmp_path: Path) -> None:
+        """Semantic errors block registry update: introduce bad field, confirm has_errors."""
+        mod = _make_valid_module(tmp_path)
+        # Introduce a deliberate error: reference non-existent field in view
+        _write(mod / "views" / "partner_views.xml", """\
+            <?xml version="1.0" encoding="utf-8"?>
+            <odoo>
+                <record id="view_partner_ext_form" model="ir.ui.view">
+                    <field name="name">partner.ext.form</field>
+                    <field name="model">res.partner.ext</field>
+                    <field name="arch" type="xml">
+                        <form>
+                            <field name="nonexistent_field_xyz"/>
+                        </form>
+                    </field>
+                </record>
+            </odoo>
+        """)
+        result = semantic_validate(mod)
+        assert result.has_errors is True
+        e3 = [i for i in result.errors if i.code == "E3"]
+        assert len(e3) >= 1
+        assert "nonexistent_field_xyz" in e3[0].message

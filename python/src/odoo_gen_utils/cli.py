@@ -442,7 +442,8 @@ def _parse_module_dir_to_spec(
 @click.option("--output-dir", required=True, type=click.Path(), help="Directory to create module in")
 @click.option("--no-context7", is_flag=True, default=False, help="Skip Context7 documentation hints")
 @click.option("--fresh-context7", is_flag=True, default=False, help="Ignore Context7 cache, force re-query")
-def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_context7: bool) -> None:
+@click.option("--skip-validation", is_flag=True, default=False, help="Skip semantic validation after rendering")
+def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_context7: bool, skip_validation: bool) -> None:
     """Render a complete Odoo module from a JSON specification file."""
     from pydantic import ValidationError as PydanticValidationError
 
@@ -478,6 +479,23 @@ def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_
             click.echo(f"WARN [{w.check_type}] {w.subject}: {w.message}", err=True)
             if w.suggestion:
                 click.echo(f"  Suggestion: {w.suggestion}", err=True)
+
+        # Post-render semantic validation
+        if not skip_validation:
+            from odoo_gen_utils.validation.semantic import (
+                print_validation_report,
+                semantic_validate,
+            )
+
+            module_name = spec["module_name"]
+            validation = semantic_validate(output_path / module_name)
+            print_validation_report(validation)
+            if validation.has_errors:
+                click.echo(
+                    "Semantic validation failed. Module NOT registered.",
+                    err=True,
+                )
+                sys.exit(1)
 
         # Post-render registry update
         try:
