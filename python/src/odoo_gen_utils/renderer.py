@@ -394,6 +394,31 @@ def render_tests(
         return Result.fail(f"render_tests failed: {exc}")
 
 
+_PKR_CURRENCY_XML = (
+    '<?xml version="1.0" encoding="utf-8"?>\n'
+    '<odoo>\n'
+    '    <data noupdate="0">\n'
+    '        <!-- Activate Pakistani Rupee from base module -->\n'
+    '        <record id="base.PKR" model="res.currency" forcecreate="false">\n'
+    '            <field name="active" eval="True"/>\n'
+    '        </record>\n'
+    '    </data>\n'
+    '</odoo>\n'
+)
+
+
+def _render_extra_data_files(spec: dict[str, Any], module_dir: Path) -> list[Path]:
+    """Render extra data files injected by localization preprocessors (Phase 49)."""
+    created: list[Path] = []
+    for extra_file in spec.get("extra_data_files", []):
+        extra_path = module_dir / extra_file
+        extra_path.parent.mkdir(parents=True, exist_ok=True)
+        if extra_file == "data/pk_currency_data.xml":
+            extra_path.write_text(_PKR_CURRENCY_XML, encoding="utf-8")
+            created.append(extra_path)
+    return created
+
+
 def render_static(
     env: Environment,
     spec: dict[str, Any],
@@ -455,6 +480,8 @@ def render_static(
         created.append(index_html)
         # README.rst
         created.append(render_template(env, "readme.rst.j2", module_dir / "README.rst", module_context))
+        # Phase 49: extra data files (e.g., Pakistan PKR currency activation)
+        created.extend(_render_extra_data_files(spec, module_dir))
         return Result.ok(created)
     except Exception as exc:
         return Result.fail(f"render_static failed: {exc}")

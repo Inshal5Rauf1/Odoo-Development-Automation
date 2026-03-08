@@ -437,6 +437,8 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
     for report in spec.get("reports", []):
         data_files.append(f"data/report_{report['xml_id']}.xml")
         data_files.append(f"data/report_{report['xml_id']}_template.xml")
+    # Phase 49: extra data files from localization preprocessors
+    data_files.extend(spec.get("extra_data_files", []))
     wiz_files = [f"views/{_to_xml_id(w['name'])}_wizard_form.xml" for w in spec_wizards]
     # Phase 32: import/export wizard detection
     import_export_models = [m for m in models if m.get("import_export")]
