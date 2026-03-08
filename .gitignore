@@ -7,6 +7,7 @@ build/
 
 # Planning artifacts (GSD workflow)
 .planning/
+!.planning/model_registry.json
 
 # GSD checkpoint files
 .continue-here.md

@@ -152,6 +152,291 @@ def _extract_template_description(template_path: Path) -> str:
     return ""
 
 
+def _find_registry_path() -> Path:
+    """Return the path to the model registry JSON file (relative to cwd)."""
+    return Path(".planning/model_registry.json")
+
+
+@main.group()
+def registry() -> None:
+    """Manage the cross-module model registry."""
+
+
+main.add_command(registry)
+
+
+@registry.command("list")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def registry_list(json_output: bool) -> None:
+    """List all registered modules and their models."""
+    from odoo_gen_utils.registry import ModelRegistry
+
+    reg = ModelRegistry(_find_registry_path())
+    reg.load()
+    modules = reg.list_modules()
+
+    if not modules:
+        click.echo("No modules registered.")
+        return
+
+    if json_output:
+        click.echo(json.dumps(modules, indent=2))
+        return
+
+    for mod_name, model_names in sorted(modules.items()):
+        click.echo(f"  {mod_name}: {len(model_names)} model(s)")
+        for m in sorted(model_names):
+            click.echo(f"    - {m}")
+
+
+@registry.command("show")
+@click.argument("model_name")
+def registry_show(model_name: str) -> None:
+    """Display details for a specific model."""
+    from odoo_gen_utils.registry import ModelRegistry
+
+    reg = ModelRegistry(_find_registry_path())
+    reg.load()
+    reg.load_known_models()
+    entry = reg.show_model(model_name)
+
+    if entry is None:
+        click.echo(f"Model '{model_name}' not found in registry.")
+        return
+
+    click.echo(f"Model: {model_name}")
+    click.echo(f"Module: {entry.module}")
+    if entry.description:
+        click.echo(f"Description: {entry.description}")
+    if entry.inherits:
+        click.echo(f"Inherits: {', '.join(entry.inherits)}")
+    if entry.mixins:
+        click.echo(f"Mixins: {', '.join(entry.mixins)}")
+    if entry.fields:
+        click.echo("Fields:")
+        for fname, fdef in entry.fields.items():
+            ftype = fdef.get("type", "?")
+            comodel = fdef.get("comodel_name", "")
+            extra = f" -> {comodel}" if comodel else ""
+            click.echo(f"  {fname}: {ftype}{extra}")
+
+
+@registry.command("remove")
+@click.argument("module_name")
+def registry_remove(module_name: str) -> None:
+    """Remove a module from the registry."""
+    from odoo_gen_utils.registry import ModelRegistry
+
+    reg = ModelRegistry(_find_registry_path())
+    reg.load()
+    modules = reg.list_modules()
+
+    if module_name not in modules and module_name not in reg._dependency_graph:
+        click.echo(f"Warning: Module '{module_name}' not found in registry.")
+        return
+
+    reg.remove_module(module_name)
+    reg.save()
+    click.echo(f"Removed module '{module_name}' from registry.")
+
+
+@registry.command("rebuild")
+@click.option("--scan-root", type=click.Path(exists=True), default=".", help="Root directory to scan for __manifest__.py files")
+def registry_rebuild(scan_root: str) -> None:
+    """Re-scan generated modules and rebuild registry from scratch."""
+    import ast as ast_mod
+
+    from odoo_gen_utils.registry import ModelRegistry
+
+    reg = ModelRegistry(_find_registry_path())
+    # Start fresh
+    scan_path = Path(scan_root).resolve()
+    count = 0
+
+    for manifest_path in scan_path.rglob("__manifest__.py"):
+        mod_dir = manifest_path.parent
+        module_name = mod_dir.name
+        try:
+            manifest_data = ast_mod.literal_eval(manifest_path.read_text(encoding="utf-8"))
+        except (ValueError, SyntaxError):
+            click.echo(f"  Skipping {manifest_path}: could not parse manifest")
+            continue
+
+        spec = _parse_module_dir_to_spec(module_name, manifest_data, mod_dir)
+        reg.register_module(module_name, spec)
+        count += 1
+
+    reg.save()
+    click.echo(f"Registry rebuilt: {count} module(s) scanned.")
+
+
+@registry.command("validate")
+def registry_validate() -> None:
+    """Check for broken comodel references and dependency cycles."""
+    from odoo_gen_utils.registry import ModelRegistry
+
+    reg = ModelRegistry(_find_registry_path())
+    reg.load()
+    reg.load_known_models()
+
+    has_errors = False
+
+    # Validate each module's models
+    modules = reg.list_modules()
+    for mod_name, model_names in modules.items():
+        # Reconstruct a minimal spec from registered models
+        models_list = []
+        for mname in model_names:
+            entry = reg.show_model(mname)
+            if entry:
+                models_list.append({
+                    "_name": mname,
+                    "fields": entry.fields,
+                    "_inherit": entry.inherits + entry.mixins,
+                })
+        spec = {
+            "module_name": mod_name,
+            "models": models_list,
+            "depends": reg._dependency_graph.get(mod_name, []),
+        }
+        vr = reg.validate_comodels(spec)
+        for w in vr.warnings:
+            click.echo(f"  WARNING: {w}")
+        for e in vr.errors:
+            click.echo(f"  ERROR: {e}")
+            has_errors = True
+
+    # Cycle detection
+    cycles = reg.detect_cycles()
+    for c in cycles:
+        click.echo(f"  ERROR: {c}")
+        has_errors = True
+
+    if not has_errors and not any(
+        reg.validate_comodels({
+            "module_name": mn,
+            "models": [],
+            "depends": reg._dependency_graph.get(mn, []),
+        }).warnings
+        for mn in modules
+    ):
+        click.echo("Registry validation passed.")
+
+    if has_errors:
+        sys.exit(1)
+
+
+@registry.command("import")
+@click.option("--from-manifest", "manifest_path", required=True, type=click.Path(exists=True),
+              help="Path to __manifest__.py file")
+def registry_import(manifest_path: str) -> None:
+    """Import an existing module into the registry from its manifest."""
+    import ast as ast_mod
+
+    from odoo_gen_utils.registry import ModelRegistry
+
+    manifest_file = Path(manifest_path).resolve()
+    mod_dir = manifest_file.parent
+    module_name = mod_dir.name
+
+    try:
+        manifest_data = ast_mod.literal_eval(manifest_file.read_text(encoding="utf-8"))
+    except (ValueError, SyntaxError) as exc:
+        click.echo(f"Error parsing manifest: {exc}", err=True)
+        sys.exit(1)
+
+    spec = _parse_module_dir_to_spec(module_name, manifest_data, mod_dir)
+
+    reg = ModelRegistry(_find_registry_path())
+    reg.load()
+    reg.register_module(module_name, spec)
+    reg.save()
+    model_count = len(spec.get("models", []))
+    click.echo(f"Imported module '{module_name}': {model_count} model(s) registered.")
+
+
+def _parse_module_dir_to_spec(
+    module_name: str, manifest_data: dict, mod_dir: Path
+) -> dict:
+    """Parse a module directory into a spec dict for registry registration.
+
+    Uses AST to extract _name and field definitions from Python model files.
+    """
+    import ast as ast_mod
+
+    depends = manifest_data.get("depends", ["base"])
+    models_list: list[dict] = []
+
+    # Scan Python files in models/ directory
+    models_dir = mod_dir / "models"
+    if models_dir.is_dir():
+        for py_file in models_dir.glob("*.py"):
+            if py_file.name == "__init__.py":
+                continue
+            try:
+                source = py_file.read_text(encoding="utf-8")
+                tree = ast_mod.parse(source)
+            except (SyntaxError, OSError):
+                continue
+
+            for node in ast_mod.walk(tree):
+                if not isinstance(node, ast_mod.ClassDef):
+                    continue
+                model_name = None
+                model_desc = ""
+                fields: dict = {}
+
+                for item in node.body:
+                    # Look for _name = 'model.name'
+                    if (
+                        isinstance(item, ast_mod.Assign)
+                        and len(item.targets) == 1
+                        and isinstance(item.targets[0], ast_mod.Name)
+                    ):
+                        attr_name = item.targets[0].id
+                        if attr_name == "_name" and isinstance(item.value, ast_mod.Constant):
+                            model_name = item.value.value
+                        elif attr_name == "_description" and isinstance(item.value, ast_mod.Constant):
+                            model_desc = item.value.value
+
+                    # Look for field = fields.Type(...)
+                    if (
+                        isinstance(item, ast_mod.Assign)
+                        and len(item.targets) == 1
+                        and isinstance(item.targets[0], ast_mod.Name)
+                        and isinstance(item.value, ast_mod.Call)
+                        and isinstance(item.value.func, ast_mod.Attribute)
+                    ):
+                        field_name = item.targets[0].id
+                        if field_name.startswith("_"):
+                            continue
+                        field_type = item.value.func.attr
+                        field_def: dict = {"type": field_type}
+
+                        # Extract comodel_name from first positional arg or keyword
+                        if item.value.args and isinstance(item.value.args[0], ast_mod.Constant):
+                            if field_type in ("Many2one", "One2many", "Many2many"):
+                                field_def["comodel_name"] = item.value.args[0].value
+                        for kw in item.value.keywords:
+                            if kw.arg == "comodel_name" and isinstance(kw.value, ast_mod.Constant):
+                                field_def["comodel_name"] = kw.value.value
+
+                        fields[field_name] = field_def
+
+                if model_name:
+                    models_list.append({
+                        "_name": model_name,
+                        "fields": fields,
+                        "description": model_desc,
+                    })
+
+    return {
+        "module_name": module_name,
+        "models": models_list,
+        "depends": depends,
+    }
+
+
 @main.command("render-module")
 @click.option("--spec-file", required=True, type=click.Path(exists=True), help="JSON file with module specification")
 @click.option("--output-dir", required=True, type=click.Path(), help="Directory to create module in")
@@ -193,6 +478,32 @@ def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_
             click.echo(f"WARN [{w.check_type}] {w.subject}: {w.message}", err=True)
             if w.suggestion:
                 click.echo(f"  Suggestion: {w.suggestion}", err=True)
+
+        # Post-render registry update
+        try:
+            from odoo_gen_utils.registry import ModelRegistry
+
+            reg_path = _find_registry_path()
+            reg = ModelRegistry(reg_path)
+            reg.load()
+            reg.load_known_models()
+
+            vr = reg.validate_comodels(spec)
+            for vw in vr.warnings:
+                click.echo(f"WARNING: {vw}")
+            for ve in vr.errors:
+                click.echo(f"ERROR: {ve}")
+
+            inferred = reg.infer_depends(spec)
+            if inferred:
+                click.echo(f"Inferred depends not in spec: {', '.join(inferred)}")
+
+            reg.register_module(spec["module_name"], spec)
+            reg.save()
+            model_count = len(spec.get("models", []))
+            click.echo(f"Registry updated: +{model_count} models ({spec['module_name']})")
+        except Exception:
+            pass  # Registry update is best-effort, don't fail render
     except PydanticValidationError as exc:
         formatted = format_validation_errors(exc, spec.get("module_name", "unknown"))
         click.echo(formatted, err=True)

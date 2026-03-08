@@ -24,6 +24,7 @@ HEAVY_SUBMODULES = [
     "odoo_gen_utils.edition",
     "odoo_gen_utils.kb_validator",
     "odoo_gen_utils.verifier",
+    "odoo_gen_utils.registry",
 ]
 
 
@@ -62,6 +63,7 @@ class TestCLILazyImportsInProcess:
             "odoo_gen_utils.renderer",
             "odoo_gen_utils.verifier",
             "odoo_gen_utils.validation",
+            "odoo_gen_utils.registry",
             "chromadb",
             "github",
             "docker",
@@ -150,7 +152,7 @@ class TestCLILazyImportsSubprocess:
             "cmds = list(main.commands.keys()); "
             "expected = ['validate', 'render', 'build-index', 'search-modules', "
             "'extract-i18n', 'check-edition', 'validate-kb', 'render-module', "
-            "'list-templates', 'index-status', 'extend-module']; "
+            "'list-templates', 'index-status', 'extend-module', 'registry']; "
             "missing = [c for c in expected if c not in cmds]; "
             "assert not missing, f'Missing commands: {missing}'"
         )
