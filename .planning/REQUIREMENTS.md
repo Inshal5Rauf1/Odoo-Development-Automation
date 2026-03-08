@@ -9,8 +9,8 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 
 ### Cleanup
 
-- [ ] **CLEN-01**: Fix docker_install_module() to use `docker compose run --rm` instead of `docker compose exec`, eliminating the serialization race condition documented in BUG-H2
-- [ ] **CLEN-02**: Delete artifact_state.py and remove all references to ModuleState, ArtifactState, save_state(), load_state() — GenerationManifest (Phase 54) is the replacement
+- [x] **CLEN-01**: Fix docker_install_module() to use `docker compose run --rm` instead of `docker compose exec`, eliminating the serialization race condition documented in BUG-H2
+- [x] **CLEN-02**: Delete artifact_state.py and remove all references to ModuleState, ArtifactState, save_state(), load_state() — GenerationManifest (Phase 54) is the replacement
 
 ### LLM Generation
 
@@ -81,8 +81,8 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLEN-01 | Phase 55 | Pending |
-| CLEN-02 | Phase 55 | Pending |
+| CLEN-01 | Phase 55 | Complete |
+| CLEN-02 | Phase 55 | Complete |
 | LGEN-01 | Phase 56 | Pending |
 | LGEN-02 | Phase 56 | Pending |
 | LGEN-03 | Phase 57 | Pending |
