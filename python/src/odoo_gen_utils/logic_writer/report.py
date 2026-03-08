@@ -126,21 +126,43 @@ def _stub_to_dict(
     context: StubContext,
     complexity: str,
 ) -> dict[str, Any]:
-    """Convert a single stub + context + complexity to the JSON schema dict."""
-    return {
+    """Convert a single stub + context + complexity to the JSON schema dict.
+
+    Enriched fields (method_type, computation_hint, constraint_type,
+    target_field_types, error_messages) are included conditionally --
+    empty/default values are omitted to avoid JSON clutter.
+    """
+    result: dict[str, Any] = {
         "id": f"{stub.model_name}__{stub.method_name}",
         "file": stub.file,
         "line": stub.line,
         "class": stub.class_name,
         "model": stub.model_name,
         "method": stub.method_name,
+        "method_type": context.method_type,
         "decorator": stub.decorator,
         "target_fields": list(stub.target_fields),
         "complexity": complexity,
-        "context": {
-            "model_fields": dict(context.model_fields),
-            "related_fields": dict(context.related_fields),
-            "business_rules": list(context.business_rules),
-            "registry_source": context.registry_source,
-        },
     }
+
+    # Conditionally include enriched fields (omit empty/default values)
+    if context.target_field_types:
+        result["target_field_types"] = dict(context.target_field_types)
+
+    if context.computation_hint:
+        result["computation_hint"] = context.computation_hint
+
+    if context.constraint_type:
+        result["constraint_type"] = context.constraint_type
+
+    if context.error_messages:
+        result["error_messages"] = list(context.error_messages)
+
+    result["context"] = {
+        "model_fields": dict(context.model_fields),
+        "related_fields": dict(context.related_fields),
+        "business_rules": list(context.business_rules),
+        "registry_source": context.registry_source,
+    }
+
+    return result
