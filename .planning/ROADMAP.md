@@ -110,7 +110,7 @@
 
 - [x] **Phase 55: Cleanup** - Fix docker exec race condition and delete deprecated artifact_state.py (completed 2026-03-08)
 - [x] **Phase 56: Logic Writer Core** - StubDetector infrastructure and LLM integration point for generating method bodies (completed 2026-03-08)
-- [ ] **Phase 57: Logic Writer Computed & Constraints** - LLM generates _compute_*, _check_*, and validates output via semantic checker
+- [x] **Phase 57: Logic Writer Computed & Constraints** - LLM generates _compute_*, _check_*, and validates output via semantic checker (completed 2026-03-08)
 - [ ] **Phase 58: Logic Writer Overrides & Actions** - LLM generates create/write overrides, action_*, and _cron_* methods
 - [ ] **Phase 59: Module Extension Pattern** - Generate _inherit models, xpath view inheritance, and dependency validation
 - [ ] **Phase 60: Iterative Refinement** - Add field/model to existing modules without full regeneration
@@ -154,7 +154,7 @@ Plans:
   1. Generated _compute_* methods include correct @api.depends decorators matching the fields they read, and use self.mapped/filtered patterns for recordset operations
   2. Generated _check_* methods include correct @api.constrains decorators, raise ValidationError with user-facing messages, and handle cross-field validation logic
   3. Logic Writer output for computed and constraint methods passes the Phase 51 semantic validator (AST + XML cross-check) without errors -- field names resolve, ORM patterns are valid
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 57-01-PLAN.md — Enrich stub report context (computation_hint, constraint_type, target_field_types, method_type, error_messages)
 - [ ] 57-02-PLAN.md — Semantic validation E7-E12 checks for ORM pattern violations in method bodies
@@ -227,7 +227,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 55. Cleanup | 1/1 | Complete    | 2026-03-08 |
 | 56. Logic Writer Core | 2/2 | Complete    | 2026-03-08 |
-| 57. Logic Writer Computed & Constraints | 1/2 | In progress | - |
+| 57. Logic Writer Computed & Constraints | 2/2 | Complete   | 2026-03-08 |
 | 58. Logic Writer Overrides & Actions | 0/? | Not started | - |
 | 59. Module Extension Pattern | 0/? | Not started | - |
 | 60. Iterative Refinement | 0/? | Not started | - |

@@ -20,7 +20,7 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 - [x] **LGEN-04**: Constraint implementations — _check_* methods with correct @api.constrains, ValidationError with user-facing messages, cross-field validation logic
 - [ ] **LGEN-05**: create()/write() override implementations — super() call pattern, business logic (auto-create related records, increment counters, trigger state changes), not audit/approval (already template-generated)
 - [ ] **LGEN-06**: Action and cron method implementations — action_* workflow transitions, _cron_* scheduled logic with correct @api.model decorator and domain queries
-- [ ] **LGEN-07**: Logic Writer output passes semantic validation (Phase 51 AST + XML cross-check) — generated method bodies reference correct field names and use valid ORM patterns
+- [x] **LGEN-07**: Logic Writer output passes semantic validation (Phase 51 AST + XML cross-check) — generated method bodies reference correct field names and use valid ORM patterns
 
 ### Module Extension
 
@@ -89,7 +89,7 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 | LGEN-04 | Phase 57 | Complete |
 | LGEN-05 | Phase 58 | Pending |
 | LGEN-06 | Phase 58 | Pending |
-| LGEN-07 | Phase 57 | Pending |
+| LGEN-07 | Phase 57 | Complete |
 | MEXT-01 | Phase 59 | Pending |
 | MEXT-02 | Phase 59 | Pending |
 | MEXT-03 | Phase 59 | Pending |
