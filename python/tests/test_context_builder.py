@@ -1139,3 +1139,420 @@ class TestErrorMessages:
             assert "message" in msg
             assert "translatable" in msg
             assert msg["translatable"] is True
+
+
+# ---------------------------------------------------------------------------
+# New Phase 58 fields backward compatibility
+# ---------------------------------------------------------------------------
+
+
+class TestPhase58FieldsDefaults:
+    """Phase 58 StubContext fields have backward-compatible defaults."""
+
+    def test_phase58_fields_have_defaults(self) -> None:
+        """StubContext can be constructed without Phase 58 fields."""
+        ctx = StubContext(
+            model_fields={},
+            related_fields={},
+            business_rules=[],
+            registry_source=None,
+        )
+        assert ctx.stub_zone is None
+        assert ctx.exclusion_zones == ()
+        assert ctx.action_context is None
+        assert ctx.cron_context is None
+
+    def test_phase58_fields_settable(self) -> None:
+        """Phase 58 fields can be set during construction."""
+        stub_zone = {
+            "start_line": 52,
+            "end_line": 54,
+            "marker": "BUSINESS LOGIC",
+            "position": "post_super",
+        }
+        action_ctx = {
+            "full_state_machine": {
+                "states": ["draft", "submitted"],
+                "transitions": [],
+            },
+            "side_effects": [],
+            "preconditions": [],
+        }
+        cron_ctx = {
+            "domain_hint": "[('state', '=', 'overdue')]",
+            "processing_pattern": "batch_per_record",
+            "batch_size_hint": 100,
+            "error_handling": "log_and_continue",
+        }
+        ctx = StubContext(
+            model_fields={},
+            related_fields={},
+            business_rules=[],
+            registry_source=None,
+            stub_zone=stub_zone,
+            exclusion_zones=({"start_line": 45, "end_line": 51},),
+            action_context=action_ctx,
+            cron_context=cron_ctx,
+        )
+        assert ctx.stub_zone == stub_zone
+        assert len(ctx.exclusion_zones) == 1
+        assert ctx.action_context == action_ctx
+        assert ctx.cron_context == cron_ctx
+
+
+# ---------------------------------------------------------------------------
+# action_context enrichment
+# ---------------------------------------------------------------------------
+
+
+class TestActionContext:
+    """build_stub_context() enriches action methods with action_context."""
+
+    def test_action_with_workflow_states(self) -> None:
+        """action_* method with workflow_states produces action_context."""
+        model = _make_model_dict(
+            workflow_states=[
+                {"name": "draft", "description": "Initial state"},
+                {"name": "submitted", "description": "Submitted for review"},
+                {"name": "approved", "description": "Approved"},
+                {"name": "rejected", "description": "Rejected"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="action_submit",
+            decorator="",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "action"
+        assert ctx.action_context is not None
+        assert "full_state_machine" in ctx.action_context
+        fsm = ctx.action_context["full_state_machine"]
+        assert "states" in fsm
+        assert "draft" in fsm["states"]
+        assert "submitted" in fsm["states"]
+
+    def test_action_with_transitions_from_business_rules(self) -> None:
+        """Transitions parsed from business rules appear in action_context."""
+        model = _make_model_dict(
+            workflow_states=[
+                {"name": "draft", "description": "Initial"},
+                {"name": "submitted", "description": "Submitted"},
+            ],
+            approval_levels=[
+                {"name": "manager", "description": "Manager approval required"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="action_submit",
+            decorator="",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.action_context is not None
+        fsm = ctx.action_context["full_state_machine"]
+        assert isinstance(fsm["transitions"], list)
+
+    def test_action_side_effects(self) -> None:
+        """Side effects extracted from business rules mentioning notification/email."""
+        model = _make_model_dict(
+            workflow_states=[
+                {"name": "draft", "description": "Initial"},
+                {"name": "submitted", "description": "Submitted"},
+            ],
+            complex_constraints=[
+                {"message": "Send notification email on submit"},
+                {"message": "Create approval.log record on approve"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="action_submit",
+            decorator="",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.action_context is not None
+        assert isinstance(ctx.action_context["side_effects"], list)
+        assert len(ctx.action_context["side_effects"]) > 0
+
+    def test_action_preconditions(self) -> None:
+        """Preconditions extracted from business rules mentioning cannot/must have."""
+        model = _make_model_dict(
+            workflow_states=[
+                {"name": "draft", "description": "Initial"},
+                {"name": "submitted", "description": "Submitted"},
+            ],
+            complex_constraints=[
+                {"message": "Cannot submit without at least one line item"},
+                {"message": "Cannot approve own submission"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="action_submit",
+            decorator="",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.action_context is not None
+        assert isinstance(ctx.action_context["preconditions"], list)
+        assert len(ctx.action_context["preconditions"]) > 0
+
+    def test_action_no_states_returns_none(self) -> None:
+        """action_* with no workflow_states gets action_context=None."""
+        model = _make_model_dict(
+            fields=[
+                {"name": "name", "type": "Char", "string": "Name"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="action_confirm",
+            decorator="",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "action"
+        assert ctx.action_context is None
+
+    def test_non_action_gets_no_action_context(self) -> None:
+        """compute methods get action_context=None."""
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(method_name="_compute_total")
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.action_context is None
+
+
+# ---------------------------------------------------------------------------
+# cron_context enrichment
+# ---------------------------------------------------------------------------
+
+
+class TestCronContext:
+    """build_stub_context() enriches cron methods with cron_context."""
+
+    def test_cron_with_cron_section(self) -> None:
+        """_cron_* method with spec cron section produces cron_context."""
+        model = _make_model_dict(
+            fields=[
+                {"name": "state", "type": "Selection", "string": "State"},
+                {"name": "reminder_sent", "type": "Boolean", "string": "Reminder Sent"},
+            ],
+        )
+        spec = _make_spec(models=[model])
+        spec["cron"] = [
+            {
+                "method": "_cron_send_reminders",
+                "name": "Send Reminders",
+                "domain": "[('state', '=', 'overdue'), ('reminder_sent', '=', False)]",
+            },
+        ]
+        stub = _make_stub(
+            method_name="_cron_send_reminders",
+            decorator="@api.model",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "cron"
+        assert ctx.cron_context is not None
+        assert "domain_hint" in ctx.cron_context
+        assert "processing_pattern" in ctx.cron_context
+        assert "batch_size_hint" in ctx.cron_context
+        assert "error_handling" in ctx.cron_context
+
+    def test_cron_batch_per_record_pattern(self) -> None:
+        """Business rules with 'for each' -> batch_per_record."""
+        model = _make_model_dict(
+            description="For each overdue record, send reminder",
+        )
+        spec = _make_spec(models=[model])
+        spec["cron"] = [
+            {"method": "_cron_send_reminders", "name": "Send Reminders"},
+        ]
+        stub = _make_stub(
+            method_name="_cron_send_reminders",
+            decorator="@api.model",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.cron_context is not None
+        assert ctx.cron_context["processing_pattern"] == "batch_per_record"
+
+    def test_cron_generate_records_pattern(self) -> None:
+        """Business rules with 'generate' -> generate_records."""
+        model = _make_model_dict(
+            description="Generate monthly invoices for all subscriptions",
+        )
+        spec = _make_spec(models=[model])
+        spec["cron"] = [
+            {"method": "_cron_generate_invoices", "name": "Generate Invoices"},
+        ]
+        stub = _make_stub(
+            method_name="_cron_generate_invoices",
+            decorator="@api.model",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.cron_context is not None
+        assert ctx.cron_context["processing_pattern"] == "generate_records"
+
+    def test_cron_cleanup_pattern(self) -> None:
+        """Business rules with 'archive'/'expired' -> cleanup."""
+        model = _make_model_dict(
+            description="Archive records older than 90 days",
+        )
+        spec = _make_spec(models=[model])
+        spec["cron"] = [
+            {"method": "_cron_archive_old", "name": "Archive Old Records"},
+        ]
+        stub = _make_stub(
+            method_name="_cron_archive_old",
+            decorator="@api.model",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.cron_context is not None
+        assert ctx.cron_context["processing_pattern"] == "cleanup"
+
+    def test_cron_aggregate_pattern(self) -> None:
+        """Business rules with 'calculate'/'summarize' -> aggregate."""
+        model = _make_model_dict(
+            description="Calculate monthly report summaries",
+        )
+        spec = _make_spec(models=[model])
+        spec["cron"] = [
+            {"method": "_cron_monthly_report", "name": "Monthly Report"},
+        ]
+        stub = _make_stub(
+            method_name="_cron_monthly_report",
+            decorator="@api.model",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.cron_context is not None
+        assert ctx.cron_context["processing_pattern"] == "aggregate"
+
+    def test_cron_defaults(self) -> None:
+        """Cron context has default batch_size_hint=100 and error_handling."""
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        spec["cron"] = [
+            {"method": "_cron_cleanup", "name": "Cleanup"},
+        ]
+        stub = _make_stub(
+            method_name="_cron_cleanup",
+            decorator="@api.model",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.cron_context is not None
+        assert ctx.cron_context["batch_size_hint"] == 100
+        assert ctx.cron_context["error_handling"] == "log_and_continue"
+
+    def test_cron_no_cron_section_returns_none(self) -> None:
+        """_cron_* without spec cron section gets cron_context=None."""
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="_cron_cleanup",
+            decorator="@api.model",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "cron"
+        assert ctx.cron_context is None
+
+    def test_non_cron_gets_no_cron_context(self) -> None:
+        """Non-cron methods get cron_context=None."""
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(method_name="_compute_total")
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.cron_context is None
+
+
+# ---------------------------------------------------------------------------
+# stub_zone enrichment for overrides
+# ---------------------------------------------------------------------------
+
+
+class TestStubZones:
+    """build_stub_context() enriches override stubs with stub_zone from markers."""
+
+    def test_override_with_markers_gets_stub_zone(self, tmp_path: Path) -> None:
+        """create override with markers produces stub_zone in context."""
+        mod_dir = tmp_path / "test_mod"
+        mod_dir.mkdir()
+        py_file = mod_dir / "models" / "fee.py"
+        py_file.parent.mkdir(parents=True, exist_ok=True)
+        py_file.write_text(
+            '''\
+from odoo import models, api
+
+class UniFee(models.Model):
+    _name = "uni.fee"
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        # --- BUSINESS LOGIC START ---
+        # TODO: implement pre-create business logic
+        pass
+        # --- BUSINESS LOGIC END ---
+        records = super().create(vals_list)
+        # --- BUSINESS LOGIC START ---
+        # TODO: implement post-create business logic
+        pass
+        # --- BUSINESS LOGIC END ---
+        return records
+''',
+            encoding="utf-8",
+        )
+
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = StubInfo(
+            file="models/fee.py",
+            line=7,
+            class_name="UniFee",
+            model_name="uni.fee",
+            method_name="create",
+            decorator="@api.model_create_multi",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec, module_dir=mod_dir)
+        assert ctx.method_type == "override"
+        assert ctx.stub_zone is not None
+        assert ctx.stub_zone["marker"] == "BUSINESS LOGIC"
+
+    def test_override_no_module_dir_no_stub_zone(self) -> None:
+        """Without module_dir, override stub gets stub_zone=None."""
+        model = _make_model_dict()
+        spec = _make_spec(models=[model])
+        stub = _make_stub(
+            method_name="create",
+            decorator="@api.model_create_multi",
+            target_fields=[],
+        )
+
+        ctx = build_stub_context(stub, spec)
+        assert ctx.method_type == "override"
+        assert ctx.stub_zone is None

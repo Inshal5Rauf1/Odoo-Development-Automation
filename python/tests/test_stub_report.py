@@ -788,3 +788,238 @@ class TestEnrichmentOmission:
         stubs_by_method = {s["method"]: s for s in data["stubs"]}
         action_stub = stubs_by_method["action_confirm"]
         assert "target_field_types" not in action_stub
+
+
+# ---------------------------------------------------------------------------
+# Test: Phase 58 new fields in report
+# ---------------------------------------------------------------------------
+
+
+_ACTION_WITH_STATES_PY = '''\
+from odoo import models, fields
+
+class TestOrder(models.Model):
+    _name = "test.order"
+    _description = "Test Order"
+
+    state = fields.Selection(
+        selection=[("draft", "Draft"), ("submitted", "Submitted"),
+                   ("approved", "Approved"), ("rejected", "Rejected")],
+        default="draft",
+    )
+
+    def action_submit(self):
+        pass
+
+    def action_approve(self):
+        pass
+'''
+
+
+_CRON_METHOD_PY = '''\
+from odoo import models, api
+
+class TestOrder(models.Model):
+    _name = "test.order"
+    _description = "Test Order"
+
+    @api.model
+    def _cron_send_reminders(self):
+        pass
+'''
+
+
+_OVERRIDE_WITH_MARKERS_PY = '''\
+from odoo import models, api
+
+class TestOrder(models.Model):
+    _name = "test.order"
+    _description = "Test Order"
+
+    def write(self, vals):
+        result = super().write(vals)
+        # --- BUSINESS LOGIC START ---
+        # TODO: implement post-write business logic
+        pass
+        # --- BUSINESS LOGIC END ---
+        return result
+'''
+
+
+def _action_spec_with_states() -> dict[str, Any]:
+    """Spec with workflow states for action_context enrichment."""
+    return {
+        "module_name": "test_module",
+        "models": [
+            {
+                "name": "test.order",
+                "description": "Test Order",
+                "fields": [
+                    {
+                        "name": "state",
+                        "type": "Selection",
+                        "string": "State",
+                        "selection": [
+                            ["draft", "Draft"],
+                            ["submitted", "Submitted"],
+                            ["approved", "Approved"],
+                            ["rejected", "Rejected"],
+                        ],
+                    },
+                ],
+                "workflow_states": [
+                    {"name": "draft", "description": "Initial state"},
+                    {"name": "submitted", "description": "Submitted for review"},
+                    {"name": "approved", "description": "Approved"},
+                    {"name": "rejected", "description": "Rejected"},
+                ],
+                "complex_constraints": [
+                    {"message": "Cannot submit without at least one line item"},
+                    {"message": "Send notification email on submit"},
+                ],
+            },
+        ],
+    }
+
+
+def _cron_spec_with_section() -> dict[str, Any]:
+    """Spec with cron section for cron_context enrichment."""
+    return {
+        "module_name": "test_module",
+        "models": [
+            {
+                "name": "test.order",
+                "description": "For each overdue record, send reminder",
+                "fields": [],
+            },
+        ],
+        "cron": [
+            {
+                "method": "_cron_send_reminders",
+                "name": "Send Reminders",
+                "domain": "[('state', '=', 'overdue'), ('reminder_sent', '=', False)]",
+            },
+        ],
+    }
+
+
+class TestActionContextInReport:
+    """action_context appears in report for action stubs with workflow states."""
+
+    def test_action_has_action_context(self, tmp_path: Path) -> None:
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _ACTION_WITH_STATES_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _action_spec_with_states()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stubs_by_method = {s["method"]: s for s in data["stubs"]}
+        submit_stub = stubs_by_method["action_submit"]
+        assert "action_context" in submit_stub
+        assert "full_state_machine" in submit_stub["action_context"]
+        assert "states" in submit_stub["action_context"]["full_state_machine"]
+
+    def test_action_context_omitted_when_none(self, tmp_path: Path) -> None:
+        """action_* without workflow states has no action_context in JSON."""
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _MIXED_ENRICHMENT_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _enrichment_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stubs_by_method = {s["method"]: s for s in data["stubs"]}
+        action_stub = stubs_by_method["action_confirm"]
+        assert "action_context" not in action_stub
+
+
+class TestCronContextInReport:
+    """cron_context appears in report for cron stubs with cron section."""
+
+    def test_cron_has_cron_context(self, tmp_path: Path) -> None:
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _CRON_METHOD_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _cron_spec_with_section()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stub = data["stubs"][0]
+        assert "cron_context" in stub
+        assert stub["cron_context"]["processing_pattern"] == "batch_per_record"
+        assert stub["cron_context"]["batch_size_hint"] == 100
+        assert stub["cron_context"]["error_handling"] == "log_and_continue"
+
+    def test_cron_context_omitted_when_none(self, tmp_path: Path) -> None:
+        """_cron_* without spec cron section has no cron_context in JSON."""
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _CRON_METHOD_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _minimal_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stub = data["stubs"][0]
+        assert "cron_context" not in stub
+
+
+class TestStubZoneInReport:
+    """stub_zone and exclusion_zones appear in report for override stubs."""
+
+    def test_override_has_stub_zone(self, tmp_path: Path) -> None:
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _OVERRIDE_WITH_MARKERS_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _minimal_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stubs_by_method = {s["method"]: s for s in data["stubs"]}
+        if "write" in stubs_by_method:
+            write_stub = stubs_by_method["write"]
+            assert "stub_zone" in write_stub
+            assert write_stub["stub_zone"]["marker"] == "BUSINESS LOGIC"
+
+    def test_stub_zone_omitted_when_none(self, tmp_path: Path) -> None:
+        """Non-override stubs have no stub_zone in JSON."""
+        mod = tmp_path / "test_module"
+        mod.mkdir()
+        _write_py(mod, "models/test.py", _SIMPLE_COMPUTE_PY)
+        _write_py(mod, "__init__.py", "")
+        _write_py(mod, "models/__init__.py", "")
+
+        spec = _minimal_spec()
+        generate_stub_report(mod, spec)
+
+        data = json.loads(
+            (mod / ".odoo-gen-stubs.json").read_text(encoding="utf-8")
+        )
+        stub = data["stubs"][0]
+        assert "stub_zone" not in stub
+        assert "exclusion_zones" not in stub
