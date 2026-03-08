@@ -98,7 +98,7 @@
 - [x] **Phase 49: Pakistan/HEC Localization** - CNIC, phone, PKR, NTN/STRN, HEC fields as generation patterns (completed 2026-03-08)
 - [x] **Phase 50: Academic Calendar** - academic.year, academic.term, academic.batch models with overlap prevention (completed 2026-03-08)
 - [x] **Phase 51: Semantic Validation** - Pre-Docker AST + XML cross-check catching 60-70% of bugs in <1 second (completed 2026-03-08)
-- [ ] **Phase 52: Document Management** - Document types, Binary storage, verification workflow, Odoo 18 discuss.channel gate
+- [x] **Phase 52: Document Management** - Document types, Binary storage, verification workflow, Odoo 18 discuss.channel gate (completed 2026-03-08)
 - [ ] **Phase 53: Mermaid Graphs** - Module dependency DAG and model ER diagrams as .mmd files
 - [ ] **Phase 54: Pipeline Quality of Life** - Generation manifest, checkpoint hooks, and state persistence with resume
 
@@ -218,7 +218,7 @@ Plans:
   3. Simple version tracking is generated: new uploads create version records, previous versions remain accessible
   4. Templates generate `mail.channel` references for Odoo 17.0 and `discuss.channel` for Odoo 18.0 via version-conditional blocks
   5. All document management logic lives in `preprocessors/document_management.py` -- zero changes to core preprocessor files
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 52-01-PLAN.md — Document management preprocessor TDD: model builders, verification workflow, version tracking, security roles, file validation
 - [ ] 52-02-PLAN.md — Renderer integration: template field kwargs + doc_* constraint dispatch + VERSION_GATES + E2E tests + registry count
@@ -274,7 +274,7 @@ Phases execute sequentially: 45 -> 46 -> 47 -> 48 -> 49 -> 50 -> 51 -> 52 -> 53 
 | 49. Pakistan/HEC Localization | 2/2 | Complete    | 2026-03-08 | - |
 | 50. Academic Calendar | 2/2 | Complete    | 2026-03-08 | - |
 | 51. Semantic Validation | 2/2 | Complete    | 2026-03-08 | - |
-| 52. Document Management | 1/2 | In Progress|  | - |
+| 52. Document Management | 2/2 | Complete   | 2026-03-08 | - |
 | 53. Mermaid Graphs | v3.3 | 0/TBD | Not started | - |
 | 54. Pipeline Quality of Life | v3.3 | 0/TBD | Not started | - |
 
