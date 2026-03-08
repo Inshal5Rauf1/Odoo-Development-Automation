@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: LLM Logic Writer & Generation Capabilities
 status: completed
-stopped_at: Completed 59-02-PLAN.md
-last_updated: "2026-03-08T20:25:38.393Z"
-last_activity: 2026-03-09 — Phase 59 Plan 01 completed
+stopped_at: Phase 60 context gathered
+last_updated: "2026-03-08T22:43:32.013Z"
+last_activity: 2026-03-09 — Phase 59 Plan 02 completed
 progress:
   total_phases: 9
   completed_phases: 5
-  total_plans: 9
-  completed_plans: 9
-  percent: 81
+  total_plans: 10
+  completed_plans: 10
+  percent: 99
 ---
 
 # Project State
@@ -22,21 +22,21 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v4.0 Phase 59 complete — extension schema, preprocessor, templates, renderer, E17 validation all done
+**Current focus:** v4.0 Phase 60 Plan 01 complete — iterative refinement core logic (diff, affected stages, conflict, merge)
 
 ## Current Position
 
-Phase: 59 (Module Extension Pattern)
-Plan: 02 of 02 (DONE)
-Status: Phase 59 complete
-Last activity: 2026-03-09 — Phase 59 Plan 02 completed
+Phase: 60 (Iterative Refinement)
+Plan: 01 of 01 (DONE)
+Status: Phase 60 Plan 01 complete
+Last activity: 2026-03-09 — Phase 60 Plan 01 completed
 
-Progress: [██████████] 99% (v4.0)
+Progress: [██████████] 100% (v4.0)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 78 (across all milestones)
+- Total plans completed: 79 (across all milestones)
 - Average duration: ~24 min
 - Total execution time: ~25.4 hours
 
@@ -51,6 +51,7 @@ Progress: [██████████] 99% (v4.0)
 | 58-logic-writer-overrides-actions | 02 | 9min | 1 | 10 |
 | 59-module-extension-pattern | 01 | 14min | 2 | 12 |
 | Phase 59 P02 | 11min | 1 tasks | 4 files |
+| 60-iterative-refinement | 01 | 12min | 2 | 12 |
 
 ## Accumulated Context
 
@@ -86,6 +87,11 @@ Progress: [██████████] 99% (v4.0)
 - Extensions stage after models in pipeline (greenfield first, then extensions)
 - [Phase 59]: E17 validates field[@name] xpaths only; page/group/other elements skipped
 - [Phase 59]: W6 warnings deduplicated per model name (warned_models set)
+- [Phase 60]: FIELD_ADDED includes security stage unconditionally (false positives safe)
+- [Phase 60]: determine_affected_stages accepts optional old/new specs for view_hints detection
+- [Phase 60]: Outside-zone comparison pattern for stub-zone conflict detection (handles variable-length edits)
+- [Phase 60]: extract_filled_stubs skips zones with only pass or TODO comments
+- [Phase 60]: inject_stubs_into matches by method name (position-independent)
 
 ### Pending Todos
 
@@ -111,7 +117,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T20:25:38.392Z
-Stopped at: Completed 59-02-PLAN.md
-Resume file: None
-Next step: Phase 59 Plan 02 or next milestone phase
+Last session: 2026-03-08T23:55:08Z
+Stopped at: Completed 60-01-PLAN.md
+Resume file: .planning/phases/60-iterative-refinement/60-01-SUMMARY.md
+Next step: Phase 60 Plan 02 (CLI integration) or next phase
