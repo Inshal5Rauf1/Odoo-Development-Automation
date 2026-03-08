@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v3.3
 milestone_name: Test Fixes, Domain Patterns & Architecture
 status: completed
-stopped_at: Completed 50-02-PLAN.md
-last_updated: "2026-03-08T08:14:31.589Z"
+stopped_at: Completed 51-01-PLAN.md
+last_updated: "2026-03-08T09:07:04.492Z"
 last_activity: 2026-03-08 — Phase 50 Plan 02 executed (14 E2E integration tests, template bug fix)
 progress:
   total_phases: 10
-  completed_phases: 5
-  total_plans: 12
-  completed_plans: 12
+  completed_phases: 6
+  total_plans: 14
+  completed_plans: 13
   percent: 100
 ---
 
@@ -54,6 +54,7 @@ Progress: [██████████] 100% (v3.3)
 | Phase 49-pakistan-hec-localization P02 | 3min | 2 tasks | 5 files |
 | Phase 50-academic-calendar P01 | 7min | 2 tasks | 6 files |
 | Phase 50-academic-calendar P02 | 9min | 2 tasks | 3 files |
+| Phase 51-semantic-validation P01 | 8min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,7 @@ Progress: [██████████] 100% (v3.3)
 - [Phase 50-academic-calendar]: ac_year_*/ac_term_* rendered with @api.constrains; ac_action_* rendered as plain methods (not _check_ prefixed)
 - [Phase 50-academic-calendar]: has_pk_constraints renamed to has_domain_constraints covering pk_ + ac_year_/ac_term_ prefixes for needs_api
 - [Phase 50-academic-calendar P02]: Template sequence field `required` guard fixed (field.required -> field.required is defined and field.required) to prevent UndefinedError for non-required Char fields in SEQUENCE_FIELD_NAMES
+- [Phase 51]: ValidationIssue frozen dataclass with fixable+suggestion for auto-fix pipeline; short-circuit on E1/E2 failure; difflib cutoff=0.6 for fuzzy field suggestions
 
 ### Pending Todos
 
@@ -112,7 +114,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T08:25:14Z
-Stopped at: Completed 50-02-PLAN.md
+Last session: 2026-03-08T09:07:04.490Z
+Stopped at: Completed 51-01-PLAN.md
 Resume file: None
 Next step: Execute Phase 51 (next phase in v3.3)

@@ -15,7 +15,7 @@ Requirements for v3.3 Test Fixes, Domain Patterns & Architecture. Each maps to r
 
 - [x] **ARCH-01**: Pydantic v2 spec validation with `protected_namespaces=()`, `extra="allow"`, backward-compatible defaults on all new fields, JSON Schema export for IDE autocomplete — runs BEFORE preprocessors in `render_module()`
 - [x] **ARCH-02**: Cross-module model registry with JSON persistence (`.odoo-gen-registry.json`), comodel validation, `depends` inference, cycle detection — called in CLI layer, not inside render pipeline
-- [ ] **ARCH-03**: Pre-Docker semantic validation — AST-parse generated Python, XML field reference cross-check, XML ID uniqueness, ACL model references, manifest `depends` completeness — catches 60-70% of bugs in <1 second
+- [x] **ARCH-03**: Pre-Docker semantic validation — AST-parse generated Python, XML field reference cross-check, XML ID uniqueness, ACL model references, manifest `depends` completeness — catches 60-70% of bugs in <1 second
 - [ ] **ARCH-04**: Generation manifest with file paths, SHA256 checksums, template versions, preprocessor list — persisted as `.odoo-gen-manifest.json` sidecar
 - [ ] **ARCH-05**: Checkpoint hooks via `RenderHook` Protocol in `renderer.py` with `on_preprocess_complete`, `on_stage_complete`, `on_render_complete` callbacks — zero overhead when `hooks=None`
 - [ ] **ARCH-06**: Generation state persistence with `GenerationSession` dataclass extending `artifact_state.py`, `resume_from` parameter on `render_module()` to skip completed stages
@@ -77,7 +77,7 @@ Requirements for v3.3 Test Fixes, Domain Patterns & Architecture. Each maps to r
 | ARCH-02 | Phase 48 | Complete |
 | DOMN-02 | Phase 49 | Complete |
 | DOMN-03 | Phase 50 | Complete |
-| ARCH-03 | Phase 51 | Pending |
+| ARCH-03 | Phase 51 | Complete |
 | DOMN-01 | Phase 52 | Pending |
 | DOMN-04 | Phase 52 | Pending |
 | TOOL-01 | Phase 53 | Pending |
