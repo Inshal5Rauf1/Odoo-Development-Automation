@@ -13,6 +13,7 @@ Tests cover:
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -333,3 +334,297 @@ class TestExtensionContextBuilder:
         assert ctx["has_extensions"] is True
         # Greenfield models are also present
         assert len(ctx["models"]) >= 1
+
+
+# ===========================================================================
+# Template rendering tests (Task 2)
+# ===========================================================================
+
+
+class TestExtensionModelRender:
+    """Test extension_model.py.j2 template rendering."""
+
+    def _render_extension_model(self, extension_spec: dict[str, Any]) -> str:
+        """Helper: preprocess, build context, render extension model template."""
+        from odoo_gen_utils.preprocessors.extensions import _process_extensions
+        from odoo_gen_utils.renderer import create_versioned_renderer
+        from odoo_gen_utils.renderer_context import _build_extension_context
+
+        spec = _process_extensions(extension_spec)
+        ext = spec["extends"][0]
+        ctx = _build_extension_context(spec, ext)
+        env = create_versioned_renderer("17.0")
+        template = env.get_template("extension_model.py.j2")
+        return template.render(**ctx)
+
+    def test_extension_model_render(self, extension_spec: dict[str, Any]) -> None:
+        """Rendered .py file contains _inherit, fields, computed, constraints."""
+        content = self._render_extension_model(extension_spec)
+
+        assert "_inherit = 'hr.employee'" in content
+        # Extension models don't define _name (check no standalone _name = assignment)
+        assert "\n    _name = " not in content
+        assert "faculty_id" in content
+        assert "designation" in content
+        assert "Selection" in content
+        assert "course_ids" in content
+        assert "Many2many" in content
+        assert "current_course_count" in content
+        assert "UNIQUE(faculty_id)" in content or "UNIQUE" in content
+
+    def test_extension_super_pattern(self, extension_spec: dict[str, Any]) -> None:
+        """Extension methods do NOT auto-include super() call."""
+        content = self._render_extension_model(extension_spec)
+        # Methods in add_methods are new additions, not overrides
+        assert "super()" not in content
+
+    def test_extension_logic_markers(self, extension_spec: dict[str, Any]) -> None:
+        """Each method has BUSINESS LOGIC START/END markers."""
+        content = self._render_extension_model(extension_spec)
+        assert "# --- BUSINESS LOGIC START ---" in content
+        assert "# --- BUSINESS LOGIC END ---" in content
+
+    def test_extension_model_imports(self, extension_spec: dict[str, Any]) -> None:
+        """Extension model imports api when computed/methods present."""
+        content = self._render_extension_model(extension_spec)
+        assert "from odoo import api, fields, models" in content
+
+    def test_extension_model_no_api_when_not_needed(self) -> None:
+        """Extension model omits api import when no computed/methods."""
+        from odoo_gen_utils.preprocessors.extensions import _process_extensions
+        from odoo_gen_utils.renderer import create_versioned_renderer
+        from odoo_gen_utils.renderer_context import _build_extension_context
+
+        spec = {
+            "module_name": "simple_ext",
+            "depends": ["base"],
+            "extends": [{
+                "base_model": "res.partner",
+                "base_module": "base",
+                "add_fields": [{"name": "nickname", "type": "Char"}],
+                "add_computed": [],
+                "add_constraints": [],
+                "add_methods": [],
+                "view_extensions": [],
+            }],
+        }
+        spec = _process_extensions(spec)
+        ext = spec["extends"][0]
+        ctx = _build_extension_context(spec, ext)
+        env = create_versioned_renderer("17.0")
+        template = env.get_template("extension_model.py.j2")
+        content = template.render(**ctx)
+
+        assert "from odoo import fields, models" in content
+        assert "api" not in content.split("from odoo import")[1].split("\n")[0]
+
+
+class TestExtensionViewRender:
+    """Test extension_views.xml.j2 template rendering."""
+
+    def _render_extension_views(
+        self, extension_spec: dict[str, Any], view_index: int = 0
+    ) -> str:
+        """Helper: preprocess, build context, render extension view template."""
+        from odoo_gen_utils.preprocessors.extensions import _process_extensions
+        from odoo_gen_utils.renderer import create_versioned_renderer
+        from odoo_gen_utils.renderer_context import _build_extension_view_context
+
+        spec = _process_extensions(extension_spec)
+        ext = spec["extends"][0]
+        views = []
+        for ve in ext["view_extensions"]:
+            ctx = _build_extension_view_context(spec, ext, ve)
+            views.append(ctx)
+
+        env = create_versioned_renderer("17.0")
+        template = env.get_template("extension_views.xml.j2")
+        return template.render(views=views)
+
+    def test_xpath_pattern_a(self, extension_spec: dict[str, Any]) -> None:
+        """Pattern A: field after existing field in tree view."""
+        content = self._render_extension_views(extension_spec)
+        # Tree view has Pattern A: after department_id
+        assert '//field[@name=\'department_id\']' in content
+        assert 'position="after"' in content
+        assert '<field name="designation"/>' in content
+        assert '<field name="faculty_id"/>' in content
+
+    def test_xpath_pattern_b(self, extension_spec: dict[str, Any]) -> None:
+        """Pattern B: new page with fields (form view)."""
+        content = self._render_extension_views(extension_spec)
+        assert '<page string="Academic Info" name="academic">' in content
+        # 6 fields -> should trigger two-column layout
+        assert "<group>" in content
+
+    def test_xpath_pattern_c(self) -> None:
+        """Pattern C: inside existing group."""
+        from odoo_gen_utils.preprocessors.extensions import _process_extensions
+        from odoo_gen_utils.renderer import create_versioned_renderer
+        from odoo_gen_utils.renderer_context import _build_extension_view_context
+
+        spec = {
+            "module_name": "test_c",
+            "depends": ["base"],
+            "extends": [{
+                "base_model": "hr.employee",
+                "base_module": "hr",
+                "add_fields": [{"name": "x", "type": "Char"}],
+                "add_computed": [],
+                "add_constraints": [],
+                "add_methods": [],
+                "view_extensions": [{
+                    "base_view": "hr.view_employee_form",
+                    "insertions": [{
+                        "xpath": "//group[@name='hr_settings']",
+                        "position": "inside",
+                        "fields": ["x"],
+                    }],
+                }],
+            }],
+        }
+        spec = _process_extensions(spec)
+        ext = spec["extends"][0]
+        ve = ext["view_extensions"][0]
+        ctx = _build_extension_view_context(spec, ext, ve)
+
+        env = create_versioned_renderer("17.0")
+        template = env.get_template("extension_views.xml.j2")
+        content = template.render(views=[ctx])
+
+        assert "//group[@name='hr_settings']" in content
+        assert 'position="inside"' in content
+        assert '<field name="x"/>' in content
+
+    def test_inherit_id_ref(self, extension_spec: dict[str, Any]) -> None:
+        """View record has correct inherit_id ref."""
+        content = self._render_extension_views(extension_spec)
+        assert 'ref="hr.view_employee_form"' in content
+
+    def test_view_xml_id(self, extension_spec: dict[str, Any]) -> None:
+        """Record id follows format view_{base_model}_{view_type}_inherit_{module}."""
+        content = self._render_extension_views(extension_spec)
+        assert 'id="view_hr_employee_form_inherit_uni_student_hr"' in content
+        assert 'id="view_hr_employee_tree_inherit_uni_student_hr"' in content
+
+
+class TestInitModelsImports:
+    """Test updated init_models.py.j2 generates extension imports."""
+
+    def test_init_models_imports(self, extension_spec: dict[str, Any]) -> None:
+        """init_models.py.j2 generates imports for both greenfield and extension models."""
+        from odoo_gen_utils.preprocessors.extensions import _process_extensions
+        from odoo_gen_utils.renderer import create_versioned_renderer
+        from odoo_gen_utils.renderer_context import _build_module_context
+
+        spec = _process_extensions(extension_spec)
+        ctx = _build_module_context(spec, spec["module_name"])
+
+        env = create_versioned_renderer("17.0")
+        template = env.get_template("init_models.py.j2")
+        content = template.render(**ctx)
+
+        # Greenfield model
+        assert "from . import uni_faculty_publication" in content
+        # Extension model
+        assert "from . import hr_employee" in content
+
+
+class TestRendererIntegration:
+    """Test render_extensions() stage and full render_module() pipeline."""
+
+    def test_render_extensions_function(self, extension_spec: dict[str, Any]) -> None:
+        """render_extensions() creates extension model and view files."""
+        from odoo_gen_utils.preprocessors.extensions import _process_extensions
+        from odoo_gen_utils.renderer import create_versioned_renderer, render_extensions
+        from odoo_gen_utils.renderer_context import _build_module_context
+
+        spec = _process_extensions(extension_spec)
+        env = create_versioned_renderer("17.0")
+        ctx = _build_module_context(spec, spec["module_name"])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module_dir = Path(tmpdir) / spec["module_name"]
+            module_dir.mkdir()
+
+            result = render_extensions(env, spec, module_dir, ctx)
+            assert result.success
+            assert result.data  # non-empty file list
+
+            # Check extension model file
+            ext_model = module_dir / "models" / "hr_employee.py"
+            assert ext_model.exists()
+            content = ext_model.read_text()
+            assert "_inherit = 'hr.employee'" in content
+
+            # Check extension view file
+            ext_view = module_dir / "views" / "hr_employee_views.xml"
+            assert ext_view.exists()
+            view_content = ext_view.read_text()
+            assert "xpath" in view_content
+            assert "inherit_id" in view_content
+
+    def test_full_extension_render(self, extension_spec: dict[str, Any]) -> None:
+        """Full render_module() produces extension + greenfield files."""
+        from odoo_gen_utils.renderer import get_template_dir, render_module
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+            template_dir = get_template_dir()
+
+            created, warnings = render_module(
+                extension_spec, template_dir, output_dir, no_context7=True,
+            )
+            module_dir = output_dir / extension_spec["module_name"]
+
+            # Extension model
+            ext_model = module_dir / "models" / "hr_employee.py"
+            assert ext_model.exists(), f"Expected {ext_model}"
+            assert "_inherit" in ext_model.read_text()
+
+            # Extension view
+            ext_view = module_dir / "views" / "hr_employee_views.xml"
+            assert ext_view.exists(), f"Expected {ext_view}"
+
+            # Greenfield model
+            gf_model = module_dir / "models" / "uni_faculty_publication.py"
+            assert gf_model.exists(), f"Expected {gf_model}"
+
+            # Manifest has "hr" in depends
+            manifest = module_dir / "__manifest__.py"
+            assert manifest.exists()
+            manifest_content = manifest.read_text()
+            assert '"hr"' in manifest_content
+
+            # init_models has both imports
+            init = module_dir / "models" / "__init__.py"
+            init_content = init.read_text()
+            assert "hr_employee" in init_content
+            assert "uni_faculty_publication" in init_content
+
+    def test_mixed_spec(self, extension_spec: dict[str, Any]) -> None:
+        """render_module() with both extends and models produces all files."""
+        from odoo_gen_utils.renderer import get_template_dir, render_module
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+            template_dir = get_template_dir()
+
+            created, warnings = render_module(
+                extension_spec, template_dir, output_dir, no_context7=True,
+            )
+
+            module_dir = output_dir / extension_spec["module_name"]
+            assert module_dir.exists()
+
+            # Count created files: should include extension + greenfield
+            py_files = list(module_dir.rglob("*.py"))
+            xml_files = list(module_dir.rglob("*.xml"))
+            assert len(py_files) >= 4  # manifest, init_root, init_models, model, ext_model, tests
+            assert len(xml_files) >= 3  # views, actions, menu, ext_views
+
+    def test_extensions_stage_in_pipeline(self) -> None:
+        """'extensions' is in STAGE_NAMES."""
+        from odoo_gen_utils.renderer import STAGE_NAMES
+
+        assert "extensions" in STAGE_NAMES

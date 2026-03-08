@@ -57,6 +57,8 @@ from odoo_gen_utils.preprocessors import (  # noqa: F401
 from odoo_gen_utils.context7 import build_context7_from_env, context7_enrich
 
 from odoo_gen_utils.renderer_context import (
+    _build_extension_context,
+    _build_extension_view_context,
     _build_model_context,
     _build_module_context,
     _compute_manifest_data,
@@ -70,7 +72,7 @@ if TYPE_CHECKING:
 _logger = logging.getLogger("odoo-gen.renderer")
 
 STAGE_NAMES: list[str] = [
-    "manifest", "models", "views", "security", "mail_templates",
+    "manifest", "models", "extensions", "views", "security", "mail_templates",
     "wizards", "tests", "static", "cron", "reports", "controllers",
 ]
 
@@ -295,6 +297,72 @@ def render_models(
         return Result.ok(created)
     except Exception as exc:
         return Result.fail(f"render_models failed: {exc}")
+
+
+def render_extensions(
+    env: Environment,
+    spec: dict[str, Any],
+    module_dir: Path,
+    module_context: dict[str, Any],
+) -> Result[list[Path]]:
+    """Render extension model .py files and view .xml files for _inherit extensions.
+
+    Iterates over spec["extends"] to produce:
+    - models/{base_model_var}.py with _inherit class
+    - views/{base_model_var}_views.xml with xpath inheritance (when view_extensions exist)
+
+    Returns Result.ok([]) when no extensions are present.
+
+    Args:
+        env: Configured Jinja2 Environment.
+        spec: Full module specification dictionary (preprocessed).
+        module_dir: Path to the module directory.
+        module_context: Shared module-level template context.
+
+    Returns:
+        Result containing list of created file Paths on success.
+    """
+    extends = spec.get("extends", [])
+    if not extends:
+        return Result.ok([])
+
+    try:
+        created: list[Path] = []
+
+        for ext in extends:
+            base_model_var = _to_python_var(ext["base_model"])
+
+            # Render extension model .py
+            ext_ctx = _build_extension_context(spec, ext)
+            created.append(
+                render_template(
+                    env,
+                    "extension_model.py.j2",
+                    module_dir / "models" / f"{base_model_var}.py",
+                    ext_ctx,
+                )
+            )
+
+            # Render extension views .xml (if view_extensions exist)
+            view_extensions = ext.get("view_extensions", [])
+            if view_extensions:
+                views: list[dict[str, Any]] = []
+                for ve in view_extensions:
+                    view_ctx = _build_extension_view_context(spec, ext, ve)
+                    views.append(view_ctx)
+
+                created.append(
+                    render_template(
+                        env,
+                        "extension_views.xml.j2",
+                        module_dir / "views" / f"{base_model_var}_views.xml",
+                        {"views": views},
+                    )
+                )
+
+        return Result.ok(created)
+    except Exception as exc:
+        return Result.fail(f"render_extensions failed: {exc}")
 
 
 def render_views(
@@ -882,6 +950,7 @@ def render_module(
     stages: list[tuple[str, Callable[[], Result]]] = [
         ("manifest", lambda: render_manifest(env, spec, module_dir, ctx)),
         ("models", lambda: render_models(env, spec, module_dir, ctx, verifier=verifier, warnings_out=all_warnings)),
+        ("extensions", lambda: render_extensions(env, spec, module_dir, ctx)),
         ("views", lambda: render_views(env, spec, module_dir, ctx)),
         ("security", lambda: render_security(env, spec, module_dir, ctx)),
         ("mail_templates", lambda: render_mail_templates(env, spec, module_dir, ctx)),

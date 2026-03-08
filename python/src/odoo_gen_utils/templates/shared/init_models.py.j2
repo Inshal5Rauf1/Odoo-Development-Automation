@@ -2,3 +2,8 @@
 {% for model in models %}
 from . import {{ model.name | to_python_var }}
 {% endfor %}
+{% if extension_model_files is defined %}
+{% for ext_file in extension_model_files %}
+from . import {{ ext_file }}
+{% endfor %}
+{% endif %}
