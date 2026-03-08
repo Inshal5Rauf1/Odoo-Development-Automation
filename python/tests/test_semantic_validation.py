@@ -1160,3 +1160,318 @@ class TestCleanFills:
         result = semantic_validate(mod)
         new_errors = [i for i in result.errors if i.code in ("E7", "E8", "E9", "E10", "E11", "E12")]
         assert new_errors == [], f"Good constraint produced errors: {[e.message for e in new_errors]}"
+
+
+# ===========================================================================
+# E13: Override Method Missing super() Call
+# ===========================================================================
+
+
+class TestE13MissingSuperCall:
+    """E13: create/write overrides must call super()."""
+
+    def test_create_without_super_triggers_e13(self, tmp_path: Path) -> None:
+        """create() method without super() call triggers E13."""
+        from tests.fixtures.logic_writer.e13_no_super_call import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e13 = [i for i in result.errors if i.code == "E13"]
+        assert len(e13) >= 1
+        create_issues = [i for i in e13 if "create" in i.message]
+        assert len(create_issues) >= 1
+        assert e13[0].severity == "error"
+
+    def test_write_without_super_triggers_e13(self, tmp_path: Path) -> None:
+        """write() method without super() call triggers E13."""
+        from tests.fixtures.logic_writer.e13_no_super_call import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e13 = [i for i in result.errors if i.code == "E13"]
+        write_issues = [i for i in e13 if "write" in i.message]
+        assert len(write_issues) >= 1
+
+    def test_create_with_super_clean(self, tmp_path: Path) -> None:
+        """create() with super().create(vals_list) does NOT fire E13."""
+        from tests.fixtures.logic_writer.good_override import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e13 = [i for i in result.errors if i.code == "E13"]
+        assert e13 == []
+
+    def test_old_style_super_clean(self, tmp_path: Path) -> None:
+        """create() with super(ClassName, self).create() does NOT fire E13."""
+        source = """\
+from odoo import api, fields, models
+
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    name = fields.Char()
+
+    def create(self, vals_list):
+        return super(FeeInvoice, self).create(vals_list)
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e13 = [i for i in result.errors if i.code == "E13"]
+        assert e13 == []
+
+    def test_model_create_multi_with_super_clean(self, tmp_path: Path) -> None:
+        """create() decorated with @api.model_create_multi that calls super() is clean."""
+        source = """\
+from odoo import api, fields, models
+
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    name = fields.Char()
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        return super().create(vals_list)
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e13 = [i for i in result.errors if i.code == "E13"]
+        assert e13 == []
+
+    def test_only_checks_classes_with_name(self, tmp_path: Path) -> None:
+        """E13 only checks methods in classes with _name or _inherit."""
+        source = """\
+from odoo import fields, models
+
+
+class HelperMixin:
+    # No _name or _inherit -- should NOT be checked
+    def create(self, vals):
+        return True
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        e13 = [i for i in result.errors if i.code == "E13"]
+        assert e13 == []
+
+
+# ===========================================================================
+# W5: Action Method Modifies State Without Checking
+# ===========================================================================
+
+
+class TestW5NoStateCheck:
+    """W5: action_* methods that modify state should check current state first."""
+
+    def test_action_without_state_check_triggers_w5(self, tmp_path: Path) -> None:
+        """action_submit() assigning state without if-check triggers W5."""
+        from tests.fixtures.logic_writer.w5_no_state_check import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        w5 = [i for i in result.warnings if i.code == "W5"]
+        assert len(w5) == 1
+        assert "action_submit" in w5[0].message
+        assert w5[0].severity == "warning"
+
+    def test_action_with_state_check_clean(self, tmp_path: Path) -> None:
+        """action_submit() with if self.state check does NOT fire W5."""
+        from tests.fixtures.logic_writer.good_action import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        w5 = [i for i in result.warnings if i.code == "W5"]
+        assert w5 == []
+
+    def test_action_with_filtered_lambda_clean(self, tmp_path: Path) -> None:
+        """action using self.filtered(lambda r: r.state ...) does NOT fire W5."""
+        source = """\
+from odoo import api, fields, models
+
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    state = fields.Selection([('draft', 'Draft'), ('done', 'Done')])
+
+    def action_submit(self):
+        records = self.filtered(lambda r: r.state == 'draft')
+        for rec in records:
+            rec.state = 'submitted'
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        w5 = [i for i in result.warnings if i.code == "W5"]
+        assert w5 == []
+
+    def test_action_no_state_assignment_clean(self, tmp_path: Path) -> None:
+        """action method that doesn't assign to state at all is clean."""
+        source = """\
+from odoo import api, fields, models
+
+
+class FeeInvoice(models.Model):
+    _name = "fee.invoice"
+    _description = "Fee Invoice"
+
+    name = fields.Char()
+    state = fields.Selection([('draft', 'Draft'), ('done', 'Done')])
+
+    def action_print(self):
+        return self.env.ref('module.report').report_action(self)
+"""
+        mod = _make_module_with_model(tmp_path, source)
+        result = semantic_validate(mod)
+        w5 = [i for i in result.warnings if i.code == "W5"]
+        assert w5 == []
+
+
+# ===========================================================================
+# E15: Cron Method Missing @api.model
+# ===========================================================================
+
+
+class TestE15CronMissingApiModel:
+    """E15: _cron_* methods must have @api.model decorator."""
+
+    def test_cron_without_api_model_triggers_e15(self, tmp_path: Path) -> None:
+        """_cron_send_reminders() without @api.model triggers E15."""
+        from tests.fixtures.logic_writer.e15_cron_no_api_model import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e15 = [i for i in result.errors if i.code == "E15"]
+        assert len(e15) == 1
+        assert "_cron_send_reminders" in e15[0].message
+        assert e15[0].severity == "error"
+
+    def test_cron_with_api_model_clean(self, tmp_path: Path) -> None:
+        """_cron_send_reminders() with @api.model does NOT fire E15."""
+        from tests.fixtures.logic_writer.good_cron import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        e15 = [i for i in result.errors if i.code == "E15"]
+        assert e15 == []
+
+
+# ===========================================================================
+# E16: Exclusion Zone Violation (Skeleton Diff)
+# ===========================================================================
+
+
+class TestE16ExclusionZoneViolation:
+    """E16: modifications outside BUSINESS LOGIC marker zones are errors."""
+
+    def test_modification_outside_markers_triggers_e16(self, tmp_path: Path) -> None:
+        """Lines changed outside marker zones trigger E16."""
+        from tests.fixtures.logic_writer.e16_exclusion_zone_violation import (
+            FILLED_BAD_SOURCE,
+            SKELETON_SOURCE,
+        )
+
+        # Setup: module dir + skeleton dir
+        mod = tmp_path / "test_module"
+        skeleton_dir = tmp_path / ".odoo-gen-skeleton" / "test_module"
+
+        _write(mod / "__manifest__.py", """\
+            {
+                'name': 'Test Module',
+                'version': '17.0.1.0.0',
+                'depends': ['base'],
+                'data': [],
+            }
+        """)
+        _write(mod / "__init__.py", "from . import models\n")
+        _write(mod / "models" / "__init__.py", "from . import main\n")
+        _write(mod / "models" / "main.py", FILLED_BAD_SOURCE)
+
+        # Skeleton has the original template output
+        _write(skeleton_dir / "models" / "main.py", SKELETON_SOURCE)
+
+        result = semantic_validate(mod)
+        e16 = [i for i in result.errors if i.code == "E16"]
+        assert len(e16) >= 1
+
+    def test_modification_inside_markers_clean(self, tmp_path: Path) -> None:
+        """Lines changed only inside marker zones do NOT fire E16."""
+        from tests.fixtures.logic_writer.e16_exclusion_zone_violation import (
+            FILLED_GOOD_SOURCE,
+            SKELETON_SOURCE,
+        )
+
+        mod = tmp_path / "test_module"
+        skeleton_dir = tmp_path / ".odoo-gen-skeleton" / "test_module"
+
+        _write(mod / "__manifest__.py", """\
+            {
+                'name': 'Test Module',
+                'version': '17.0.1.0.0',
+                'depends': ['base'],
+                'data': [],
+            }
+        """)
+        _write(mod / "__init__.py", "from . import models\n")
+        _write(mod / "models" / "__init__.py", "from . import main\n")
+        _write(mod / "models" / "main.py", FILLED_GOOD_SOURCE)
+
+        _write(skeleton_dir / "models" / "main.py", SKELETON_SOURCE)
+
+        result = semantic_validate(mod)
+        e16 = [i for i in result.errors if i.code == "E16"]
+        assert e16 == []
+
+    def test_no_skeleton_dir_returns_empty(self, tmp_path: Path) -> None:
+        """E16 silently returns empty list when .odoo-gen-skeleton/ does not exist."""
+        mod = _make_valid_module(tmp_path)
+        # No skeleton directory created
+        result = semantic_validate(mod)
+        e16 = [i for i in result.errors if i.code == "E16"]
+        assert e16 == []
+
+
+# ===========================================================================
+# Clean Fills: Good Override + Good Action + Good Cron pass all checks
+# ===========================================================================
+
+
+class TestCleanOverrideActionCron:
+    """Good override/action/cron fixtures pass all E13-E16, W5 checks."""
+
+    def test_good_override_passes_all(self, tmp_path: Path) -> None:
+        """Good override fixture passes E13 with zero issues."""
+        from tests.fixtures.logic_writer.good_override import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        new_errors = [i for i in result.errors if i.code in ("E13", "E15", "E16")]
+        new_warnings = [i for i in result.warnings if i.code == "W5"]
+        assert new_errors == [], f"Good override produced errors: {[e.message for e in new_errors]}"
+        assert new_warnings == [], f"Good override produced warnings: {[w.message for w in new_warnings]}"
+
+    def test_good_action_passes_all(self, tmp_path: Path) -> None:
+        """Good action fixture passes W5 with zero warnings."""
+        from tests.fixtures.logic_writer.good_action import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        new_errors = [i for i in result.errors if i.code in ("E13", "E15", "E16")]
+        new_warnings = [i for i in result.warnings if i.code == "W5"]
+        assert new_errors == [], f"Good action produced errors: {[e.message for e in new_errors]}"
+        assert new_warnings == [], f"Good action produced warnings: {[w.message for w in new_warnings]}"
+
+    def test_good_cron_passes_all(self, tmp_path: Path) -> None:
+        """Good cron fixture passes E15 with zero issues."""
+        from tests.fixtures.logic_writer.good_cron import SOURCE
+
+        mod = _make_module_with_model(tmp_path, SOURCE)
+        result = semantic_validate(mod)
+        new_errors = [i for i in result.errors if i.code in ("E13", "E15", "E16")]
+        new_warnings = [i for i in result.warnings if i.code == "W5"]
+        assert new_errors == [], f"Good cron produced errors: {[e.message for e in new_errors]}"
+        assert new_warnings == [], f"Good cron produced warnings: {[w.message for w in new_warnings]}"
