@@ -166,6 +166,8 @@ def _stub_to_dict(
         result["action_context"] = context.action_context
     if context.cron_context:
         result["cron_context"] = context.cron_context
+    if context.chain_context:
+        result["chain_context"] = context.chain_context
 
     result["context"] = {
         "model_fields": dict(context.model_fields),

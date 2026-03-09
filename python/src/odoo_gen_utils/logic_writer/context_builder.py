@@ -104,6 +104,9 @@ class StubContext:
     cron_context: dict[str, Any] | None = None
     """Domain hint and processing pattern for _cron_* methods."""
 
+    chain_context: dict[str, Any] | None = None
+    """Full chain awareness for compute methods on chain fields."""
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -176,6 +179,11 @@ def build_stub_context(
             stub, module_dir
         )
 
+    # Phase 61: chain_context for compute methods on chain fields
+    chain_context: dict[str, Any] | None = None
+    if method_type == "compute":
+        chain_context = _build_chain_context(stub, model_fields, spec)
+
     return StubContext(
         model_fields=model_fields,
         related_fields=related_fields,
@@ -190,6 +198,7 @@ def build_stub_context(
         exclusion_zones=exclusion_zones,
         action_context=action_context,
         cron_context=cron_context,
+        chain_context=chain_context,
     )
 
 
@@ -649,6 +658,154 @@ def _classify_cron_pattern(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Chain context builder
+# ---------------------------------------------------------------------------
+
+
+# Computation pattern templates keyed by (source, aggregation)
+_PATTERN_TEMPLATES: dict[tuple[str, str | None], str] = {
+    ("aggregation", "sum"): "sum(record.{rel_field}.mapped('{target_field}'))",
+    ("aggregation", "count"): "len(record.{rel_field}.filtered(...))",
+    ("aggregation", "min"): "min(record.{rel_field}.mapped('{target_field}'))",
+    ("aggregation", "max"): "max(record.{rel_field}.mapped('{target_field}'))",
+    ("aggregation", "average"): (
+        "sum(record.{rel_field}.mapped('{target_field}'))"
+        " / len(record.{rel_field})"
+    ),
+}
+
+
+def _build_chain_context(
+    stub: StubInfo,
+    model_fields: dict[str, dict[str, Any]],
+    spec: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Build chain_context for compute stubs on chain-enriched fields.
+
+    Returns ``None`` if:
+    - stub is not a compute method
+    - target field has no ``_chain_meta`` key
+
+    Otherwise returns a dict with chain_id, position, steps,
+    upstream/downstream, and computation_pattern hint.
+    """
+    if not stub.method_name.startswith("_compute_"):
+        return None
+
+    # Find the first target field with _chain_meta
+    chain_meta: dict[str, Any] | None = None
+    target_field_name: str = ""
+    for tf in stub.target_fields:
+        meta = model_fields.get(tf, {}).get("_chain_meta")
+        if meta is not None:
+            chain_meta = meta
+            target_field_name = tf
+            break
+
+    if chain_meta is None:
+        return None
+
+    source = chain_meta.get("source", "")
+    aggregation = chain_meta.get("aggregation")
+    lookup_table = chain_meta.get("lookup_table")
+
+    # Build this_step dict
+    this_step: dict[str, Any] = {"source": source}
+    if aggregation is not None:
+        this_step["aggregation"] = aggregation
+    if lookup_table is not None:
+        this_step["lookup_table"] = lookup_table
+
+    # Parse depends to extract field references
+    depends_args = _parse_depends_args(stub.decorator)
+
+    # Build computation_pattern
+    computation_pattern = _build_computation_pattern(
+        source, aggregation, depends_args, model_fields, target_field_name,
+    )
+
+    return {
+        "chain_id": chain_meta["chain_id"],
+        "chain_description": chain_meta.get("chain_description", ""),
+        "position_in_chain": chain_meta["position_in_chain"],
+        "total_steps": chain_meta["total_steps"],
+        "this_step": this_step,
+        "upstream_steps": list(chain_meta.get("upstream_steps", [])),
+        "downstream_steps": list(chain_meta.get("downstream_steps", [])),
+        "computation_pattern": computation_pattern,
+    }
+
+
+def _build_computation_pattern(
+    source: str,
+    aggregation: str | None,
+    depends_args: list[str],
+    model_fields: dict[str, dict[str, Any]],
+    target_field_name: str,
+) -> str:
+    """Build a computation_pattern hint string based on source and aggregation type."""
+    # direct_input and computation sources have no specific pattern
+    if source in ("direct_input", "computation"):
+        return ""
+
+    # lookup: GRADE_MAP.get(record.source_field, 0.0)
+    if source == "lookup":
+        source_field = depends_args[0] if depends_args else "source_field"
+        return f"GRADE_MAP.get(record.{source_field}, 0.0)"
+
+    # aggregation: use templates
+    if source == "aggregation":
+        if aggregation == "weighted_average":
+            return _build_weighted_average_pattern(depends_args, model_fields)
+
+        # For other aggregation types, extract rel_field and target from depends
+        dot_paths = [d for d in depends_args if "." in d]
+        if dot_paths:
+            parts = dot_paths[0].split(".", 1)
+            rel_field = parts[0]
+            mapped_field = parts[1]
+        else:
+            rel_field = "related_ids"
+            mapped_field = target_field_name
+
+        template = _PATTERN_TEMPLATES.get(("aggregation", aggregation), "")
+        if template:
+            return template.format(
+                rel_field=rel_field, target_field=mapped_field,
+            )
+
+    return ""
+
+
+def _build_weighted_average_pattern(
+    depends_args: list[str],
+    model_fields: dict[str, dict[str, Any]],
+) -> str:
+    """Build weighted_average computation_pattern with actual field names.
+
+    Expected depends: ["rel.numerator_field", "rel.denominator_field"]
+    Pattern: sum(r.num * r.den for r in record.rel) / sum(r.den for r in record.rel)
+    """
+    dot_paths = [d for d in depends_args if "." in d]
+    if len(dot_paths) < 2:
+        return "sum(r.X * r.Y for r in record.related_ids) / sum(r.Y for r in record.related_ids)"
+
+    # First dot-path: numerator (e.g., enrollment_ids.weighted_grade_points)
+    num_parts = dot_paths[0].split(".", 1)
+    rel_field = num_parts[0]
+    num_field = num_parts[1].split(".")[-1]  # last segment
+
+    # Second dot-path: denominator (e.g., enrollment_ids.course_id.credit_hours)
+    den_parts = dot_paths[1].split(".", 1)
+    den_field = den_parts[1].split(".")[-1]  # last segment
+
+    return (
+        f"sum(r.{num_field} * r.{den_field} for r in record.{rel_field})"
+        f" / sum(r.{den_field} for r in record.{rel_field})"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Stub zone builder for overrides
 # ---------------------------------------------------------------------------
 
@@ -754,6 +911,7 @@ def _build_model_fields(
             "default",
             "currency_field",
             "digits",
+            "_chain_meta",
         ):
             if key in field_def:
                 entry[key] = field_def[key]
