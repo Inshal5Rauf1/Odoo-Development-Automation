@@ -16,6 +16,13 @@ from odoo_gen_utils.preprocessors import (
     _process_notification_patterns,
     _process_webhook_patterns,
 )
+from odoo_gen_utils.preprocessors.relationships import (
+    _enrich_delegation,
+    _enrich_hierarchical,
+)
+from odoo_gen_utils.preprocessors.webhooks import (
+    _build_webhook_endpoint_model,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1380,3 +1387,177 @@ class TestWebhookPreprocessor:
         _process_webhook_patterns(spec)
         assert [m["name"] for m in spec["models"]] == original_model_names
         assert not spec["models"][0].get("has_webhooks")
+
+
+# ---------------------------------------------------------------------------
+# Commit 6: Delegation enrichment tests
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichDelegation:
+    """Tests for _enrich_delegation from relationships.py."""
+
+    def test_adds_many2one_field(self):
+        """Delegation injects a Many2one field with delegate=True."""
+        model = {"name": "uni.student", "fields": []}
+        models = [model]
+        rel = {
+            "type": "delegation",
+            "model": "uni.student",
+            "delegate_model": "res.partner",
+            "delegate_field": "partner_id",
+        }
+        _enrich_delegation(models, rel)
+        field_names = [f["name"] for f in model["fields"]]
+        assert "partner_id" in field_names
+        partner_field = next(f for f in model["fields"] if f["name"] == "partner_id")
+        assert partner_field["type"] == "Many2one"
+        assert partner_field["comodel_name"] == "res.partner"
+        assert partner_field["delegate"] is True
+
+    def test_sets_inherits(self):
+        """Delegation sets _inherits mapping on the target model."""
+        model = {"name": "uni.student", "fields": []}
+        models = [model]
+        rel = {
+            "type": "delegation",
+            "model": "uni.student",
+            "delegate_model": "res.partner",
+            "delegate_field": "partner_id",
+        }
+        _enrich_delegation(models, rel)
+        assert model["_inherits"] == {"res.partner": "partner_id"}
+        assert model["has_delegation"] is True
+
+    def test_skips_existing_field(self):
+        """Delegation does not duplicate an already-present delegate field."""
+        model = {
+            "name": "uni.student",
+            "fields": [
+                {"name": "partner_id", "type": "Many2one", "comodel_name": "res.partner"},
+            ],
+        }
+        models = [model]
+        rel = {
+            "type": "delegation",
+            "model": "uni.student",
+            "delegate_model": "res.partner",
+            "delegate_field": "partner_id",
+        }
+        _enrich_delegation(models, rel)
+        partner_fields = [f for f in model["fields"] if f["name"] == "partner_id"]
+        assert len(partner_fields) == 1
+
+    def test_unknown_model_noop(self):
+        """Delegation is a no-op when the target model doesn't exist."""
+        model = {"name": "uni.student", "fields": []}
+        models = [model]
+        rel = {
+            "type": "delegation",
+            "model": "nonexistent.model",
+            "delegate_model": "res.partner",
+            "delegate_field": "partner_id",
+        }
+        _enrich_delegation(models, rel)
+        assert not model.get("_inherits")
+        assert not model.get("has_delegation")
+
+
+class TestEnrichHierarchical:
+    """Tests for _enrich_hierarchical from relationships.py."""
+
+    def test_injects_parent_child_fields(self):
+        """Hierarchical enrichment adds parent_id, parent_path, child_ids."""
+        model = {"name": "uni.department", "fields": []}
+        models = [model]
+        rel = {
+            "type": "hierarchical",
+            "model": "uni.department",
+            "string": "Parent Department",
+        }
+        _enrich_hierarchical(models, rel)
+        field_names = {f["name"] for f in model["fields"]}
+        assert "parent_id" in field_names
+        assert "parent_path" in field_names
+        assert "child_ids" in field_names
+        assert model["hierarchical"] is True
+        assert model["_parent_name"] == "parent_id"
+
+
+# ---------------------------------------------------------------------------
+# Commit 7: Webhook endpoint synthesis tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildWebhookEndpointModel:
+    """Tests for _build_webhook_endpoint_model from webhooks.py."""
+
+    def test_model_synthesis(self):
+        """Synthesized model has correct name and required fields."""
+        model = _build_webhook_endpoint_model("test_module")
+        assert model["name"] == "webhook.endpoint"
+        assert model["_synthesized"] is True
+        field_names = {f["name"] for f in model["fields"]}
+        assert "url" in field_names
+        assert "secret_token" in field_names
+        assert "events" in field_names
+        assert "target_model" in field_names
+        assert "active" in field_names
+        assert "max_retries" in field_names
+        assert "retry_delay_seconds" in field_names
+
+    def test_retry_defaults(self):
+        """Synthesized model has sensible retry defaults."""
+        model = _build_webhook_endpoint_model("test_module")
+        max_retries_field = next(
+            f for f in model["fields"] if f["name"] == "max_retries"
+        )
+        assert max_retries_field["default"] == 3
+        retry_delay_field = next(
+            f for f in model["fields"] if f["name"] == "retry_delay_seconds"
+        )
+        assert retry_delay_field["default"] == 60
+
+
+class TestWebhookMailActivityDispatch:
+    """Tests for mail_activity dispatch in notification patterns."""
+
+    def test_mail_activity_dispatch_sets_activity_fields(self):
+        """When dispatch is mail_activity, template entry has activity fields."""
+        model = _make_notify_model(
+            approval={
+                "levels": [
+                    {
+                        "state": "manager_approved",
+                        "role": "manager",
+                        "next": "approved",
+                        "notify": {
+                            "template": "tmpl_mgr",
+                            "recipients": "creator",
+                            "subject": "Approved",
+                            "dispatch": "mail_activity",
+                            "activity_summary": "Review needed",
+                        },
+                    },
+                ],
+                "on_reject": "draft",
+            },
+        )
+        spec = {
+            "module_name": "uni_fee",
+            "depends": ["base"],
+            "models": [model],
+            "security_roles": [{"name": "manager", "label": "Manager"}],
+        }
+        # First run approval to enrich model
+        spec = _process_approval_patterns(spec)
+        result = _process_notification_patterns(spec)
+        enriched = result["models"][0]
+        assert enriched.get("has_notifications") is True
+        templates = enriched.get("notification_templates", [])
+        assert len(templates) >= 1
+        tmpl = templates[0]
+        assert tmpl["dispatch_method"] == "mail_activity"
+        assert tmpl.get("activity_summary") == "Review needed"
+        # mail_activity dispatch should NOT inject "mail" into depends
+        assert "mail" not in result.get("depends", [])

@@ -7,7 +7,6 @@ and assigns default batch_size per operation type.
 
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor

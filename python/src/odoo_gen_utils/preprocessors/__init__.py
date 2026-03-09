@@ -113,3 +113,9 @@ from odoo_gen_utils.preprocessors.portal import (  # noqa: E402,F401
 from odoo_gen_utils.preprocessors.extensions import (  # noqa: E402,F401
     _process_extensions,
 )
+from odoo_gen_utils.preprocessors.archival import (  # noqa: E402,F401
+    _process_archival_strategy,
+)
+from odoo_gen_utils.preprocessors.controllers import (  # noqa: E402,F401
+    _process_controllers,
+)

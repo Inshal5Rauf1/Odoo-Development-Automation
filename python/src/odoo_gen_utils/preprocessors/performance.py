@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
 from odoo_gen_utils.renderer_utils import INDEXABLE_TYPES, NON_INDEXABLE_TYPES
+from odoo_gen_utils.utils.validate import validate_identifier
+
+logger = logging.getLogger(__name__)
 
 
 @register_preprocessor(order=40, name="performance")
@@ -118,9 +122,20 @@ def _enrich_model_performance(model: dict[str, Any]) -> dict[str, Any]:
         sql_constraints = list(model.get("sql_constraints", []))
         for unique in unique_together:
             ufields = unique.get("fields", [])
-            # Validate all fields exist
-            if not all(fname in field_names for fname in ufields):
+            # DEBT-07: Warn on invalid field references instead of silent skip
+            missing = [f for f in ufields if f not in field_names]
+            if missing:
+                logger.warning(
+                    "unique_together on model '%s' references non-existent "
+                    "fields %s — skipping. Available fields: %s",
+                    model.get("name", "?"),
+                    missing,
+                    sorted(field_names),
+                )
                 continue
+            # C2 fix: Validate field names before SQL interpolation
+            for uf in ufields:
+                validate_identifier(uf, "unique_together field")
             constraint_name = "unique_" + "_".join(ufields)
             definition = "UNIQUE(%s)" % ", ".join(ufields)
             message = unique.get("message", "%s must be unique." % ", ".join(ufields))
@@ -130,6 +145,40 @@ def _enrich_model_performance(model: dict[str, Any]) -> dict[str, Any]:
                 "message": message,
             })
         new_model["sql_constraints"] = sql_constraints
+
+    # --- FLAW-14: Composite index hints ---
+    index_hints = model.get("index_hints", [])
+    if index_hints:
+        composite_indexes = []
+        for hint in index_hints:
+            hint_fields = hint.get("fields", [])
+            missing = [f for f in hint_fields if f not in field_names]
+            if missing:
+                logger.warning(
+                    "index_hint on model '%s' references non-existent "
+                    "fields %s — skipping.",
+                    model.get("name", "?"),
+                    missing,
+                )
+                continue
+            composite_indexes.append({
+                "name": hint.get("name", "idx_" + "_".join(hint_fields)),
+                "fields": hint_fields,
+                "where": hint.get("where"),
+                "unique": hint.get("unique", False),
+            })
+        if composite_indexes:
+            new_model["composite_indexes"] = composite_indexes
+
+    # --- FLAW-14: Read group optimization hints ---
+    # Auto-detect fields commonly used in group-by operations
+    groupby_fields = [
+        f["name"] for f in new_fields
+        if f.get("type") in ("Selection", "Many2one", "Date", "Datetime")
+        and f.get("index")
+    ]
+    if groupby_fields:
+        new_model["read_group_fields"] = groupby_fields
 
     # --- TransientModel cleanup ---
     if model.get("transient"):

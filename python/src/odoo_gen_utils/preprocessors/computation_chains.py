@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
 from odoo_gen_utils.preprocessors.relationships import _resolve_comodel
 from odoo_gen_utils.spec_schema import ChainSpec, ChainStepSpec
+from odoo_gen_utils.utils.copy import deep_copy_model
 
 logger = logging.getLogger(__name__)
 
@@ -610,9 +611,7 @@ def _process_computation_chains(spec: dict[str, Any]) -> dict[str, Any]:
         if steps:
             new_models.append(_enrich_model(model, steps))
         else:
-            new_models.append(
-                {**model, "fields": [dict(f) for f in model.get("fields", [])]}
-            )
+            new_models.append(deep_copy_model(model))
 
     # Warn about chain steps targeting models not in spec
     for model_name in model_steps:

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
-from collections import defaultdict
 from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
+from odoo_gen_utils.utils.copy import deep_copy_model, merge_override_source
+from odoo_gen_utils.utils.validate import validate_identifier, validate_message
+
+logger = logging.getLogger(__name__)
 
 
 @register_preprocessor(order=30, name="constraints")
@@ -32,7 +36,14 @@ def _process_constraints(spec: dict[str, Any]) -> dict[str, Any]:
     for constraint in constraints:
         model_name = constraint["model"]
         if model_name not in model_names:
-            continue  # silently skip constraints for non-existent models
+            logger.warning(
+                "Constraint '%s' references non-existent model '%s' — skipping. "
+                "Available models: %s",
+                constraint.get("name", "?"),
+                model_name,
+                sorted(model_names),
+            )
+            continue
         model_constraints.setdefault(model_name, []).append(constraint)
 
     if not model_constraints:
@@ -45,6 +56,8 @@ def _process_constraints(spec: dict[str, Any]) -> dict[str, Any]:
         if ctype == "temporal":
             # Build check_expr with False guards
             fields = c["fields"]
+            for f in fields:
+                validate_identifier(f, "temporal constraint field")
             guards = " and ".join(f"rec.{f}" for f in fields)
             condition = c["condition"]
             # Prefix field references with rec.
@@ -59,11 +72,19 @@ def _process_constraints(spec: dict[str, Any]) -> dict[str, Any]:
             enriched["check_expr"] = f"{guards} and {check_condition}"
         elif ctype == "cross_model":
             # Generate check_body for cross-model validation
-            count_domain_field = c["count_domain_field"]
-            capacity_model = c["capacity_model"]
-            capacity_field = c["capacity_field"]
-            related_model = c["related_model"]
-            message = c["message"]
+            count_domain_field = validate_identifier(
+                c["count_domain_field"], "cross_model count_domain_field",
+            )
+            capacity_model = validate_identifier(
+                c["capacity_model"], "cross_model capacity_model",
+            )
+            capacity_field = validate_identifier(
+                c["capacity_field"], "cross_model capacity_field",
+            )
+            related_model = validate_identifier(
+                c["related_model"], "cross_model related_model",
+            )
+            message = validate_message(c["message"], "cross_model message")
             enriched["check_body"] = (
                 f"course = rec.{count_domain_field}\n"
                 f"count = self.env[\"{related_model}\"].search_count([\n"
@@ -78,12 +99,17 @@ def _process_constraints(spec: dict[str, Any]) -> dict[str, Any]:
             enriched["write_trigger_fields"] = c.get("trigger_fields", [])
         elif ctype == "capacity":
             # Generate check_body for capacity validation
-            count_model = c.get("count_model", "")
-            count_domain_field = c.get("count_domain_field", "")
+            count_model = validate_identifier(
+                c.get("count_model", ""), "capacity count_model",
+            ) if c.get("count_model") else ""
+            count_domain_field = validate_identifier(
+                c.get("count_domain_field", ""), "capacity count_domain_field",
+            ) if c.get("count_domain_field") else ""
             max_value = c.get("max_value")
             max_field = c.get("max_field")
-            message = c["message"]
+            message = validate_message(c["message"], "capacity message")
             if max_field:
+                validate_identifier(max_field, "capacity max_field")
                 max_ref = f"rec.{max_field}"
             else:
                 max_ref = str(max_value)
@@ -109,29 +135,30 @@ def _process_constraints(spec: dict[str, Any]) -> dict[str, Any]:
             continue
 
         enriched_constraints = [_enrich_constraint(c) for c in mc]
-        create_constraints = [
-            c for c in enriched_constraints
-            if c["type"] in ("cross_model", "capacity")
-        ]
-        write_constraints = [
-            c for c in enriched_constraints
+
+        # DEBT-09: Compute override constraints once with applies_to field,
+        # instead of two identical lists. Keep backward-compatible keys.
+        override_constraints = [
+            {**c, "applies_to": c.get("applies_to", ["create", "write"])}
+            for c in enriched_constraints
             if c["type"] in ("cross_model", "capacity")
         ]
 
-        new_model = {
-            **model,
+        new_model = deep_copy_model(model)
+        new_model.update({
             "complex_constraints": enriched_constraints,
-            "create_constraints": create_constraints,
-            "write_constraints": write_constraints,
-            "has_create_override": bool(create_constraints),
-            "has_write_override": bool(write_constraints),
-        }
+            "override_constraints": override_constraints,
+            # Backward-compatible keys (both reference same constraints)
+            "create_constraints": override_constraints,
+            "write_constraints": override_constraints,
+            "has_create_override": bool(override_constraints),
+            "has_write_override": bool(override_constraints),
+        })
 
         # Override flag migration: use set[str] via override_sources
-        if create_constraints:
-            new_model.setdefault("override_sources", defaultdict(set))["create"].add("constraints")
-        if write_constraints:
-            new_model.setdefault("override_sources", defaultdict(set))["write"].add("constraints")
+        if override_constraints:
+            merge_override_source(new_model, "create", "constraints")
+            merge_override_source(new_model, "write", "constraints")
 
         new_models.append(new_model)
 

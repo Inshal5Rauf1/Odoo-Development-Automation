@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
+from odoo_gen_utils.utils.copy import deep_copy_model, merge_override_source
 
 
 @register_preprocessor(order=50, name="production_patterns")
@@ -33,7 +33,7 @@ def _process_production_patterns(spec: dict[str, Any]) -> dict[str, Any]:
     new_cron_jobs = list(spec.get("cron_jobs", []))
 
     for model in models:
-        new_model = {**model, "fields": list(model.get("fields", []))}
+        new_model = deep_copy_model(model)
 
         is_bulk = bool(model.get("bulk"))
         is_cacheable = bool(model.get("cacheable"))
@@ -46,15 +46,15 @@ def _process_production_patterns(spec: dict[str, Any]) -> dict[str, Any]:
         if is_bulk:
             new_model["is_bulk"] = True
             new_model["has_create_override"] = True
-            new_model.setdefault("override_sources", defaultdict(set))["create"].add("bulk")
+            merge_override_source(new_model, "create", "bulk")
 
         if is_cacheable:
             new_model["is_cacheable"] = True
             new_model["needs_tools"] = True
             new_model["has_create_override"] = True
             new_model["has_write_override"] = True
-            new_model.setdefault("override_sources", defaultdict(set))["create"].add("cache")
-            new_model.setdefault("override_sources", defaultdict(set))["write"].add("cache")
+            merge_override_source(new_model, "create", "cache")
+            merge_override_source(new_model, "write", "cache")
 
             # Determine cache lookup field
             cache_key = model.get("cache_key")
@@ -124,12 +124,12 @@ def _process_production_patterns(spec: dict[str, Any]) -> dict[str, Any]:
         if model.get("has_write_override"):
             new_model["has_write_override"] = True
 
-        # Preserve existing override_sources from Phase 29 (union via setdefault)
+        # Preserve existing override_sources from Phase 29 (union via merge)
         existing_sources = model.get("override_sources")
         if existing_sources:
-            merged = new_model.setdefault("override_sources", defaultdict(set))
             for key, sources in existing_sources.items():
-                merged[key].update(sources)
+                for source in sources:
+                    merge_override_source(new_model, key, source)
 
         new_models.append(new_model)
 
