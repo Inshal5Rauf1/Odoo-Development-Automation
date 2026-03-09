@@ -14,12 +14,14 @@ from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
 from odoo_gen_utils.renderer_utils import _to_python_var
+from odoo_gen_utils.utils.copy import deep_copy_model, has_field as _has_field
 
 
 # -- Valid pk_fields tokens --------------------------------------------------
 _VALID_PK_FIELDS = frozenset({
     "cnic", "phone", "gpa", "credit_hours", "hec_registration",
     "ntn", "strn", "degree_level", "recognition_status",
+    "pkr_amount", "hec_program_code", "cgpa", "total_credit_hours",
 })
 
 
@@ -104,9 +106,6 @@ _RECOGNITION_STATUS_SELECTION = [
 # Each helper mutates a model dict **in-place**. The caller provides a copy.
 
 
-def _has_field(model: dict[str, Any], name: str) -> bool:
-    """Check if a field with the given name exists in model's fields."""
-    return any(f.get("name") == name for f in model.get("fields", []))
 
 
 def _has_sql_constraint(model: dict[str, Any], name: str) -> bool:
@@ -306,6 +305,87 @@ def _inject_recognition_status(model: dict[str, Any]) -> None:
         })
 
 
+# -- HEC Program Code selection values ----------------------------------------
+
+_HEC_PROGRAM_CODE_SELECTION = [
+    ("bs_cs", "BS Computer Science"),
+    ("bs_se", "BS Software Engineering"),
+    ("bs_it", "BS Information Technology"),
+    ("bs_ee", "BS Electrical Engineering"),
+    ("bs_me", "BS Mechanical Engineering"),
+    ("bs_ce", "BS Civil Engineering"),
+    ("bs_bba", "BBA"),
+    ("bs_eco", "BS Economics"),
+    ("ms_cs", "MS Computer Science"),
+    ("ms_se", "MS Software Engineering"),
+    ("ms_ee", "MS Electrical Engineering"),
+    ("ms_mba", "MBA"),
+    ("phd_cs", "PhD Computer Science"),
+    ("phd_ee", "PhD Electrical Engineering"),
+    ("other", "Other"),
+]
+
+
+def _inject_pkr_amount(model: dict[str, Any]) -> None:
+    """Inject PKR currency amount field with Monetary type."""
+    if not _has_field(model, "amount_pkr"):
+        model["fields"].append({
+            "name": "amount_pkr",
+            "type": "Monetary",
+            "string": "Amount (PKR)",
+            "currency_field": "currency_id",
+        })
+    if not _has_field(model, "currency_id"):
+        model["fields"].append({
+            "name": "currency_id",
+            "type": "Many2one",
+            "comodel_name": "res.currency",
+            "string": "Currency",
+            "default": "lambda self: self.env.company.currency_id",
+        })
+
+
+def _inject_hec_program_code(model: dict[str, Any]) -> None:
+    """Inject HEC program code selection field."""
+    if not _has_field(model, "hec_program_code"):
+        model["fields"].append({
+            "name": "hec_program_code",
+            "type": "Selection",
+            "string": "HEC Program Code",
+            "selection": list(_HEC_PROGRAM_CODE_SELECTION),
+            "tracking": True,
+        })
+
+
+def _inject_cgpa(model: dict[str, Any]) -> None:
+    """Inject cumulative GPA computed field."""
+    if not _has_field(model, "cgpa"):
+        model["fields"].append({
+            "name": "cgpa",
+            "type": "Float",
+            "string": "CGPA",
+            "digits": (3, 2),
+            "compute": "_compute_cgpa",
+            "store": True,
+            "depends": ["result_line_ids", "result_line_ids.gpa",
+                        "result_line_ids.credit_hours"],
+            "help": "Cumulative Grade Point Average across all semesters",
+        })
+
+
+def _inject_total_credit_hours(model: dict[str, Any]) -> None:
+    """Inject total credit hours computed field."""
+    if not _has_field(model, "total_credit_hours"):
+        model["fields"].append({
+            "name": "total_credit_hours",
+            "type": "Integer",
+            "string": "Total Credit Hours",
+            "compute": "_compute_total_credit_hours",
+            "store": True,
+            "depends": ["result_line_ids", "result_line_ids.credit_hours"],
+        })
+
+
 # -- Dispatch table ----------------------------------------------------------
 
 _PK_FIELD_INJECTORS: dict[str, Any] = {
@@ -318,6 +398,10 @@ _PK_FIELD_INJECTORS: dict[str, Any] = {
     "credit_hours": _inject_credit_hours,
     "degree_level": _inject_degree_level,
     "recognition_status": _inject_recognition_status,
+    "pkr_amount": _inject_pkr_amount,
+    "hec_program_code": _inject_hec_program_code,
+    "cgpa": _inject_cgpa,
+    "total_credit_hours": _inject_total_credit_hours,
 }
 
 
@@ -336,19 +420,8 @@ def _process_pakistan_hec(spec: dict[str, Any]) -> dict[str, Any]:
     if spec.get("localization") != "pk":
         return spec
 
-    # Deep-copy models: new list, new model dicts, new fields lists
-    new_models = []
-    for m in spec.get("models", []):
-        new_model = {
-            **m,
-            "fields": list(m.get("fields", [])),
-        }
-        # Also copy sql_constraints and complex_constraints if present
-        if "sql_constraints" in m:
-            new_model["sql_constraints"] = list(m["sql_constraints"])
-        if "complex_constraints" in m:
-            new_model["complex_constraints"] = list(m["complex_constraints"])
-        new_models.append(new_model)
+    # Deep-copy models using canonical utility
+    new_models = [deep_copy_model(m) for m in spec.get("models", [])]
 
     for model in new_models:
         pk_fields = set(model.get("pk_fields", []))

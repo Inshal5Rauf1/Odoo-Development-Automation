@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
+from odoo_gen_utils.utils.copy import deep_copy_model, has_field as _has_field
 
 
 # -- String constants for constraint check_body --------------------------------
@@ -422,6 +423,40 @@ def _build_academic_batch_model(
     }
 
 
+# -- Semester linkage injection -----------------------------------------------
+
+
+def _inject_semester_links(model: dict[str, Any]) -> None:
+    """Inject academic_year_id and term_id fields on a semester-aware model.
+
+    Mutates model in-place (caller provides a copy).
+    """
+    if not _has_field(model, "academic_year_id"):
+        model["fields"].append({
+            "name": "academic_year_id",
+            "type": "Many2one",
+            "comodel_name": "academic.year",
+            "string": "Academic Year",
+            "index": True,
+        })
+    if not _has_field(model, "term_id"):
+        model["fields"].append({
+            "name": "term_id",
+            "type": "Many2one",
+            "comodel_name": "academic.term",
+            "string": "Term / Semester",
+            "index": True,
+        })
+    if not _has_field(model, "batch_id"):
+        model["fields"].append({
+            "name": "batch_id",
+            "type": "Many2one",
+            "comodel_name": "academic.batch",
+            "string": "Batch",
+        })
+    model["semester_aware"] = True
+
+
 # -- Main preprocessor --------------------------------------------------------
 
 
@@ -444,8 +479,17 @@ def _process_academic_calendar(spec: dict[str, Any]) -> dict[str, Any]:
     enable_batch = config.get("enable_batch", True)
     capacity_default = config.get("batch_capacity_default", 50)
 
-    # Build new models list: preserve existing + append generated
-    new_models = list(spec.get("models", []))
+    # Deep-copy existing models and inject semester linkage where requested
+    new_models = []
+    for model in spec.get("models", []):
+        if model.get("semester_aware"):
+            new_model = deep_copy_model(model)
+            _inject_semester_links(new_model)
+            new_models.append(new_model)
+        else:
+            new_models.append(model)
+
+    # Append generated calendar models
     new_models.append(_build_academic_year_model(default_term))
     new_models.append(_build_academic_term_model())
     if enable_batch:
@@ -453,7 +497,8 @@ def _process_academic_calendar(spec: dict[str, Any]) -> dict[str, Any]:
 
     new_spec = {**spec, "models": new_models}
 
-    # Inject mail dependency
+    # Academic calendar models auto-inherit mail.thread (renderer default for
+    # non-line-item models), so mail dependency is always required.
     depends = list(new_spec.get("depends", []))
     if "mail" not in depends:
         depends.append("mail")

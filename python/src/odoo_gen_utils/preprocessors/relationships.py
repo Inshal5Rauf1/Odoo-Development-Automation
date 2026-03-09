@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
 from odoo_gen_utils.renderer_utils import _to_class, _to_python_var
+from odoo_gen_utils.utils.copy import deep_copy_model, has_field as _has_field
 
 
 @register_preprocessor(order=10, name="relationships")
@@ -25,7 +25,7 @@ def _process_relationships(spec: dict[str, Any]) -> dict[str, Any]:
         return spec
 
     # Deep-copy models to avoid mutating the original spec
-    new_models = [{**m, "fields": list(m.get("fields", []))} for m in spec.get("models", [])]
+    new_models = [deep_copy_model(m) for m in spec.get("models", [])]
 
     for rel in relationships:
         if rel["type"] == "m2m_through":
@@ -34,6 +34,10 @@ def _process_relationships(spec: dict[str, Any]) -> dict[str, Any]:
             _inject_one2many_links(new_models, rel)
         elif rel["type"] == "self_m2m":
             _enrich_self_referential_m2m(new_models, rel)
+        elif rel["type"] == "hierarchical":
+            _enrich_hierarchical(new_models, rel)
+        elif rel["type"] == "delegation":
+            _enrich_delegation(new_models, rel)
 
     return {**spec, "models": new_models}
 
@@ -179,6 +183,98 @@ def _enrich_self_referential_m2m(
     target_model["fields"] = fields
 
 
+def _enrich_hierarchical(
+    models: list[dict[str, Any]], rel: dict[str, Any]
+) -> None:
+    """Enrich a model with hierarchical (parent/child) pattern.
+
+    Injects parent_id, parent_path, child_ids fields and sets
+    _parent_name metadata. Mutates models in-place (caller provides a copy).
+
+    Relationship spec:
+        {"type": "hierarchical", "model": "uni.department",
+         "parent_field": "parent_id",  # optional, defaults to parent_id
+         "string": "Parent Department"}  # optional
+    """
+    model_name = rel["model"]
+    target = next((m for m in models if m["name"] == model_name), None)
+    if target is None:
+        return
+
+    parent_field = rel.get("parent_field", "parent_id")
+    parent_string = rel.get("string", "Parent")
+
+    if not _has_field(target, parent_field):
+        target["fields"].append({
+            "name": parent_field,
+            "type": "Many2one",
+            "comodel_name": model_name,
+            "string": parent_string,
+            "index": True,
+            "ondelete": "cascade",
+        })
+
+    if not _has_field(target, "parent_path"):
+        target["fields"].append({
+            "name": "parent_path",
+            "type": "Char",
+            "index": True,
+            "unaccent": False,
+        })
+
+    child_field = rel.get("child_field", "child_ids")
+    if not _has_field(target, child_field):
+        target["fields"].append({
+            "name": child_field,
+            "type": "One2many",
+            "comodel_name": model_name,
+            "inverse_name": parent_field,
+            "string": rel.get("child_string", "Children"),
+        })
+
+    target["_parent_name"] = parent_field
+    target["hierarchical"] = True
+
+
+def _enrich_delegation(
+    models: list[dict[str, Any]], rel: dict[str, Any]
+) -> None:
+    """Enrich a model with delegation inheritance (_inherits).
+
+    Injects the delegation Many2one field and sets _inherits metadata.
+    Mutates models in-place (caller provides a copy).
+
+    Relationship spec:
+        {"type": "delegation", "model": "uni.student",
+         "delegate_model": "res.partner", "delegate_field": "partner_id",
+         "string": "Related Partner", "required": true, "ondelete": "cascade"}
+    """
+    model_name = rel["model"]
+    target = next((m for m in models if m["name"] == model_name), None)
+    if target is None:
+        return
+
+    delegate_model = rel["delegate_model"]
+    delegate_field = rel.get("delegate_field", delegate_model.rsplit(".", 1)[-1] + "_id")
+    delegate_string = rel.get("string", delegate_model.rsplit(".", 1)[-1].replace("_", " ").title())
+
+    if not _has_field(target, delegate_field):
+        target["fields"].append({
+            "name": delegate_field,
+            "type": "Many2one",
+            "comodel_name": delegate_model,
+            "string": delegate_string,
+            "required": rel.get("required", True),
+            "ondelete": rel.get("ondelete", "cascade"),
+            "delegate": True,
+        })
+
+    inherits = dict(target.get("_inherits", {}))
+    inherits[delegate_model] = delegate_field
+    target["_inherits"] = inherits
+    target["has_delegation"] = True
+
+
 def _resolve_comodel(
     spec: dict[str, Any], model_name: str, field_name: str
 ) -> str | None:
@@ -195,10 +291,14 @@ def _resolve_comodel(
 def _init_override_sources(spec: dict[str, Any]) -> dict[str, Any]:
     """Initialize override_sources on all models after relationship processing.
 
-    Mutates models in-place to match the original inline behavior in
-    renderer.py, which callers (and tests) depend on.
+    Returns a new spec dict. Pure function -- does NOT mutate the input spec.
+    Models that already have ``override_sources`` keep theirs (deep-copied);
+    models without it get an empty plain ``dict``.
     """
+    new_models = []
     for model in spec.get("models", []):
         if "override_sources" not in model:
-            model["override_sources"] = defaultdict(set)
-    return spec
+            new_models.append({**model, "override_sources": {}})
+        else:
+            new_models.append(model)
+    return {**spec, "models": new_models}
