@@ -74,6 +74,7 @@ _logger = logging.getLogger("odoo-gen.renderer")
 STAGE_NAMES: list[str] = [
     "manifest", "models", "extensions", "views", "security", "mail_templates",
     "wizards", "tests", "static", "cron", "reports", "controllers", "portal",
+    "bulk",
 ]
 
 
@@ -954,6 +955,102 @@ def render_portal(
         return Result.fail(f"render_portal failed: {exc}")
 
 
+def render_bulk(
+    env: Environment,
+    spec: dict[str, Any],
+    module_dir: Path,
+    module_context: dict[str, Any],
+) -> "Result[list[Path]]":
+    """Render bulk wizard TransientModels, views, and JS assets.
+
+    Generates per bulk operation:
+    - wizards/{wizard_var}.py (TransientModel with state machine)
+    - wizards/{wizard_var}_line.py (preview line TransientModel)
+    - views/{wizard_var}_wizard_form.xml (multi-step form view)
+    - static/src/js/bulk_progress.js (shared bus.bus listener)
+    - wizards/__init__.py updated with imports
+
+    Returns Result.ok([]) when spec has no bulk operations.
+    """
+    try:
+        if not spec.get("has_bulk_operations"):
+            return Result.ok([])
+
+        created: list[Path] = []
+        bulk_ops = spec.get("bulk_operations", [])
+
+        for op in bulk_ops:
+            wizard_var = _to_python_var(op["wizard_model"])
+
+            # Build per-operation template context
+            bulk_ctx = {
+                **module_context,
+                "op": op,
+            }
+
+            # Render wizard model
+            created.append(render_template(
+                env, "bulk_wizard_model.py.j2",
+                module_dir / "wizards" / f"{wizard_var}.py",
+                bulk_ctx,
+            ))
+
+            # Render wizard line model (if preview_fields)
+            if op.get("preview_fields"):
+                created.append(render_template(
+                    env, "bulk_wizard_line.py.j2",
+                    module_dir / "wizards" / f"{wizard_var}_line.py",
+                    bulk_ctx,
+                ))
+
+            # Render wizard form view
+            created.append(render_template(
+                env, "bulk_wizard_views.xml.j2",
+                module_dir / "views" / f"{wizard_var}_wizard_form.xml",
+                bulk_ctx,
+            ))
+
+        # Render shared JS progress listener (one file for all ops)
+        js_ctx = {**module_context, "bulk_operations": bulk_ops}
+        js_dir = module_dir / "static" / "src" / "js"
+        js_dir.mkdir(parents=True, exist_ok=True)
+        created.append(render_template(
+            env, "bulk_wizard_js.js.j2",
+            js_dir / "bulk_progress.js",
+            js_ctx,
+        ))
+
+        # Update wizards/__init__.py
+        init_path = module_dir / "wizards" / "__init__.py"
+        init_path.parent.mkdir(parents=True, exist_ok=True)
+        existing = ""
+        if init_path.exists():
+            existing = init_path.read_text(encoding="utf-8")
+
+        new_imports = []
+        for op in bulk_ops:
+            wiz_var = _to_python_var(op["wizard_model"])
+            imp = f"from . import {wiz_var}"
+            if imp not in existing:
+                new_imports.append(imp)
+            if op.get("preview_fields"):
+                line_imp = f"from . import {wiz_var}_line"
+                if line_imp not in existing:
+                    new_imports.append(line_imp)
+
+        if new_imports:
+            content = existing.rstrip("\n")
+            if content:
+                content += "\n"
+            content += "\n".join(new_imports) + "\n"
+            init_path.write_text(content, encoding="utf-8")
+        created.append(init_path)
+
+        return Result.ok(created)
+    except Exception as exc:
+        return Result.fail(f"render_bulk failed: {exc}")
+
+
 def render_mail_templates(
     env: Environment,
     spec: dict[str, Any],
@@ -1137,6 +1234,7 @@ def render_module(
         ("reports", lambda: render_reports(env, spec, module_dir, ctx)),
         ("controllers", lambda: render_controllers(env, spec, module_dir, ctx)),
         ("portal", lambda: render_portal(env, spec, module_dir, ctx)),
+        ("bulk", lambda: render_bulk(env, spec, module_dir, ctx)),
     ]
 
     # Phase 60: Filter stages in iterative mode

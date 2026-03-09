@@ -711,13 +711,14 @@ class TestRenderPortalFunction:
 
 
 class TestStageNamesIncludesPortal:
-    """Verify STAGE_NAMES has 13 entries with portal as last."""
+    """Verify STAGE_NAMES includes portal after controllers (Phase 63: 14 stages with bulk after portal)."""
 
     def test_stage_count(self):
         from odoo_gen_utils.renderer import STAGE_NAMES
-        assert len(STAGE_NAMES) == 13
+        assert len(STAGE_NAMES) == 14
 
     def test_portal_after_controllers(self):
         from odoo_gen_utils.renderer import STAGE_NAMES
-        assert STAGE_NAMES[-1] == "portal"
-        assert STAGE_NAMES[-2] == "controllers"
+        ctrl_idx = STAGE_NAMES.index("controllers")
+        portal_idx = STAGE_NAMES.index("portal")
+        assert portal_idx == ctrl_idx + 1
