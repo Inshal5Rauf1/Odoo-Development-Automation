@@ -50,7 +50,7 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 
 - [x] **BULK-01**: Generate @api.model_create_multi with batched post-processing — notifications chunked, not per-record
 - [x] **BULK-02**: Generate bulk wizard TransientModels with domain-based record selection, preview step, confirmation, and error collection
-- [ ] **BULK-03**: Generate _process_batch() helpers with configurable batch_size, chunked processing, and bus.bus progress notifications
+- [x] **BULK-03**: Generate _process_batch() helpers with configurable batch_size, chunked processing, and bus.bus progress notifications
 
 ## Future Requirements (v4.1+)
 
@@ -104,7 +104,7 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 | PRTL-03 | Phase 62 | Complete |
 | BULK-01 | Phase 63 | Complete |
 | BULK-02 | Phase 63 | Complete |
-| BULK-03 | Phase 63 | Pending |
+| BULK-03 | Phase 63 | Complete |
 
 **Coverage:**
 - v4.0 requirements: 24 total
