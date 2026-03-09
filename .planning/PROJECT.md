@@ -168,7 +168,7 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 
 ## Constraints
 
-- **Dependency**: Requires GSD installed (`~/.claude/get-shit-done/`)
+- **Dependency**: Requires GSD installed (`~/.claude/odoo-gsd/`)
 - **Target Version**: Odoo 17.0 primary, 18.0 secondary
 - **Quality Standard**: OCA-grade — pylint-odoo clean, proper i18n, full security, tests
 - **Interface**: GSD commands via AI coding assistant (not standalone CLI)

@@ -1,7 +1,7 @@
 """Migration generator module: produce Odoo pre-migrate.py and post-migrate.py scripts.
 
 Consumes diff_specs() output from spec_differ.py and generates per-change helper
-functions using raw SQL (cr.execute) following Odoo migration conventions.
+functions using parameterized SQL (psycopg2.sql) following Odoo migration conventions.
 
 Provides:
 - generate_migration(): Main entry point returning MigrationResult dict
@@ -11,6 +11,7 @@ Provides:
 
 from __future__ import annotations
 
+import re
 import textwrap
 from pathlib import Path
 from typing import Any, TypedDict
@@ -28,7 +29,7 @@ class MigrationResult(TypedDict):
 
 
 # ---------------------------------------------------------------------------
-# Table Name Conversion
+# Identifier Validation & Table Name Conversion
 # ---------------------------------------------------------------------------
 
 _FIELD_TYPE_TO_PG: dict[str, str] = {
@@ -46,6 +47,8 @@ _FIELD_TYPE_TO_PG: dict[str, str] = {
     "Html": "TEXT",
 }
 
+_VALID_PG_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+
 
 def _field_type_to_pg(field_type: str) -> str:
     """Map an Odoo field type to a PostgreSQL column type for backup columns."""
@@ -60,6 +63,20 @@ def _model_to_table(model_name: str) -> str:
     return model_name.replace(".", "_")
 
 
+def _validate_identifier(name: str, context: str) -> None:
+    """Validate that a name is a safe PostgreSQL identifier.
+
+    Raises ValueError if the name contains characters that could
+    enable SQL injection. Defense-in-depth alongside psycopg2.sql.Identifier
+    in the generated migration scripts.
+    """
+    if not _VALID_PG_IDENTIFIER.match(name):
+        raise ValueError(
+            f"Unsafe SQL identifier in {context}: {name!r}. "
+            f"Must match [a-zA-Z_][a-zA-Z0-9_]*"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Helper Generation: Pre-Migrate
 # ---------------------------------------------------------------------------
@@ -70,10 +87,13 @@ def _generate_pre_helpers(diff_result: dict) -> list[dict]:
     For each destructive/possibly-destructive change, produces a helper with:
     - name: function name
     - docstring: descriptive with DESTRUCTIVE:/POSSIBLY DESTRUCTIVE: prefix
-    - body: list of code lines (cr.execute statements + logging)
+    - body: list of code lines using psycopg2.sql for safe SQL composition
 
     Returns:
         List of helper dicts, each with 'name', 'docstring', 'body' keys.
+
+    Raises:
+        ValueError: If any model/field name is not a valid SQL identifier.
     """
     helpers: list[dict] = []
     changes = diff_result.get("changes", {})
@@ -83,17 +103,21 @@ def _generate_pre_helpers(diff_result: dict) -> list[dict]:
     for model in models.get("removed", []):
         model_name = model["name"]
         table = _model_to_table(model_name)
+        _validate_identifier(table, f"model removal ({model_name})")
+        backup_table = f"{table}_backup"
+        _validate_identifier(backup_table, f"backup table for {model_name}")
         helpers.append({
             "name": f"_backup_model_{table}",
             "docstring": f'DESTRUCTIVE: Backup all data from {model_name} before model removal.',
             "body": [
-                f'cr.execute("SELECT COUNT(*) FROM {table}")',
+                f'cr.execute(sql.SQL("SELECT COUNT(*) FROM {{}}").format(sql.Identifier("{table}")))',
                 'count = cr.fetchone()[0]',
                 f'_logger.info("Table {table} has %s rows to backup", count)',
                 'if count > 0:',
-                f'    cr.execute(',
-                f'        "CREATE TABLE IF NOT EXISTS {table}_backup AS SELECT * FROM {table}"',
-                f'    )',
+                '    cr.execute(',
+                '        sql.SQL("CREATE TABLE IF NOT EXISTS {} AS SELECT * FROM {}")',
+                f'        .format(sql.Identifier("{backup_table}"), sql.Identifier("{table}"))',
+                '    )',
                 f'    _logger.info("Backed up %s rows from {table}", count)',
             ],
         })
@@ -101,13 +125,17 @@ def _generate_pre_helpers(diff_result: dict) -> list[dict]:
     # Field-level changes in modified models
     for model_name, model_data in models.get("modified", {}).items():
         table = _model_to_table(model_name)
+        _validate_identifier(table, f"modified model ({model_name})")
         fields_data = model_data.get("fields", {})
 
         # Removed fields: backup data
         for field in fields_data.get("removed", []):
             field_name = field["name"]
+            _validate_identifier(field_name, f"removed field ({model_name}.{field_name})")
             field_type = field.get("type", "Char")
             pg_type = _field_type_to_pg(field_type)
+            backup_col = f"{field_name}_backup"
+            _validate_identifier(backup_col, f"backup column for {model_name}.{field_name}")
             helpers.append({
                 "name": f"_backup_{field_name}",
                 "docstring": (
@@ -115,23 +143,29 @@ def _generate_pre_helpers(diff_result: dict) -> list[dict]:
                     f"before field removal."
                 ),
                 "body": [
-                    f'cr.execute(',
-                    f'    "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS'
-                    f' {field_name}_backup {pg_type}"',
-                    f')',
-                    f'cr.execute(',
-                    f'    "UPDATE {table} SET {field_name}_backup = {field_name}'
-                    f' WHERE {field_name} IS NOT NULL"',
-                    f')',
-                    f'_logger.info(',
+                    'cr.execute(',
+                    f'    sql.SQL("ALTER TABLE {{}} ADD COLUMN IF NOT EXISTS {{}} {pg_type}")',
+                    f'    .format(sql.Identifier("{table}"), sql.Identifier("{backup_col}"))',
+                    ')',
+                    'cr.execute(',
+                    '    sql.SQL("UPDATE {} SET {} = {} WHERE {} IS NOT NULL")',
+                    '    .format(',
+                    f'        sql.Identifier("{table}"),',
+                    f'        sql.Identifier("{backup_col}"),',
+                    f'        sql.Identifier("{field_name}"),',
+                    f'        sql.Identifier("{field_name}"),',
+                    '    )',
+                    ')',
+                    '_logger.info(',
                     f'    "Backed up %s rows of {field_name} in {table}", cr.rowcount',
-                    f')',
+                    ')',
                 ],
             })
 
         # Modified fields
         for field in fields_data.get("modified", []):
             field_name = field["name"]
+            _validate_identifier(field_name, f"modified field ({model_name}.{field_name})")
             field_changes = field.get("changes", {})
             severity = field.get("severity", "non_destructive")
 
@@ -143,6 +177,8 @@ def _generate_pre_helpers(diff_result: dict) -> list[dict]:
                 old_type = field_changes["type"]["old"]
                 new_type = field_changes["type"]["new"]
                 pg_type = _field_type_to_pg(old_type)
+                backup_col = f"{field_name}_backup"
+                _validate_identifier(backup_col, f"backup column for {model_name}.{field_name}")
                 prefix = "DESTRUCTIVE" if severity == "always_destructive" else "POSSIBLY DESTRUCTIVE"
                 helpers.append({
                     "name": f"_backup_{field_name}",
@@ -151,17 +187,22 @@ def _generate_pre_helpers(diff_result: dict) -> list[dict]:
                         f"before type change {old_type} -> {new_type}."
                     ),
                     "body": [
-                        f'cr.execute(',
-                        f'    "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS'
-                        f' {field_name}_backup {pg_type}"',
-                        f')',
-                        f'cr.execute(',
-                        f'    "UPDATE {table} SET {field_name}_backup = {field_name}'
-                        f' WHERE {field_name} IS NOT NULL"',
-                        f')',
-                        f'_logger.info(',
+                        'cr.execute(',
+                        f'    sql.SQL("ALTER TABLE {{}} ADD COLUMN IF NOT EXISTS {{}} {pg_type}")',
+                        f'    .format(sql.Identifier("{table}"), sql.Identifier("{backup_col}"))',
+                        ')',
+                        'cr.execute(',
+                        '    sql.SQL("UPDATE {} SET {} = {} WHERE {} IS NOT NULL")',
+                        '    .format(',
+                        f'        sql.Identifier("{table}"),',
+                        f'        sql.Identifier("{backup_col}"),',
+                        f'        sql.Identifier("{field_name}"),',
+                        f'        sql.Identifier("{field_name}"),',
+                        '    )',
+                        ')',
+                        '_logger.info(',
                         f'    "Backed up %s rows of {field_name} in {table}", cr.rowcount',
-                        f')',
+                        ')',
                     ],
                 })
 
@@ -176,23 +217,27 @@ def _generate_pre_helpers(diff_result: dict) -> list[dict]:
                             f"of {model_name} before making it required."
                         ),
                         "body": [
-                            f'cr.execute(',
-                            f'    "SELECT COUNT(*) FROM {table}'
-                            f' WHERE {field_name} IS NULL"',
-                            f')',
+                            'cr.execute(',
+                            '    sql.SQL("SELECT COUNT(*) FROM {} WHERE {} IS NULL")',
+                            f'    .format(sql.Identifier("{table}"), sql.Identifier("{field_name}"))',
+                            ')',
                             'null_count = cr.fetchone()[0]',
-                            f'_logger.info(',
+                            '_logger.info(',
                             f'    "Found %s NULL values in {table}.{field_name}", null_count',
-                            f')',
+                            ')',
                             'if null_count > 0:',
-                            f'    _logger.warning(',
+                            '    _logger.warning(',
                             f'        "{table}.{field_name} has %s NULL rows, backfilling with safe default",',
-                            f'        null_count,',
-                            f'    )',
-                            f'    cr.execute(',
-                            f'        "UPDATE {table} SET {field_name} = CURRENT_DATE'
-                            f' WHERE {field_name} IS NULL"',
-                            f'    )',
+                            '        null_count,',
+                            '    )',
+                            '    cr.execute(',
+                            '        sql.SQL("UPDATE {} SET {} = CURRENT_DATE WHERE {} IS NULL")',
+                            '        .format(',
+                            f'            sql.Identifier("{table}"),',
+                            f'            sql.Identifier("{field_name}"),',
+                            f'            sql.Identifier("{field_name}"),',
+                            '        )',
+                            '    )',
                             f'    _logger.info("Backfilled %s rows in {table}.{field_name}", cr.rowcount)',
                         ],
                     })
@@ -202,7 +247,7 @@ def _generate_pre_helpers(diff_result: dict) -> list[dict]:
                 sel_change = field_changes["selection"]
                 removed_opts = sel_change.get("options_removed", [])
                 if removed_opts:
-                    removed_str = ", ".join(f"'{o}'" for o in removed_opts)
+                    removed_tuple = repr(tuple(removed_opts))
                     helpers.append({
                         "name": f"_validate_{field_name}_selection",
                         "docstring": (
@@ -211,21 +256,22 @@ def _generate_pre_helpers(diff_result: dict) -> list[dict]:
                             f"{', '.join(removed_opts)}."
                         ),
                         "body": [
-                            f'cr.execute(',
-                            f'    "SELECT COUNT(*) FROM {table}'
-                            f" WHERE {field_name} IN ({removed_str})\"",
-                            f')',
+                            'cr.execute(',
+                            '    sql.SQL("SELECT COUNT(*) FROM {} WHERE {} IN %s")',
+                            f'    .format(sql.Identifier("{table}"), sql.Identifier("{field_name}")),',
+                            f'    ({removed_tuple},)',
+                            ')',
                             'invalid_count = cr.fetchone()[0]',
-                            f'_logger.info(',
+                            '_logger.info(',
                             f'    "Found %s rows with removed selection values in'
                             f' {table}.{field_name}", invalid_count',
-                            f')',
+                            ')',
                             'if invalid_count > 0:',
-                            f'    _logger.warning(',
+                            '    _logger.warning(',
                             f'        "{table}.{field_name} has %s rows with removed values,'
                             f' review needed",',
-                            f'        invalid_count,',
-                            f'    )',
+                            '        invalid_count,',
+                            '    )',
                         ],
                     })
 
@@ -243,6 +289,9 @@ def _generate_post_helpers(diff_result: dict) -> list[dict]:
 
     Returns:
         List of helper dicts, each with 'name', 'docstring', 'body' keys.
+
+    Raises:
+        ValueError: If any model/field name is not a valid SQL identifier.
     """
     helpers: list[dict] = []
     changes = diff_result.get("changes", {})
@@ -252,11 +301,12 @@ def _generate_post_helpers(diff_result: dict) -> list[dict]:
     for model in models.get("removed", []):
         model_name = model["name"]
         table = _model_to_table(model_name)
+        _validate_identifier(table, f"model removal ({model_name})")
         helpers.append({
             "name": f"_drop_model_{table}",
             "docstring": f'DESTRUCTIVE: Drop table {table} after model {model_name} removal.',
             "body": [
-                f'cr.execute("DROP TABLE IF EXISTS {table} CASCADE")',
+                f'cr.execute(sql.SQL("DROP TABLE IF EXISTS {{}} CASCADE").format(sql.Identifier("{table}")))',
                 f'_logger.info("Dropped table {table} (rowcount=%s)", cr.rowcount)',
             ],
         })
@@ -264,11 +314,15 @@ def _generate_post_helpers(diff_result: dict) -> list[dict]:
     # Field-level changes in modified models
     for model_name, model_data in models.get("modified", {}).items():
         table = _model_to_table(model_name)
+        _validate_identifier(table, f"modified model ({model_name})")
         fields_data = model_data.get("fields", {})
 
         # Removed fields: drop backup column
         for field in fields_data.get("removed", []):
             field_name = field["name"]
+            _validate_identifier(field_name, f"removed field ({model_name}.{field_name})")
+            backup_col = f"{field_name}_backup"
+            _validate_identifier(backup_col, f"backup column for {model_name}.{field_name}")
             helpers.append({
                 "name": f"_drop_backup_{field_name}",
                 "docstring": (
@@ -276,19 +330,21 @@ def _generate_post_helpers(diff_result: dict) -> list[dict]:
                     f"after field removal verified."
                 ),
                 "body": [
-                    f'cr.execute(',
-                    f'    "ALTER TABLE {table} DROP COLUMN IF EXISTS {field_name}_backup"',
-                    f')',
-                    f'_logger.info(',
-                    f'    "Dropped backup column {field_name}_backup from {table}'
+                    'cr.execute(',
+                    '    sql.SQL("ALTER TABLE {} DROP COLUMN IF EXISTS {}")',
+                    f'    .format(sql.Identifier("{table}"), sql.Identifier("{backup_col}"))',
+                    ')',
+                    '_logger.info(',
+                    f'    "Dropped backup column {backup_col} from {table}'
                     f' (rowcount=%s)", cr.rowcount',
-                    f')',
+                    ')',
                 ],
             })
 
         # Modified fields
         for field in fields_data.get("modified", []):
             field_name = field["name"]
+            _validate_identifier(field_name, f"modified field ({model_name}.{field_name})")
             field_changes = field.get("changes", {})
             severity = field.get("severity", "non_destructive")
 
@@ -299,6 +355,8 @@ def _generate_post_helpers(diff_result: dict) -> list[dict]:
             if "type" in field_changes:
                 old_type = field_changes["type"]["old"]
                 new_type = field_changes["type"]["new"]
+                backup_col = f"{field_name}_backup"
+                _validate_identifier(backup_col, f"backup column for {model_name}.{field_name}")
                 prefix = "DESTRUCTIVE" if severity == "always_destructive" else "POSSIBLY DESTRUCTIVE"
                 helpers.append({
                     "name": f"_restore_{field_name}",
@@ -307,20 +365,26 @@ def _generate_post_helpers(diff_result: dict) -> list[dict]:
                         f"after type change {old_type} -> {new_type}, then drop backup."
                     ),
                     "body": [
-                        f'cr.execute(',
-                        f'    "UPDATE {table} SET {field_name} = {field_name}_backup'
-                        f' WHERE {field_name}_backup IS NOT NULL"',
-                        f')',
-                        f'_logger.info(',
+                        'cr.execute(',
+                        '    sql.SQL("UPDATE {} SET {} = {} WHERE {} IS NOT NULL")',
+                        '    .format(',
+                        f'        sql.Identifier("{table}"),',
+                        f'        sql.Identifier("{field_name}"),',
+                        f'        sql.Identifier("{backup_col}"),',
+                        f'        sql.Identifier("{backup_col}"),',
+                        '    )',
+                        ')',
+                        '_logger.info(',
                         f'    "Restored %s rows of {field_name} in {table}", cr.rowcount',
-                        f')',
-                        f'cr.execute(',
-                        f'    "ALTER TABLE {table} DROP COLUMN IF EXISTS {field_name}_backup"',
-                        f')',
-                        f'_logger.info(',
-                        f'    "Dropped backup column {field_name}_backup from {table}'
+                        ')',
+                        'cr.execute(',
+                        '    sql.SQL("ALTER TABLE {} DROP COLUMN IF EXISTS {}")',
+                        f'    .format(sql.Identifier("{table}"), sql.Identifier("{backup_col}"))',
+                        ')',
+                        '_logger.info(',
+                        f'    "Dropped backup column {backup_col} from {table}'
                         f' (rowcount=%s)", cr.rowcount',
-                        f')',
+                        ')',
                     ],
                 })
 
@@ -355,6 +419,8 @@ def _render_script(script_type: str, helpers: list[dict], version: str) -> str:
 
     # Imports
     lines.append("import logging")
+    lines.append("")
+    lines.append("from psycopg2 import sql")
     lines.append("")
     lines.append("_logger = logging.getLogger(__name__)")
     lines.append("")
@@ -395,7 +461,7 @@ def generate_migration(
     """Generate Odoo migration scripts from spec diff output.
 
     Consumes the output of diff_specs() and generates pre-migrate.py and
-    post-migrate.py with per-change helper functions using raw SQL.
+    post-migrate.py with per-change helper functions using parameterized SQL.
 
     Args:
         diff_result: Output from spec_differ.diff_specs().

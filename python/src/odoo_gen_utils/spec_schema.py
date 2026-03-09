@@ -521,7 +521,7 @@ class ModuleSpec(BaseModel):
             if not model.approval or not model.security:
                 continue
             defined_roles = set(model.security.roles)
-            for level in model.approval.levels:
+            for level in (model.approval.levels or []):
                 if level.role and level.role not in defined_roles:
                     raise ValueError(
                         f"Approval role '{level.role}' in model '{model.name}' "

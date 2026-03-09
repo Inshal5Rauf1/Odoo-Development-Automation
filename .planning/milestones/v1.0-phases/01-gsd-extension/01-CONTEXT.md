@@ -30,7 +30,7 @@ Requirements: EXT-01, EXT-02, EXT-03, EXT-04, EXT-05
 
 ### Extension Install Experience
 - Single install script (`install.sh`): clone repo → run script → done
-- install.sh checks for GSD at `~/.claude/get-shit-done/` — if missing, error with clear message and install URL (does not proceed)
+- install.sh checks for GSD at `~/.claude/odoo-gsd/` — if missing, error with clear message and install URL (does not proceed)
 - install.sh requires `uv` (fast Python package manager) — if missing, error with install link
 - install.sh creates a Python venv, installs the utility package via `uv pip install`
 - Commands are registered by adding `/odoo-gen:*` skill entries to `~/.claude/settings.json` (same pattern GSD uses)

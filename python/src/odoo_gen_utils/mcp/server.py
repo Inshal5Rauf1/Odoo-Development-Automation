@@ -66,11 +66,18 @@ def _get_client() -> OdooClient:
     """
     global _client
     if _client is None:
+        api_key = os.environ.get("ODOO_API_KEY", "")
+        if not api_key:
+            logger.error("ODOO_API_KEY environment variable is required but not set")
+            raise SystemExit(
+                "ODOO_API_KEY environment variable is required. "
+                "Set it to your Odoo instance API key."
+            )
         config = OdooConfig(
             url=os.environ.get("ODOO_URL", "http://localhost:8069"),
             db=os.environ.get("ODOO_DB", "odoo_dev"),
             username=os.environ.get("ODOO_USER", "admin"),
-            api_key=os.environ.get("ODOO_API_KEY", "admin"),
+            api_key=api_key,
         )
         _client = OdooClient(config)
         logger.info("OdooClient created for %s", config.url)
@@ -123,16 +130,17 @@ def list_models(name_filter: str = "", limit: int = 100) -> str:
     Args:
         name_filter: Optional substring to filter model technical names (e.g. 'sale').
                      Leave empty to list all models (up to limit).
-        limit: Maximum number of models to return. Default 100. Use 0 for all.
+        limit: Maximum number of models to return. Default 100. Clamped to 1-1000.
 
     Returns a bullet list of models with their technical name and description.
     For large instances (500+ models), use name_filter to narrow results.
     """
     try:
         client = _get_client()
+        clamped_limit = max(1, min(limit or 100, 1000))
         domain = [["model", "ilike", name_filter]] if name_filter else []
         results = client.search_read(
-            "ir.model", domain, ["model", "name"], limit=limit
+            "ir.model", domain, ["model", "name"], limit=clamped_limit
         )
         lines = [f"- {r['model']}: {r['name']}" for r in results]
         return f"Found {len(results)} models:\n" + "\n".join(lines)

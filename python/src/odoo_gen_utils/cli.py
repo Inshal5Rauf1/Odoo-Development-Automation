@@ -45,6 +45,13 @@ def render(template: str, output: str, var: tuple[str, ...], var_file: str | Non
             click.echo(f"Invalid --var format (expected key=value): {v}", err=True)
             sys.exit(1)
         key, value = v.split("=", 1)
+        if not key.isidentifier() or key.startswith("_"):
+            click.echo(
+                f"Invalid --var key: {key!r}. "
+                "Must be a valid Python identifier and not start with '_'.",
+                err=True,
+            )
+            sys.exit(1)
         # Attempt to parse JSON values for non-string types
         try:
             context[key] = json.loads(value)

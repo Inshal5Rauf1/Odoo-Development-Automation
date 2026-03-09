@@ -11,11 +11,14 @@ has no knowledge of the registry.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger("odoo-gen.registry")
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +48,36 @@ class ValidationResult:
     @property
     def has_errors(self) -> bool:
         return len(self.errors) > 0
+
+
+@dataclass
+class ModelDiff:
+    """Result of registering or comparing module models."""
+
+    added_models: list[str] = field(default_factory=list)
+    removed_models: list[str] = field(default_factory=list)
+    added_fields: dict[str, list[str]] = field(default_factory=dict)
+    removed_fields: dict[str, list[str]] = field(default_factory=dict)
+    info: list[str] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Mixin Detection
+# ---------------------------------------------------------------------------
+
+_KNOWN_MIXIN_MODELS: frozenset[str] = frozenset({
+    "mail.thread",
+    "mail.activity.mixin",
+    "portal.mixin",
+    "utm.mixin",
+    "image.mixin",
+    "avatar.mixin",
+    "mail.alias.mixin",
+    "rating.mixin",
+    "website.published.mixin",
+    "website.seo.metadata",
+    "website.multi.mixin",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +111,7 @@ class ModelRegistry:
     def load(self) -> None:
         """Load registry from JSON file.  No-op if file does not exist."""
         if not self._path.exists():
+            logger.debug("Registry file not found at %s, starting empty", self._path)
             return
         data = json.loads(self._path.read_text(encoding="utf-8"))
         self._meta = data.get("_meta", self._meta)
@@ -93,9 +127,14 @@ class ModelRegistry:
             for name, entry in raw_models.items()
         }
         self._dependency_graph = data.get("dependency_graph", {})
+        logger.info("Loaded registry: %d models, %d modules", len(self._models), len(self._dependency_graph))
 
     def save(self) -> None:
-        """Persist current state to the JSON file."""
+        """Persist current state to the JSON file atomically.
+
+        Writes to a temporary file first, then renames to the target path.
+        Keeps a .bak backup of the previous version.
+        """
         self._meta["last_updated"] = datetime.now(timezone.utc).isoformat()
         self._meta["modules_registered"] = len(self._dependency_graph)
         payload = {
@@ -104,10 +143,13 @@ class ModelRegistry:
             "dependency_graph": self._dependency_graph,
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        content = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+        tmp_path = self._path.with_suffix(".tmp")
+        tmp_path.write_text(content, encoding="utf-8")
+        if self._path.exists():
+            bak_path = self._path.with_suffix(".bak")
+            self._path.replace(bak_path)
+        tmp_path.rename(self._path)
 
     # -- Known models -------------------------------------------------------
 
@@ -119,51 +161,78 @@ class ModelRegistry:
 
     # -- Module operations --------------------------------------------------
 
-    def register_module(self, module_name: str, spec: dict[str, Any]) -> list[str]:
+    def register_module(self, module_name: str, spec: dict[str, Any]) -> ModelDiff:
         """Extract models from *spec* and store them.
 
-        Returns a list of INFO-level messages (e.g. overwrite notices).
+        Returns a :class:`ModelDiff` with added/removed models and fields.
         Overwrites all existing entries for *module_name*.
         """
-        info_messages: list[str] = []
+        diff = ModelDiff()
 
-        # Remove previous entries for this module (overwrite, not merge)
-        existing_models = [
-            name for name, entry in self._models.items() if entry.module == module_name
-        ]
-        if existing_models:
-            info_messages.append(
-                f"INFO: Overwriting {len(existing_models)} model(s) for module '{module_name}'"
+        # Snapshot previous entries for this module
+        old_models = {
+            name: entry for name, entry in self._models.items()
+            if entry.module == module_name
+        }
+        if old_models:
+            diff.info.append(
+                f"INFO: Overwriting {len(old_models)} model(s) for module '{module_name}'"
             )
-            for name in existing_models:
+            logger.info("Overwriting %d model(s) for module '%s'", len(old_models), module_name)
+            for name in old_models:
                 del self._models[name]
 
         # Register each model from the spec
+        new_model_names: set[str] = set()
         for model in spec.get("models", []):
             model_name: str = model["_name"]
+            new_model_names.add(model_name)
             inherits = model.get("_inherit", [])
             if isinstance(inherits, str):
                 inherits = [inherits]
 
-            # Separate mixins from regular inherits
-            mixins = [
-                inh
-                for inh in inherits
-                if self._known_models.get(inh, {}).get("is_mixin", False)
-            ]
+            # Separate mixins from regular inherits (REG-4.2)
+            mixins = [inh for inh in inherits if self._is_mixin(inh)]
             non_mixin_inherits = [inh for inh in inherits if inh not in mixins]
 
+            new_fields = model.get("fields", {})
             self._models[model_name] = ModelEntry(
                 module=module_name,
-                fields=model.get("fields", {}),
+                fields=new_fields,
                 inherits=non_mixin_inherits,
                 mixins=mixins,
                 description=model.get("description", ""),
             )
 
+            # Compute field diff against previous registration (REG-4.3)
+            if model_name in old_models:
+                old_field_names = set(old_models[model_name].fields.keys())
+                new_field_names = set(new_fields.keys())
+                added = sorted(new_field_names - old_field_names)
+                removed = sorted(old_field_names - new_field_names)
+                if added:
+                    diff.added_fields[model_name] = added
+                if removed:
+                    diff.removed_fields[model_name] = removed
+            else:
+                diff.added_models.append(model_name)
+
+        # Detect removed models
+        for old_name in old_models:
+            if old_name not in new_model_names:
+                diff.removed_models.append(old_name)
+
         # Update dependency graph
         self._dependency_graph[module_name] = list(spec.get("depends", []))
-        return info_messages
+        logger.info(
+            "Registered module '%s': +%d/-%d models, %d field additions, %d field removals",
+            module_name,
+            len(diff.added_models),
+            len(diff.removed_models),
+            sum(len(v) for v in diff.added_fields.values()),
+            sum(len(v) for v in diff.removed_fields.values()),
+        )
+        return diff
 
     def remove_module(self, module_name: str) -> None:
         """Remove all models belonging to *module_name*.  No-op if absent."""
@@ -173,6 +242,68 @@ class ModelRegistry:
         for name in models_to_remove:
             del self._models[name]
         self._dependency_graph.pop(module_name, None)
+        logger.info("Removed module '%s' (%d models)", module_name, len(models_to_remove))
+
+    # -- Mixin detection (REG-4.2) -----------------------------------------
+
+    def _is_mixin(self, model_name: str) -> bool:
+        """Check if a model is a mixin.
+
+        Checks (in order):
+        1. Hardcoded known Odoo mixin models
+        2. Name contains 'mixin' (case-insensitive)
+        3. Known models JSON marked as ``is_mixin``
+        """
+        if model_name in _KNOWN_MIXIN_MODELS:
+            return True
+        if "mixin" in model_name.lower():
+            return True
+        return self._known_models.get(model_name, {}).get("is_mixin", False)
+
+    # -- Breaking change detection (REG-4.1) --------------------------------
+
+    def detect_breaking_changes(
+        self, module_name: str, new_spec: dict[str, Any],
+    ) -> list[str]:
+        """Compare *new_spec* against registered models for *module_name*.
+
+        Returns a list of breaking-change descriptions. Empty list means
+        no breaking changes detected. Does NOT modify the registry.
+        """
+        warnings: list[str] = []
+        old_models = {
+            name: entry for name, entry in self._models.items()
+            if entry.module == module_name
+        }
+        if not old_models:
+            return warnings
+
+        new_model_names = {m["_name"] for m in new_spec.get("models", [])}
+
+        # Removed models
+        for old_name in sorted(set(old_models.keys()) - new_model_names):
+            warnings.append(
+                f"BREAKING: Model '{old_name}' removed from module '{module_name}'"
+            )
+
+        # Removed fields in surviving models
+        for model in new_spec.get("models", []):
+            model_name: str = model["_name"]
+            if model_name not in old_models:
+                continue
+            old_field_names = set(old_models[model_name].fields.keys())
+            new_field_names = set(model.get("fields", {}).keys())
+            for removed in sorted(old_field_names - new_field_names):
+                warnings.append(
+                    f"BREAKING: Field '{model_name}.{removed}' removed"
+                )
+
+        if warnings:
+            logger.warning(
+                "Detected %d breaking change(s) in module '%s'",
+                len(warnings), module_name,
+            )
+        return warnings
 
     # -- Validation ---------------------------------------------------------
 

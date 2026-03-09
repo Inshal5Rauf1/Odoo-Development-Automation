@@ -83,12 +83,21 @@ def _retry_on_rate_limit(func: Callable, *args: object, max_retries: int = 3, **
     for attempt in range(max_retries + 1):
         try:
             return func(*args, **kwargs)
-        except RateLimitExceededException:
+        except RateLimitExceededException as exc:
             if attempt >= max_retries:
                 raise
-            sleep_seconds = 2 ** attempt
+            # Use reset timestamp from exception headers when available,
+            # otherwise fall back to exponential backoff with longer base.
+            reset_ts = getattr(exc, "headers", {}).get("X-RateLimit-Reset") if hasattr(exc, "headers") else None
+            if reset_ts:
+                try:
+                    sleep_seconds = max(float(reset_ts) - time.time() + 1, 1)
+                except (ValueError, TypeError):
+                    sleep_seconds = 60 * (2 ** attempt)
+            else:
+                sleep_seconds = 60 * (2 ** attempt)
             logger.warning(
-                "Rate limit exceeded (attempt %d/%d). Retrying in %d seconds.",
+                "Rate limit exceeded (attempt %d/%d). Retrying in %.0f seconds.",
                 attempt + 1,
                 max_retries,
                 sleep_seconds,
@@ -105,6 +114,7 @@ def get_github_token() -> str | None:
     """
     token = os.environ.get("GITHUB_TOKEN")
     if token:
+        logger.debug("Using GITHUB_TOKEN from environment")
         return token
 
     try:
@@ -115,10 +125,18 @@ def get_github_token() -> str | None:
             timeout=10,
         )
         if result.returncode == 0 and result.stdout.strip():
+            logger.debug("Using token from 'gh auth token'")
             return result.stdout.strip()
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+        logger.warning(
+            "gh auth token returned rc=%d; stderr: %s",
+            result.returncode, result.stderr.strip(),
+        )
+    except FileNotFoundError:
+        logger.warning("gh CLI not found — install GitHub CLI or set GITHUB_TOKEN env var")
+    except subprocess.TimeoutExpired:
+        logger.warning("gh auth token timed out after 10s")
 
+    logger.warning("No GitHub token available — set GITHUB_TOKEN or run 'gh auth login'")
     return None
 
 
@@ -208,6 +226,7 @@ def build_oca_index(
     total_repos = len(repos)
 
     module_count = 0
+    seen_ids: set[str] = set()
 
     for idx, repo in enumerate(repos):
         # Check rate limit every 10 repos
@@ -299,10 +318,19 @@ def build_oca_index(
                 documents=[document],
                 metadatas=[metadata],
             )
+            seen_ids.add(entry_id)
             module_count += 1
 
         if progress_callback:
             progress_callback(idx + 1, total_repos)
+
+    # Clean up stale entries not seen in this full rebuild
+    if not incremental and seen_ids:
+        all_ids = collection.get()["ids"]
+        stale_ids = [eid for eid in all_ids if eid not in seen_ids]
+        if stale_ids:
+            collection.delete(ids=stale_ids)
+            logger.info("Removed %d stale entries from index", len(stale_ids))
 
     # Store build timestamp in collection metadata
     build_time = datetime.now(timezone.utc).isoformat()

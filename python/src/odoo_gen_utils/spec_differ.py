@@ -11,9 +11,12 @@ Provides:
 from __future__ import annotations
 
 import copy
+import logging
 from typing import Any, TypedDict
 
 from deepdiff import DeepDiff
+
+logger = logging.getLogger("odoo-gen.spec_differ")
 
 
 # ---------------------------------------------------------------------------

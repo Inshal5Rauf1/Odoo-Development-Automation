@@ -154,7 +154,11 @@ class Context7Client:
             return None
 
         try:
-            library_id = str(data[0]["id"])
+            raw_id = data[0]["id"]
+            if raw_id is None:
+                logger.warning("Context7 library search returned null id")
+                return None
+            library_id = str(raw_id)
         except (KeyError, IndexError, TypeError) as exc:
             logger.warning("Context7 library search response malformed: %s", exc)
             return None
@@ -206,7 +210,8 @@ class Context7Client:
                 for item in data
             ]
 
-        except Exception as exc:
+        except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError,
+                TimeoutError, OSError, KeyError, TypeError) as exc:
             logger.warning("Context7 query_docs error (degrading gracefully): %s", exc)
             return []
 
@@ -230,7 +235,7 @@ def build_context7_from_env() -> Context7Client:
 # Enrichment pipeline (PIPE-01)
 # ---------------------------------------------------------------------------
 
-CACHE_TTL_SECONDS: int = 86400  # 24 hours
+CACHE_TTL_SECONDS: int = int(os.environ.get("CONTEXT7_CACHE_TTL", "86400"))
 TOKENS_PER_QUERY: int = 500
 CHARS_PER_TOKEN: int = 4  # Conservative estimate for English text
 
@@ -453,7 +458,8 @@ def context7_enrich(
 
         return hints
 
-    except Exception as exc:
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError,
+            TimeoutError, OSError, KeyError, TypeError) as exc:
         logger.warning(
             "Context7 enrichment failed (degrading gracefully): %s", exc,
         )

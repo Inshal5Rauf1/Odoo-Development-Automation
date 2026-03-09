@@ -37,8 +37,8 @@ error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 info "Checking prerequisites..."
 
 # Check GSD is installed
-if [ ! -d "$HOME/.claude/get-shit-done" ]; then
-    error "GSD (Get Shit Done) not found at ~/.claude/get-shit-done/"
+if [ ! -d "$HOME/.claude/odoo-gsd" ]; then
+    error "GSD (Get Shit Done) not found at ~/.claude/odoo-gsd/"
     error "odoo-gen is a GSD extension and requires GSD to be installed first."
     error ""
     error "Install GSD:"
@@ -47,7 +47,7 @@ if [ ! -d "$HOME/.claude/get-shit-done" ]; then
     error "More info: https://github.com/coleam00/get-shit-done-cc"
     exit 1
 fi
-success "GSD found at ~/.claude/get-shit-done/"
+success "GSD found at ~/.claude/odoo-gsd/"
 
 # Check uv is installed
 if ! command -v uv &>/dev/null; then

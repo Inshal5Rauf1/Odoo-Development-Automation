@@ -28,7 +28,7 @@ For the scaffolding output, Odoo 17.0 modules follow a well-documented OCA direc
 - Scaffolded module is created in the current working directory (`./module_name/`)
 - Smart Odoo-specific follow-up questions come in Phase 4 (INPT-01..04) -- Phase 1 keeps input simple
 - Single install script (`install.sh`): clone repo -> run script -> done
-- install.sh checks for GSD at `~/.claude/get-shit-done/` -- if missing, error with clear message and install URL (does not proceed)
+- install.sh checks for GSD at `~/.claude/odoo-gsd/` -- if missing, error with clear message and install URL (does not proceed)
 - install.sh requires `uv` (fast Python package manager) -- if missing, error with install link
 - install.sh creates a Python venv, installs the utility package via `uv pip install`
 - Commands are registered by adding `/odoo-gen:*` skill entries to `~/.claude/commands/odoo-gen/` (same pattern GSD uses)
@@ -224,7 +224,7 @@ You are an Odoo module scaffolding agent. [...]
 **What:** The install script copies files from the cloned repo to the correct `~/.claude/` locations.
 **When to use:** One-time setup.
 **Flow:**
-1. Check GSD exists at `~/.claude/get-shit-done/` -- error if missing
+1. Check GSD exists at `~/.claude/odoo-gsd/` -- error if missing
 2. Check `uv` is available -- error if missing
 3. Create Python venv at `~/.claude/odoo-gen/.venv/` using `uv venv`
 4. Install Python package: `uv pip install -e ~/.claude/odoo-gen/python/`
@@ -235,7 +235,7 @@ You are an Odoo module scaffolding agent. [...]
 
 ### Anti-Patterns to Avoid
 - **Building custom orchestration:** GSD provides this. Do not build pipeline controllers, state managers, or agent routers. The `/odoo-gen:new` command defines the workflow; GSD handles execution.
-- **Modifying GSD files:** Never edit files in `~/.claude/get-shit-done/`. odoo-gen is an extension, not a fork. Changes to GSD would be overwritten on `npx get-shit-done-cc@latest`.
+- **Modifying GSD files:** Never edit files in `~/.claude/odoo-gsd/`. odoo-gen is an extension, not a fork. Changes to GSD would be overwritten on `npx odoo-gsd-cc@latest`.
 - **Importing Python package from agent .md files:** Agents run inside Claude Code's context. They cannot `import` Python. They must use Bash tool to call `odoo-gen-utils` as a subprocess.
 - **Single monolithic template:** Do not create one giant template that outputs the entire module. Use one template per output file. This enables per-file regeneration and testing.
 - **Hardcoding Odoo version in templates:** Use template variables (`{{ odoo_version }}`) so templates can be reused when Phase 9 adds Odoo 18 support.

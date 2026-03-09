@@ -152,7 +152,7 @@ The checkpoint format in generate.md follows GSD's box protocol:
 Before proceeding to Wave 1, check the auto_advance config:
 
 ```bash
-AUTO_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
+AUTO_CFG=$(node "$HOME/.claude/odoo-gsd/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
 ```
 
 If AUTO_CFG is "true": skip checkpoint, log "Auto-approved: module structure", continue.
@@ -506,7 +506,7 @@ Wait for user response. If user describes changes:
 ### Auto-Advance Config Check
 ```bash
 # Source: execute-phase.md checkpoint_handling step
-AUTO_CFG=$(node "$HOME/.claude/get-shit-done/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
+AUTO_CFG=$(node "$HOME/.claude/odoo-gsd/bin/gsd-tools.cjs" config-get workflow.auto_advance 2>/dev/null || echo "false")
 ```
 When `AUTO_CFG` is `"true"`, all human-verify checkpoints auto-approve. This satisfies REVW-05.
 
@@ -838,9 +838,9 @@ Confirm what changes were made based on the feedback.
 ## Sources
 
 ### Primary (HIGH confidence)
-- GSD source: `~/.claude/get-shit-done/references/checkpoints.md` -- full checkpoint protocol, 3 types, display format, auto-mode behavior
-- GSD source: `~/.claude/get-shit-done/workflows/execute-plan.md` -- Pattern A/B/C routing, checkpoint_protocol step, deviation rules
-- GSD source: `~/.claude/get-shit-done/workflows/execute-phase.md` -- checkpoint_handling step, auto_advance config check, wave execution
+- GSD source: `~/.claude/odoo-gsd/references/checkpoints.md` -- full checkpoint protocol, 3 types, display format, auto-mode behavior
+- GSD source: `~/.claude/odoo-gsd/workflows/execute-plan.md` -- Pattern A/B/C routing, checkpoint_protocol step, deviation rules
+- GSD source: `~/.claude/odoo-gsd/workflows/execute-phase.md` -- checkpoint_handling step, auto_advance config check, wave execution
 - Project source: `workflows/generate.md` -- current two-pass pipeline (Jinja2 + Wave 1 + Wave 2)
 - Project source: `workflows/spec.md` -- trigger point for generate.md (Step 4.3)
 - Project source: `python/src/odoo_gen_utils/validation/pylint_runner.py` -- existing pylint infrastructure, JSON2 parsing
