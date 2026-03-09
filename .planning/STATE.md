@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: LLM Logic Writer & Generation Capabilities
-status: completed
-stopped_at: Phase 62 context gathered
-last_updated: "2026-03-09T08:10:04.369Z"
-last_activity: 2026-03-09 — Phase 61 Plan 02 completed
+status: in-progress
+stopped_at: Phase 62 Plan 01 complete
+last_updated: "2026-03-09T09:22:00Z"
+last_activity: 2026-03-09 — Phase 62 Plan 01 completed
 progress:
   total_phases: 9
   completed_phases: 7
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 14
+  completed_plans: 14
   percent: 100
 ---
 
@@ -22,21 +22,21 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v4.0 Phase 60 complete — iterative refinement with CLI integration, resolve commands, and spec stash auto-detection
+**Current focus:** v4.0 Phase 62 in progress — portal controllers schema, preprocessor, and validation complete
 
 ## Current Position
 
-Phase: 61 (Computed Chain Generator)
-Plan: 02 of 02 (DONE)
-Status: Phase 61 Plan 02 complete
-Last activity: 2026-03-09 — Phase 61 Plan 02 completed
+Phase: 62 (Portal Controllers)
+Plan: 01 of 02 (DONE)
+Status: Phase 62 Plan 01 complete
+Last activity: 2026-03-09 — Phase 62 Plan 01 completed
 
 Progress: [██████████] 100% (v4.0)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 81 (across all milestones)
+- Total plans completed: 82 (across all milestones)
 - Average duration: ~24 min
 - Total execution time: ~25.4 hours
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100% (v4.0)
 | 60-iterative-refinement | 02 | 13min | 2 | 7 |
 | 61-computed-chain-generator | 01 | 16min | 2 | 7 |
 | 61-computed-chain-generator | 02 | 7min | 2 | 4 |
+| 62-portal-controllers | 01 | 13min | 2 | 10 |
 
 ## Accumulated Context
 
@@ -105,6 +106,10 @@ Progress: [██████████] 100% (v4.0)
 - [Phase 61]: E20 store propagation uses stored_overrides parameter for testability
 - [Phase 61]: Computation pattern uses actual field names from depends args (not placeholders)
 - [Phase 61]: _chain_meta added to _build_model_fields extraction keys for context builder flow
+- [Phase 62]: Portal preprocessor at order=95 (after notifications@90, before webhooks@100)
+- [Phase 62]: E23 uses _resolve_model_fields for spec-first then registry-fallback model lookup
+- [Phase 62]: W7 warning (not error) for unresolvable models in ownership path validation
+- [Phase 62]: Portal page type validator restricts to {detail, list}; form type deferred
 
 ### Pending Todos
 
@@ -130,7 +135,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T08:10:04.367Z
-Stopped at: Phase 62 context gathered
-Resume file: .planning/phases/62-portal-controllers/62-CONTEXT.md
-Next step: Phase 61 complete. Next milestone phase or v4.0 release.
+Last session: 2026-03-09T09:22:00Z
+Stopped at: Completed 62-01-PLAN.md
+Resume file: .planning/phases/62-portal-controllers/62-02-PLAN.md
+Next step: Execute Phase 62 Plan 02 (portal templates and rendering).
