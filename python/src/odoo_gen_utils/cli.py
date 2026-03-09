@@ -1558,3 +1558,72 @@ def mermaid_cmd(
                 generate_module_diagrams(module, spec, reg, output_dir)
                 click.echo(str(output_dir / "dependencies.mmd"))
                 click.echo(str(output_dir / "er_diagram.mmd"))
+
+
+# ---------------------------------------------------------------------------
+# Phase 60: Resolve command group for managing pending conflict files
+# ---------------------------------------------------------------------------
+
+
+@main.group("resolve")
+def resolve_group() -> None:
+    """Manage pending conflict files from iterative generation."""
+
+
+@resolve_group.command("status")
+@click.option("--module-dir", required=True, type=click.Path(exists=True), help="Module directory")
+def resolve_status_cmd(module_dir: str) -> None:
+    """Show pending conflict files."""
+    from odoo_gen_utils.iterative.resolve import resolve_status
+
+    pending = resolve_status(Path(module_dir))
+    if not pending:
+        click.echo("No pending conflicts.")
+        return
+
+    click.echo(f"Pending conflicts ({len(pending)} files):")
+    for rel_path in pending:
+        click.echo(f"  {rel_path}")
+
+
+@resolve_group.command("accept-all")
+@click.option("--module-dir", required=True, type=click.Path(exists=True), help="Module directory")
+def resolve_accept_all_cmd(module_dir: str) -> None:
+    """Accept all pending conflict files (overwrite current with new)."""
+    from odoo_gen_utils.iterative.resolve import resolve_accept_all
+
+    count = resolve_accept_all(Path(module_dir))
+    if count == 0:
+        click.echo("No pending conflicts to resolve.")
+    else:
+        click.echo(f"Resolved {count} file(s).")
+
+
+@resolve_group.command("accept-new")
+@click.option("--module-dir", required=True, type=click.Path(exists=True), help="Module directory")
+@click.argument("file_path")
+def resolve_accept_new_cmd(module_dir: str, file_path: str) -> None:
+    """Accept the new version of a specific pending file."""
+    from odoo_gen_utils.iterative.resolve import resolve_accept_new
+
+    result = resolve_accept_new(Path(module_dir), file_path)
+    if result:
+        click.echo(f"Accepted: {file_path}")
+    else:
+        click.echo(f"Not found in pending: {file_path}", err=True)
+        sys.exit(1)
+
+
+@resolve_group.command("keep-mine")
+@click.option("--module-dir", required=True, type=click.Path(exists=True), help="Module directory")
+@click.argument("file_path")
+def resolve_keep_mine_cmd(module_dir: str, file_path: str) -> None:
+    """Keep the current version of a specific file, discard pending."""
+    from odoo_gen_utils.iterative.resolve import resolve_keep_mine
+
+    result = resolve_keep_mine(Path(module_dir), file_path)
+    if result:
+        click.echo(f"Kept current: {file_path}")
+    else:
+        click.echo(f"Not found in pending: {file_path}", err=True)
+        sys.exit(1)
