@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 63 context gathered
-last_updated: "2026-03-09T14:23:19.722Z"
-last_activity: 2026-03-09 — Phase 62 Plan 02 completed
+status: in_progress
+stopped_at: Completed 63-01-PLAN.md
+last_updated: "2026-03-09T15:08:42Z"
+last_activity: 2026-03-09 — Phase 63 Plan 01 completed
 progress:
   total_phases: 1
   completed_phases: 0
@@ -22,23 +22,23 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 **Core value:** Compress months of repetitive Odoo module development into days by extending GSD's orchestration with Odoo-specialized agents, knowledge, and validation.
 **Architecture:** GSD extension (not standalone CLI)
-**Current focus:** v4.0 Phase 62 in progress — portal controllers schema, preprocessor, and validation complete
+**Current focus:** v4.0 Phase 63 in progress — bulk operations schema, preprocessor, and validation complete
 
 ## Current Position
 
-Phase: 62 (Portal Controllers)
-Plan: 02 of 02 (DONE)
-Status: Phase 62 complete
-Last activity: 2026-03-09 — Phase 62 Plan 02 completed
+Phase: 63 (Bulk Operations)
+Plan: 01 of 01 (DONE)
+Status: Phase 63 Plan 01 complete
+Last activity: 2026-03-09 — Phase 63 Plan 01 completed
 
 Progress: [██████████] 100% (v4.0)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 82 (across all milestones)
+- Total plans completed: 83 (across all milestones)
 - Average duration: ~24 min
-- Total execution time: ~25.4 hours
+- Total execution time: ~25.6 hours
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
@@ -57,6 +57,7 @@ Progress: [██████████] 100% (v4.0)
 | 61-computed-chain-generator | 02 | 7min | 2 | 4 |
 | 62-portal-controllers | 01 | 13min | 2 | 10 |
 | 62-portal-controllers | 02 | 10min | 2 | 9 |
+| 63-bulk-operations | 01 | 12min | 2 | 11 |
 
 ## Accumulated Context
 
@@ -114,6 +115,12 @@ Progress: [██████████] 100% (v4.0)
 - [Phase 62]: Controller class named {ModuleName}Portal via _to_class + 'Portal' suffix
 - [Phase 62]: Separate render_portal() stage function (not extending render_controllers)
 - [Phase 62]: STAGE_NAMES has 13 entries with portal as 13th stage after controllers
+- [Phase 63]: Bulk operations preprocessor at order=85 (after approval@80, before notifications@90)
+- [Phase 63]: Preprocessor handles Pydantic model_dump conversion for both dict and Pydantic inputs
+- [Phase 63]: bulk_post_processing_batch_size set on source models by preprocessor for template rendering
+- [Phase 63]: Template elif chain: bulk_post_processing_batch_size first, is_bulk fallback for backward compat
+- [Phase 63]: E24/E25 use _model_exists_in_spec + _model_exists_in_registry pattern (same as E23)
+- [Phase 63]: W8 only checks source.X references; wizard.X references are wizard fields, not source fields
 
 ### Pending Todos
 
@@ -136,11 +143,11 @@ None yet.
 - v3.3 Test Fixes, Domain Patterns & Architecture (10 phases, 20 plans) -- 2026-03-08
 
 **Total (through v3.3):** 54 phases, 76 plans, 561 commits, 1,730+ tests, ~35,500+ LOC Python
-**Current (including v4.0 WIP):** 62 phases, 84 plans, 632 commits, 2,200 tests, ~21,000 LOC source (~61,000 total)
+**Current (including v4.0 WIP):** 63 phases, 85 plans, 636 commits, 2,256 tests, ~21,500 LOC source (~61,500 total)
 
 ## Session Continuity
 
-Last session: 2026-03-09T14:23:19.720Z
-Stopped at: Phase 63 context gathered
-Resume file: .planning/phases/63-bulk-operations/63-CONTEXT.md
-Next step: Phase 62 complete. Proceed to next phase if applicable.
+Last session: 2026-03-09T15:08:42Z
+Stopped at: Completed 63-01-PLAN.md
+Resume file: .planning/phases/63-bulk-operations/63-01-SUMMARY.md
+Next step: Phase 63 Plan 01 complete. Proceed to Plan 02 if applicable.

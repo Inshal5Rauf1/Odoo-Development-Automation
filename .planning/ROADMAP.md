@@ -117,7 +117,7 @@
 | 60. Iterative Refinement | 2/2 | Complete | 2026-03-09 |
 | 61. Computed Chain Generator | 2/2 | Complete | 2026-03-09 |
 | 62. Portal Controllers | 2/2 | Complete | 2026-03-09 |
-| 63. Bulk Operations | 0/2 | Not started | - |
+| 63. Bulk Operations | 1/2 | In Progress|  |
 
 **Total (so far):** 8/9 phases, 15 plans | 71 commits
 
@@ -129,7 +129,7 @@
   1. Generated @api.model_create_multi methods batch post-processing (notifications, sequences) instead of per-record execution
   2. Generated bulk wizard TransientModels include domain-based record selection, preview step, confirmation dialog, and error collection with partial success reporting
   3. Generated _process_batch() helpers use configurable batch_size, chunked iteration, and bus.bus progress notifications for long-running operations
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 63-01-PLAN.md — Schema, preprocessor (order=85), E24/E25 validation, batched create_multi template
 - [ ] 63-02-PLAN.md — Four Jinja2 wizard templates and render_bulk() 14th pipeline stage
