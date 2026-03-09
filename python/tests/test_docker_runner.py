@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
+import pytest
+
 from odoo_gen_utils.validation.docker_runner import (
     check_docker_available,
     docker_install_module,
@@ -13,6 +15,23 @@ from odoo_gen_utils.validation.docker_runner import (
     get_compose_file,
 )
 from odoo_gen_utils.validation.types import InstallResult, Result, TestResult
+
+
+# --- Fixtures ---
+
+
+@pytest.fixture()
+def module_dir(tmp_path: Path) -> Path:
+    """Create a minimal module directory with a valid Odoo module name."""
+    mod = tmp_path / "test_mod"
+    mod.mkdir()
+    return mod
+
+
+@pytest.fixture()
+def compose_file(tmp_path: Path) -> Path:
+    """Return a temporary compose file path."""
+    return tmp_path / "docker-compose.yml"
 
 
 # --- check_docker_available tests ---
@@ -66,6 +85,8 @@ class TestDockerInstallModuleSuccess:
         mock_available: MagicMock,
         mock_run: MagicMock,
         mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
     ) -> None:
         mock_available.return_value = True
         # First call: start db only (not full stack)
@@ -81,8 +102,7 @@ class TestDockerInstallModuleSuccess:
             MagicMock(stdout=success_log, stderr="", returncode=0),  # run --rm
         ]
 
-        module_path = Path("/tmp/test_mod")
-        result = docker_install_module(module_path, compose_file=Path("/tmp/compose.yml"))
+        result = docker_install_module(module_dir, compose_file=compose_file)
 
         assert isinstance(result, Result)
         assert result.success is True
@@ -102,6 +122,8 @@ class TestDockerInstallUsesRunNotExec:
         mock_available: MagicMock,
         mock_run: MagicMock,
         mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
     ) -> None:
         mock_available.return_value = True
         success_log = (
@@ -113,7 +135,7 @@ class TestDockerInstallUsesRunNotExec:
             MagicMock(stdout=success_log, stderr="", returncode=0),
         ]
 
-        docker_install_module(Path("/tmp/test_mod"), compose_file=Path("/tmp/compose.yml"))
+        docker_install_module(module_dir, compose_file=compose_file)
 
         # First call must start only db service
         first_call_args = mock_run.call_args_list[0]
@@ -130,6 +152,8 @@ class TestDockerInstallUsesRunNotExec:
         mock_available: MagicMock,
         mock_run: MagicMock,
         mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
     ) -> None:
         mock_available.return_value = True
         success_log = (
@@ -141,7 +165,7 @@ class TestDockerInstallUsesRunNotExec:
             MagicMock(stdout=success_log, stderr="", returncode=0),
         ]
 
-        docker_install_module(Path("/tmp/test_mod"), compose_file=Path("/tmp/compose.yml"))
+        docker_install_module(module_dir, compose_file=compose_file)
 
         # Second call must use 'run --rm', not 'exec'
         second_call_args = mock_run.call_args_list[1]
@@ -168,6 +192,8 @@ class TestDockerInstallModuleFailure:
         mock_available: MagicMock,
         mock_run: MagicMock,
         mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
     ) -> None:
         mock_available.return_value = True
         error_log = (
@@ -179,8 +205,7 @@ class TestDockerInstallModuleFailure:
             MagicMock(stdout=error_log, stderr="", returncode=1),  # exec
         ]
 
-        module_path = Path("/tmp/test_mod")
-        result = docker_install_module(module_path, compose_file=Path("/tmp/compose.yml"))
+        result = docker_install_module(module_dir, compose_file=compose_file)
 
         assert isinstance(result, Result)
         assert result.success is True  # Result wraps InstallResult; install failure is in .data
@@ -200,15 +225,16 @@ class TestDockerInstallTeardown:
         mock_available: MagicMock,
         mock_run: MagicMock,
         mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
     ) -> None:
         mock_available.return_value = True
         mock_run.side_effect = Exception("Subprocess failed")
 
-        module_path = Path("/tmp/test_mod")
-        result = docker_install_module(module_path, compose_file=Path("/tmp/compose.yml"))
+        result = docker_install_module(module_dir, compose_file=compose_file)
 
-        # Teardown must be called even though run raised
-        mock_teardown.assert_called_once()
+        # 2 teardowns from _start_db_with_retry retries + 1 from finally block
+        assert mock_teardown.call_count == 3
         assert isinstance(result, Result)
         assert result.success is False
 
@@ -227,6 +253,8 @@ class TestDockerRunTestsSuccess:
         mock_available: MagicMock,
         mock_run: MagicMock,
         mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
     ) -> None:
         mock_available.return_value = True
         test_log = (
@@ -242,8 +270,7 @@ class TestDockerRunTestsSuccess:
             MagicMock(stdout=test_log, stderr="", returncode=0),  # exec
         ]
 
-        module_path = Path("/tmp/test_mod")
-        result = docker_run_tests(module_path, compose_file=Path("/tmp/compose.yml"))
+        result = docker_run_tests(module_dir, compose_file=compose_file)
 
         assert isinstance(result, Result)
         assert result.success is True
@@ -263,6 +290,8 @@ class TestDockerRunTestsFailure:
         mock_available: MagicMock,
         mock_run: MagicMock,
         mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
     ) -> None:
         mock_available.return_value = True
         test_log = (
@@ -279,8 +308,7 @@ class TestDockerRunTestsFailure:
             MagicMock(stdout=test_log, stderr="", returncode=1),  # exec
         ]
 
-        module_path = Path("/tmp/test_mod")
-        result = docker_run_tests(module_path, compose_file=Path("/tmp/compose.yml"))
+        result = docker_run_tests(module_dir, compose_file=compose_file)
 
         assert isinstance(result, Result)
         assert result.success is True
@@ -301,14 +329,16 @@ class TestDockerRunTestsTeardown:
         mock_available: MagicMock,
         mock_run: MagicMock,
         mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
     ) -> None:
         mock_available.return_value = True
         mock_run.side_effect = Exception("Test exec failed")
 
-        module_path = Path("/tmp/test_mod")
-        result = docker_run_tests(module_path, compose_file=Path("/tmp/compose.yml"))
+        result = docker_run_tests(module_dir, compose_file=compose_file)
 
-        mock_teardown.assert_called_once()
+        # 2 teardowns from _start_db_with_retry retries + 1 from finally block
+        assert mock_teardown.call_count == 3
         assert isinstance(result, Result)
         assert result.success is False
 
@@ -320,10 +350,12 @@ class TestDockerNotAvailableInstall:
     """When Docker unavailable, install returns graceful degradation."""
 
     @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
-    def test_docker_not_available_install(self, mock_available: MagicMock) -> None:
+    def test_docker_not_available_install(
+        self, mock_available: MagicMock, module_dir: Path
+    ) -> None:
         mock_available.return_value = False
 
-        result = docker_install_module(Path("/tmp/test_mod"))
+        result = docker_install_module(module_dir)
 
         assert isinstance(result, Result)
         assert result.success is False
@@ -334,10 +366,12 @@ class TestDockerNotAvailableTests:
     """When Docker unavailable, run_tests returns empty tuple."""
 
     @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
-    def test_docker_not_available_tests(self, mock_available: MagicMock) -> None:
+    def test_docker_not_available_tests(
+        self, mock_available: MagicMock, module_dir: Path
+    ) -> None:
         mock_available.return_value = False
 
-        result = docker_run_tests(Path("/tmp/test_mod"))
+        result = docker_run_tests(module_dir)
 
         assert isinstance(result, Result)
         assert result.success is False
@@ -358,14 +392,274 @@ class TestDockerTimeout:
         mock_available: MagicMock,
         mock_run: MagicMock,
         mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
     ) -> None:
         mock_available.return_value = True
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker", timeout=300)
+        # DB startup succeeds, install command times out
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="", returncode=0),  # DB startup
+            subprocess.TimeoutExpired(cmd="docker", timeout=300),  # Install
+        ]
 
-        module_path = Path("/tmp/test_mod")
-        result = docker_install_module(module_path, compose_file=Path("/tmp/compose.yml"))
+        result = docker_install_module(module_dir, compose_file=compose_file)
 
         assert isinstance(result, Result)
         assert result.success is False
         assert any("timeout" in e.lower() for e in result.errors)
         mock_teardown.assert_called_once()
+
+
+# --- Integration-level tests (real log parsing, mocked Docker) ---
+
+
+class TestInstallIntegrationWithRealLogParsing:
+    """Mock only subprocess (not log parser) to verify end-to-end log parsing."""
+
+    @patch("odoo_gen_utils.validation.docker_runner._teardown")
+    @patch("odoo_gen_utils.validation.docker_runner._run_compose")
+    @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
+    def test_real_odoo17_success_log_parsed(
+        self,
+        mock_available: MagicMock,
+        mock_run: MagicMock,
+        mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
+    ) -> None:
+        """Real Odoo 17 install success log is correctly parsed as success."""
+        mock_available.return_value = True
+        # Realistic Odoo 17 install log output
+        odoo17_log = (
+            "2026-03-02 10:00:00,123 1 INFO test_db odoo.modules.loading: "
+            "Loading module test_mod (1/2)\n"
+            "2026-03-02 10:00:01,456 1 INFO test_db odoo.modules.loading: "
+            "Loading module base (2/2)\n"
+            "2026-03-02 10:00:02,789 1 INFO test_db odoo.modules.loading: "
+            "2 modules loaded, 0 modules updated, 0 tests\n"
+            "2026-03-02 10:00:03,012 1 INFO test_db odoo.modules.loading: "
+            "Modules loaded.\n"
+        )
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="", returncode=0),
+            MagicMock(stdout=odoo17_log, stderr="", returncode=0),
+        ]
+
+        result = docker_install_module(module_dir, compose_file=compose_file)
+
+        assert result.success is True
+        assert result.data.success is True
+        assert result.data.error_message == ""
+
+    @patch("odoo_gen_utils.validation.docker_runner._teardown")
+    @patch("odoo_gen_utils.validation.docker_runner._run_compose")
+    @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
+    def test_real_odoo17_error_log_parsed(
+        self,
+        mock_available: MagicMock,
+        mock_run: MagicMock,
+        mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
+    ) -> None:
+        """Real Odoo 17 install error log is correctly parsed as failure."""
+        mock_available.return_value = True
+        odoo17_error_log = (
+            "2026-03-02 10:00:00,123 1 INFO test_db odoo.modules.loading: "
+            "Loading module test_mod (1/1)\n"
+            "2026-03-02 10:00:01,456 1 ERROR test_db "
+            "odoo.modules.registry: Failed to load module test_mod\n"
+            "Traceback (most recent call last):\n"
+            '  File "/odoo/odoo/modules/registry.py", line 91, in new\n'
+            "    odoo.modules.load_modules(cr, force_demo)\n"
+            "KeyError: 'missing_field'\n"
+        )
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="", returncode=0),
+            MagicMock(stdout=odoo17_error_log, stderr="", returncode=1),
+        ]
+
+        result = docker_install_module(module_dir, compose_file=compose_file)
+
+        assert result.success is True  # Result envelope succeeds
+        assert result.data.success is False  # Install itself failed
+        assert result.data.error_message != ""
+
+    @patch("odoo_gen_utils.validation.docker_runner._teardown")
+    @patch("odoo_gen_utils.validation.docker_runner._run_compose")
+    @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
+    def test_empty_log_output_parsed_as_failure(
+        self,
+        mock_available: MagicMock,
+        mock_run: MagicMock,
+        mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
+    ) -> None:
+        """Empty log output results in install failure (not crash)."""
+        mock_available.return_value = True
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="", returncode=0),
+            MagicMock(stdout="", stderr="", returncode=0),
+        ]
+
+        result = docker_install_module(module_dir, compose_file=compose_file)
+
+        assert result.success is True
+        assert result.data.success is False
+        assert result.data.error_message != ""
+
+
+class TestRunTestsIntegrationWithRealLogParsing:
+    """Mock only subprocess to verify end-to-end test log parsing."""
+
+    @patch("odoo_gen_utils.validation.docker_runner._teardown")
+    @patch("odoo_gen_utils.validation.docker_runner._run_compose")
+    @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
+    def test_odoo17_test_start_format_parsed(
+        self,
+        mock_available: MagicMock,
+        mock_run: MagicMock,
+        mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
+    ) -> None:
+        """Odoo 17 'Starting ClassName.test_method ...' format is parsed."""
+        mock_available.return_value = True
+        odoo17_test_log = (
+            "2026-03-02 10:00:00,000 1 INFO test_db "
+            "odoo.addons.test_mod.tests.test_model: Starting TestModel.test_create ...\n"
+            "2026-03-02 10:00:00,500 1 INFO test_db "
+            "odoo.addons.test_mod.tests.test_model: Starting TestModel.test_write ...\n"
+            "2026-03-02 10:00:01,000 1 INFO test_db "
+            "odoo.tests.stats: test_mod: 2 tests 1.0s 42 queries\n"
+        )
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="", returncode=0),
+            MagicMock(stdout=odoo17_test_log, stderr="", returncode=0),
+        ]
+
+        result = docker_run_tests(module_dir, compose_file=compose_file)
+
+        assert result.success is True
+        assert len(result.data) == 2
+        assert all(r.passed for r in result.data)
+        test_names = {r.test_name for r in result.data}
+        assert "test_create" in test_names
+        assert "test_write" in test_names
+
+    @patch("odoo_gen_utils.validation.docker_runner._teardown")
+    @patch("odoo_gen_utils.validation.docker_runner._run_compose")
+    @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
+    def test_mixed_pass_fail_parsed(
+        self,
+        mock_available: MagicMock,
+        mock_run: MagicMock,
+        mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
+    ) -> None:
+        """Mix of passing and failing tests parsed correctly."""
+        mock_available.return_value = True
+        mixed_log = (
+            "2026-03-02 10:00:00,000 1 INFO test_db "
+            "odoo.addons.test_mod.tests.test_model: Starting TestModel.test_create ...\n"
+            "2026-03-02 10:00:00,500 1 INFO test_db "
+            "odoo.addons.test_mod.tests.test_model: Starting TestModel.test_write ...\n"
+            "2026-03-02 10:00:01,000 1 FAIL test_db "
+            "odoo.addons.test_mod.tests.test_model: test_write\n"
+            "AssertionError: expected 42 got 0\n"
+            "2026-03-02 10:00:01,500 1 INFO test_db "
+            "odoo.tests.stats: test_mod: 2 tests 1.5s 50 queries\n"
+        )
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="", returncode=0),
+            MagicMock(stdout=mixed_log, stderr="", returncode=1),
+        ]
+
+        result = docker_run_tests(module_dir, compose_file=compose_file)
+
+        assert result.success is True
+        passed = [r for r in result.data if r.passed]
+        failed = [r for r in result.data if not r.passed]
+        assert len(passed) == 1
+        assert passed[0].test_name == "test_create"
+        assert len(failed) == 1
+        assert failed[0].test_name == "test_write"
+        assert failed[0].error_message != ""
+
+    @patch("odoo_gen_utils.validation.docker_runner._teardown")
+    @patch("odoo_gen_utils.validation.docker_runner._run_compose")
+    @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
+    def test_log_in_stderr_also_parsed(
+        self,
+        mock_available: MagicMock,
+        mock_run: MagicMock,
+        mock_teardown: MagicMock,
+        module_dir: Path,
+        compose_file: Path,
+    ) -> None:
+        """Log output in stderr (not stdout) is still parsed correctly."""
+        mock_available.return_value = True
+        stderr_log = (
+            "2026-03-02 10:00:00,000 1 INFO test_db "
+            "odoo.addons.test_mod.tests.test_model: test_read ... ok\n"
+            "2026-03-02 10:00:00,100 1 INFO test_db "
+            "odoo.addons.test_mod.tests.test_model: Ran 1 tests in 0.1s\n"
+        )
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="", returncode=0),
+            MagicMock(stdout="", stderr=stderr_log, returncode=0),
+        ]
+
+        result = docker_run_tests(module_dir, compose_file=compose_file)
+
+        assert result.success is True
+        assert len(result.data) == 1
+        assert result.data[0].test_name == "test_read"
+        assert result.data[0].passed is True
+
+
+# --- Module name validation tests ---
+
+
+class TestModuleNameValidation:
+    """SEC-09: Module name is validated before use in Docker env."""
+
+    @patch("odoo_gen_utils.validation.docker_runner._teardown")
+    @patch("odoo_gen_utils.validation.docker_runner._run_compose")
+    @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
+    def test_invalid_module_name_rejected_install(
+        self,
+        mock_available: MagicMock,
+        mock_run: MagicMock,
+        mock_teardown: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Install rejects module with invalid name (starts with uppercase)."""
+        mock_available.return_value = True
+        bad_mod = tmp_path / "BadModule"
+        bad_mod.mkdir()
+
+        result = docker_install_module(bad_mod, compose_file=tmp_path / "c.yml")
+        assert result.success is False
+        assert any("invalid" in e.lower() for e in result.errors)
+
+    @patch("odoo_gen_utils.validation.docker_runner._teardown")
+    @patch("odoo_gen_utils.validation.docker_runner._run_compose")
+    @patch("odoo_gen_utils.validation.docker_runner.check_docker_available")
+    def test_invalid_module_name_rejected_tests(
+        self,
+        mock_available: MagicMock,
+        mock_run: MagicMock,
+        mock_teardown: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Run tests rejects module with invalid name (special chars)."""
+        mock_available.return_value = True
+        bad_mod = tmp_path / "my-module!"
+        bad_mod.mkdir()
+
+        result = docker_run_tests(bad_mod, compose_file=tmp_path / "c.yml")
+        assert result.success is False
+        assert any("invalid" in e.lower() for e in result.errors)

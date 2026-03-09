@@ -28,6 +28,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from odoo_gen_utils.registry import ModelRegistry
 
+# Mapping of relative file path -> parsed AST tree, built once in Phase 2
+# and reused by Phase 3 checks to avoid redundant file I/O and parsing.
+AstCache = dict[str, ast.Module]
+
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -154,13 +158,38 @@ def _get_inherited_fields(
 # ---------------------------------------------------------------------------
 
 
+def _iter_py_trees(
+    module_dir: Path,
+    ast_cache: AstCache | None = None,
+) -> list[tuple[str, ast.Module]]:
+    """Yield (relative_path, ast_tree) for all Python files in module_dir.
+
+    Uses *ast_cache* when available to avoid redundant parsing.
+    Returns a list (not generator) so callers can iterate multiple times.
+    """
+    results: list[tuple[str, ast.Module]] = []
+    for py_file in module_dir.rglob("*.py"):
+        rel = str(py_file.relative_to(module_dir))
+        if ast_cache is not None and rel in ast_cache:
+            results.append((rel, ast_cache[rel]))
+        else:
+            try:
+                source = py_file.read_text(encoding="utf-8")
+                tree = ast.parse(source, filename=rel)
+            except (SyntaxError, OSError):
+                continue
+            results.append((rel, tree))
+    return results
+
+
 def _parse_python_file(
-    py_path: Path, module_dir: Path
+    py_path: Path, module_dir: Path, ast_cache: AstCache | None = None,
 ) -> tuple[list[_ParsedModel], list[str] | None]:
     """Parse a Python file for model definitions.
 
     Returns (models, error_or_none).
     If syntax error, returns ([], error_message).
+    Populates *ast_cache* with successfully parsed trees.
     """
     source = py_path.read_text(encoding="utf-8")
     rel = str(py_path.relative_to(module_dir))
@@ -168,6 +197,9 @@ def _parse_python_file(
         tree = ast.parse(source, filename=rel)
     except SyntaxError as exc:
         return [], [f"Python syntax error in {rel}: {exc.msg} (line {exc.lineno})"]
+
+    if ast_cache is not None:
+        ast_cache[rel] = tree
 
     models: list[_ParsedModel] = []
     imports: list[str] = []
@@ -952,8 +984,14 @@ def _bare_field_names_in_for_body(
         if not (isinstance(node.iter, ast.Name) and node.iter.id == "self"):
             continue
 
-        # Get the loop variable name (e.g., 'rec', 'record')
-        loop_var = node.target.id if isinstance(node.target, ast.Name) else None
+        # Get the loop variable name(s) (e.g., 'rec', or 'idx, rec' for tuple unpacking)
+        loop_vars: set[str] = set()
+        if isinstance(node.target, ast.Name):
+            loop_vars.add(node.target.id)
+        elif isinstance(node.target, ast.Tuple):
+            for elt in node.target.elts:
+                if isinstance(elt, ast.Name):
+                    loop_vars.add(elt.id)
 
         # Collect all names that are assigned to (Store context) inside the loop
         assigned_names: set[str] = set()
@@ -970,7 +1008,7 @@ def _bare_field_names_in_for_body(
                 # Skip: not a model field, or is loop var, or is 'self', or common builtins
                 if name not in model_fields:
                     continue
-                if name == loop_var or name == "self":
+                if name in loop_vars or name == "self":
                     continue
                 # Skip common builtins/imports that might match field names
                 if name in {"True", "False", "None", "super", "len", "sum", "min", "max", "abs", "int", "float", "str", "list", "dict", "set", "range", "print", "type", "isinstance", "hasattr", "getattr"}:
@@ -1007,6 +1045,7 @@ def _read_sidecar_targets(module_dir: Path) -> dict[str, list[str]]:
 def _check_e7(
     module_dir: Path,
     module_models: dict[str, _ParsedModel],
+    ast_cache: AstCache | None = None,
 ) -> list[ValidationIssue]:
     """E7: Missing self iteration in multi-record method.
 
@@ -1016,14 +1055,7 @@ def _check_e7(
     """
     issues: list[ValidationIssue] = []
 
-    for py_file in module_dir.rglob("*.py"):
-        rel = str(py_file.relative_to(module_dir))
-        try:
-            source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=rel)
-        except (SyntaxError, OSError):
-            continue  # E1 already caught syntax errors
-
+    for rel, tree in _iter_py_trees(module_dir, ast_cache):
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -1059,6 +1091,7 @@ def _check_e7(
 def _check_e8(
     module_dir: Path,
     module_models: dict[str, _ParsedModel],
+    ast_cache: AstCache | None = None,
 ) -> list[ValidationIssue]:
     """E8: Compute method doesn't set target field.
 
@@ -1068,14 +1101,7 @@ def _check_e8(
     issues: list[ValidationIssue] = []
     sidecar_targets = _read_sidecar_targets(module_dir)
 
-    for py_file in module_dir.rglob("*.py"):
-        rel = str(py_file.relative_to(module_dir))
-        try:
-            source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=rel)
-        except (SyntaxError, OSError):
-            continue
-
+    for rel, tree in _iter_py_trees(module_dir, ast_cache):
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -1101,7 +1127,17 @@ def _check_e8(
                         target_fields = [inferred]
 
                 if not target_fields:
-                    continue  # Can't determine targets, skip
+                    issues.append(ValidationIssue(
+                        code="W8",
+                        severity="warning",
+                        file=rel,
+                        line=stmt.lineno,
+                        message=(
+                            f"Cannot determine target field(s) for compute "
+                            f"method '{method_name}' — E8 check skipped"
+                        ),
+                    ))
+                    continue
 
                 # Check which targets are assigned in the method body
                 assigned = _get_assigned_fields_in_method(stmt)
@@ -1125,6 +1161,7 @@ def _check_e8(
 def _check_e9(
     module_dir: Path,
     module_models: dict[str, _ParsedModel],
+    ast_cache: AstCache | None = None,
 ) -> list[ValidationIssue]:
     """E9: Constraint method doesn't raise ValidationError.
 
@@ -1133,14 +1170,7 @@ def _check_e9(
     """
     issues: list[ValidationIssue] = []
 
-    for py_file in module_dir.rglob("*.py"):
-        rel = str(py_file.relative_to(module_dir))
-        try:
-            source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=rel)
-        except (SyntaxError, OSError):
-            continue
-
+    for rel, tree in _iter_py_trees(module_dir, ast_cache):
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -1172,6 +1202,7 @@ def _check_e9(
 def _check_e10(
     module_dir: Path,
     module_models: dict[str, _ParsedModel],
+    ast_cache: AstCache | None = None,
 ) -> list[ValidationIssue]:
     """E10: Bare field access without record variable.
 
@@ -1181,14 +1212,7 @@ def _check_e10(
     """
     issues: list[ValidationIssue] = []
 
-    for py_file in module_dir.rglob("*.py"):
-        rel = str(py_file.relative_to(module_dir))
-        try:
-            source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=rel)
-        except (SyntaxError, OSError):
-            continue
-
+    for rel, tree in _iter_py_trees(module_dir, ast_cache):
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -1223,6 +1247,7 @@ def _check_e10(
 def _check_e11(
     module_dir: Path,
     module_models: dict[str, _ParsedModel],
+    ast_cache: AstCache | None = None,
 ) -> list[ValidationIssue]:
     """E11: Wrong mapped/filtered syntax.
 
@@ -1231,14 +1256,7 @@ def _check_e11(
     """
     issues: list[ValidationIssue] = []
 
-    for py_file in module_dir.rglob("*.py"):
-        rel = str(py_file.relative_to(module_dir))
-        try:
-            source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=rel)
-        except (SyntaxError, OSError):
-            continue
-
+    for rel, tree in _iter_py_trees(module_dir, ast_cache):
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -1268,6 +1286,7 @@ def _check_e11(
 def _check_e12(
     module_dir: Path,
     module_models: dict[str, _ParsedModel],
+    ast_cache: AstCache | None = None,
 ) -> list[ValidationIssue]:
     """E12: write()/create()/unlink() inside @api.depends method.
 
@@ -1276,14 +1295,7 @@ def _check_e12(
     """
     issues: list[ValidationIssue] = []
 
-    for py_file in module_dir.rglob("*.py"):
-        rel = str(py_file.relative_to(module_dir))
-        try:
-            source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=rel)
-        except (SyntaxError, OSError):
-            continue
-
+    for rel, tree in _iter_py_trees(module_dir, ast_cache):
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -1340,6 +1352,7 @@ def _has_super_call(func: ast.FunctionDef) -> bool:
 def _check_e13(
     module_dir: Path,
     module_models: dict[str, _ParsedModel],
+    ast_cache: AstCache | None = None,
 ) -> list[ValidationIssue]:
     """E13: Override method (create/write) doesn't call super().
 
@@ -1347,14 +1360,7 @@ def _check_e13(
     """
     issues: list[ValidationIssue] = []
 
-    for py_file in module_dir.rglob("*.py"):
-        rel = str(py_file.relative_to(module_dir))
-        try:
-            source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=rel)
-        except (SyntaxError, OSError):
-            continue
-
+    for rel, tree in _iter_py_trees(module_dir, ast_cache):
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -1385,6 +1391,7 @@ def _check_e13(
 def _check_w5(
     module_dir: Path,
     module_models: dict[str, _ParsedModel],
+    ast_cache: AstCache | None = None,
 ) -> list[ValidationIssue]:
     """W5: Action method modifies state without checking current state.
 
@@ -1394,14 +1401,7 @@ def _check_w5(
     """
     issues: list[ValidationIssue] = []
 
-    for py_file in module_dir.rglob("*.py"):
-        rel = str(py_file.relative_to(module_dir))
-        try:
-            source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=rel)
-        except (SyntaxError, OSError):
-            continue
-
+    for rel, tree in _iter_py_trees(module_dir, ast_cache):
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -1486,18 +1486,12 @@ def _references_state_attr(node: ast.expr) -> bool:
 def _check_e15(
     module_dir: Path,
     module_models: dict[str, _ParsedModel],
+    ast_cache: AstCache | None = None,
 ) -> list[ValidationIssue]:
     """E15: Cron method ``_cron_*`` missing ``@api.model`` decorator."""
     issues: list[ValidationIssue] = []
 
-    for py_file in module_dir.rglob("*.py"):
-        rel = str(py_file.relative_to(module_dir))
-        try:
-            source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=rel)
-        except (SyntaxError, OSError):
-            continue
-
+    for rel, tree in _iter_py_trees(module_dir, ast_cache):
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -1528,6 +1522,7 @@ def _check_e15(
 def _check_e16(
     module_dir: Path,
     module_models: dict[str, _ParsedModel],
+    ast_cache: AstCache | None = None,
 ) -> list[ValidationIssue]:
     """E16: Exclusion zone violation -- template code outside markers modified.
 
@@ -1936,6 +1931,8 @@ def semantic_validate(
     result.errors.extend(e2_issues)
 
     # --- Phase 2: Parse valid files ---
+    # Build AST cache during parsing so Phase 3 checks reuse parsed trees.
+    ast_cache: AstCache = {}
     module_models: dict[str, _ParsedModel] = {}
     all_imports: list[str] = []
 
@@ -1943,7 +1940,7 @@ def semantic_validate(
         rel = str(py_file.relative_to(output_dir))
         if rel in failed_py:
             continue  # Short-circuit: skip files that failed E1
-        models, _err = _parse_python_file(py_file, output_dir)
+        models, _err = _parse_python_file(py_file, output_dir, ast_cache)
         for m in models:
             module_models[m.model_name] = m
             all_imports.extend(m.imports)
@@ -1971,31 +1968,36 @@ def semantic_validate(
     result.errors.extend(_check_e6(output_dir, module_models, parsed_xmls))
 
     # E7: Missing self iteration
-    result.errors.extend(_check_e7(output_dir, module_models))
+    result.errors.extend(_check_e7(output_dir, module_models, ast_cache=ast_cache))
 
-    # E8: Compute doesn't set target field
-    result.errors.extend(_check_e8(output_dir, module_models))
+    # E8: Compute doesn't set target field (also emits W8 when targets unknown)
+    e8_issues = _check_e8(output_dir, module_models, ast_cache=ast_cache)
+    for issue in e8_issues:
+        if issue.severity == "warning":
+            result.warnings.append(issue)
+        else:
+            result.errors.append(issue)
 
     # E9: Constraint doesn't raise ValidationError
-    result.errors.extend(_check_e9(output_dir, module_models))
+    result.errors.extend(_check_e9(output_dir, module_models, ast_cache=ast_cache))
 
     # E10: Bare field access in for-loop body
-    result.errors.extend(_check_e10(output_dir, module_models))
+    result.errors.extend(_check_e10(output_dir, module_models, ast_cache=ast_cache))
 
     # E11: Wrong mapped/filtered syntax
-    result.errors.extend(_check_e11(output_dir, module_models))
+    result.errors.extend(_check_e11(output_dir, module_models, ast_cache=ast_cache))
 
     # E12: write/create/unlink in compute
-    result.errors.extend(_check_e12(output_dir, module_models))
+    result.errors.extend(_check_e12(output_dir, module_models, ast_cache=ast_cache))
 
     # E13: Override method missing super() call
-    result.errors.extend(_check_e13(output_dir, module_models))
+    result.errors.extend(_check_e13(output_dir, module_models, ast_cache=ast_cache))
 
     # E15: Cron method missing @api.model
-    result.errors.extend(_check_e15(output_dir, module_models))
+    result.errors.extend(_check_e15(output_dir, module_models, ast_cache=ast_cache))
 
     # E16: Exclusion zone violation (skeleton diff)
-    result.errors.extend(_check_e16(output_dir, module_models))
+    result.errors.extend(_check_e16(output_dir, module_models, ast_cache=ast_cache))
 
     # W1: Comodel references
     result.warnings.extend(_check_w1(module_models, known_models, registry))
@@ -2013,7 +2015,7 @@ def semantic_validate(
     result.warnings.extend(_check_w4(parsed_xmls, module_models))
 
     # W5: Action method modifies state without checking
-    result.warnings.extend(_check_w5(output_dir, module_models))
+    result.warnings.extend(_check_w5(output_dir, module_models, ast_cache=ast_cache))
 
     # E17: Extension xpath field references + W6: Unknown base model
     e17_errors, w6_warnings = _check_e17(output_dir, known_models, registry)

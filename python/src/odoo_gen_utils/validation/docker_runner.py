@@ -9,14 +9,32 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 from odoo_gen_utils.validation.log_parser import parse_install_log, parse_test_log
 from odoo_gen_utils.validation.types import InstallResult, Result, TestResult
 
 logger = logging.getLogger(__name__)
+
+_VALID_MODULE_NAME = re.compile(r"[a-z][a-z0-9_]+$")
+
+
+def _validate_module_name(name: str) -> str | None:
+    """Validate an Odoo module name.
+
+    Returns None if valid, or an error message if invalid.
+    """
+    if not _VALID_MODULE_NAME.fullmatch(name):
+        return (
+            f"Invalid module name '{name}': must start with a lowercase letter "
+            f"and contain only lowercase letters, digits, and underscores"
+        )
+    return None
 
 
 def check_docker_available() -> bool:
@@ -90,28 +108,83 @@ def _run_compose(
 def _teardown(compose_file: Path, env: dict[str, str]) -> None:
     """Tear down Docker containers and volumes.
 
-    Runs 'docker compose down -v --remove-orphans'. This function
-    catches all exceptions because teardown must never raise.
+    Runs 'docker compose down -v --remove-orphans' with up to 3 retry
+    attempts using exponential backoff. Logs to stderr on final failure.
+    This function never raises.
     """
-    try:
-        cmd = [
-            "docker",
-            "compose",
-            "-f",
-            str(compose_file),
-            "down",
-            "-v",
-            "--remove-orphans",
-        ]
-        merged_env = {**os.environ, **env}
-        subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=60,
-            env=merged_env,
-        )
-    except Exception:
-        logger.warning("Failed to tear down Docker containers", exc_info=True)
+    cmd = [
+        "docker",
+        "compose",
+        "-f",
+        str(compose_file),
+        "down",
+        "-v",
+        "--remove-orphans",
+    ]
+    merged_env = {**os.environ, **env}
+    max_attempts = 3
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=60,
+                env=merged_env,
+            )
+            return  # Success — exit immediately
+        except Exception:
+            if attempt < max_attempts:
+                backoff = 2 ** (attempt - 1)  # 1s, 2s
+                logger.warning(
+                    "Teardown attempt %d/%d failed, retrying in %ds",
+                    attempt,
+                    max_attempts,
+                    backoff,
+                    exc_info=True,
+                )
+                time.sleep(backoff)
+            else:
+                logger.error(
+                    "Teardown failed after %d attempts — containers/volumes may be leaked",
+                    max_attempts,
+                    exc_info=True,
+                )
+                print(
+                    f"ERROR: Docker teardown failed after {max_attempts} attempts. "
+                    f"Run 'docker compose -f {compose_file} down -v' manually.",
+                    file=sys.stderr,
+                )
+
+
+def _start_db_with_retry(
+    compose_file: Path,
+    env: dict[str, str],
+    max_attempts: int = 3,
+    timeout: int = 120,
+) -> None:
+    """Start the database service with retry and teardown between attempts.
+
+    Raises the last exception if all attempts fail.
+    """
+    for attempt in range(1, max_attempts + 1):
+        try:
+            _run_compose(compose_file, ["up", "-d", "--wait", "db"], env, timeout=timeout)
+            return  # Success
+        except Exception:
+            if attempt < max_attempts:
+                backoff = 2 ** (attempt - 1)  # 1s, 2s
+                logger.warning(
+                    "DB startup attempt %d/%d failed, tearing down and retrying in %ds",
+                    attempt,
+                    max_attempts,
+                    backoff,
+                    exc_info=True,
+                )
+                _teardown(compose_file, env)
+                time.sleep(backoff)
+            else:
+                raise
 
 
 def docker_install_module(
@@ -140,15 +213,18 @@ def docker_install_module(
         compose_file = get_compose_file()
 
     module_name = module_path.name
+    name_error = _validate_module_name(module_name)
+    if name_error:
+        return Result.fail(name_error)
+
     env = {
         "MODULE_PATH": str(module_path.resolve()),
         "MODULE_NAME": module_name,
     }
 
     try:
-        # Start only the database service to avoid a second Odoo process
-        # conflicting with the install runner on the same database.
-        _run_compose(compose_file, ["up", "-d", "--wait", "db"], env, timeout=120)
+        # Start only the database service with retry for transient failures.
+        _start_db_with_retry(compose_file, env)
 
         # Install in a fresh container (no entrypoint server conflict).
         result = _run_compose(
@@ -216,15 +292,18 @@ def docker_run_tests(
         compose_file = get_compose_file()
 
     module_name = module_path.name
+    name_error = _validate_module_name(module_name)
+    if name_error:
+        return Result.fail(name_error)
+
     env = {
         "MODULE_PATH": str(module_path.resolve()),
         "MODULE_NAME": module_name,
     }
 
     try:
-        # Start only the database service to avoid a second Odoo process
-        # conflicting with the test runner on the same database.
-        _run_compose(compose_file, ["up", "-d", "--wait", "db"], env, timeout=120)
+        # Start only the database service with retry for transient failures.
+        _start_db_with_retry(compose_file, env)
 
         # Run tests in a fresh container (no entrypoint server conflict).
         # --test-tags filters to only this module's tests, avoiding the
