@@ -233,8 +233,8 @@ class TestDockerInstallTeardown:
 
         result = docker_install_module(module_dir, compose_file=compose_file)
 
-        # Teardown is called during DB startup retries AND in the finally block
-        assert mock_teardown.call_count >= 1
+        # 2 teardowns from _start_db_with_retry retries + 1 from finally block
+        assert mock_teardown.call_count == 3
         assert isinstance(result, Result)
         assert result.success is False
 
@@ -337,8 +337,8 @@ class TestDockerRunTestsTeardown:
 
         result = docker_run_tests(module_dir, compose_file=compose_file)
 
-        # Teardown is called during DB startup retries AND in the finally block
-        assert mock_teardown.call_count >= 1
+        # 2 teardowns from _start_db_with_retry retries + 1 from finally block
+        assert mock_teardown.call_count == 3
         assert isinstance(result, Result)
         assert result.success is False
 

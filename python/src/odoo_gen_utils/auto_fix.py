@@ -14,6 +14,8 @@ DFIX-01: 3 new Docker fix functions (xml_parse_error, missing_acl, manifest_load
 from __future__ import annotations
 
 import ast
+import csv
+import io
 import logging
 import re
 from collections import defaultdict
@@ -1059,9 +1061,6 @@ def fix_missing_acl(module_path: Path, error_output: str) -> bool:
 
     if not missing_models:
         return False
-
-    import csv
-    import io
 
     # Build new CSV content using csv.writer for proper escaping
     buf = io.StringIO()

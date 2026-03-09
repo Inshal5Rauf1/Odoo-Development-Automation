@@ -12,6 +12,8 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 from odoo_gen_utils.validation.log_parser import parse_install_log, parse_test_log
@@ -110,9 +112,6 @@ def _teardown(compose_file: Path, env: dict[str, str]) -> None:
     attempts using exponential backoff. Logs to stderr on final failure.
     This function never raises.
     """
-    import sys
-    import time
-
     cmd = [
         "docker",
         "compose",
@@ -168,8 +167,6 @@ def _start_db_with_retry(
 
     Raises the last exception if all attempts fail.
     """
-    import time
-
     for attempt in range(1, max_attempts + 1):
         try:
             _run_compose(compose_file, ["up", "-d", "--wait", "db"], env, timeout=timeout)
