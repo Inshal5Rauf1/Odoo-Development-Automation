@@ -3,12 +3,53 @@
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
+from odoo_gen_utils.utils.copy import deep_copy_model
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_acyclic_states(levels: list[dict[str, Any]], model_name: str) -> None:
+    """Validate that the approval state graph has no cycles (BUG-M15).
+
+    Builds a directed graph from (from_state -> to_state) transitions and
+    checks for cycles using DFS. Raises ValueError if a cycle is detected.
+    """
+    # Build adjacency list: draft -> level[0].state, level[i].state -> level[i+1].state, ...
+    edges: dict[str, list[str]] = {}
+    prev_state = "draft"
+    for level in levels:
+        edges.setdefault(prev_state, []).append(level["state"])
+        prev_state = level["state"]
+    # Last level -> terminal
+    if levels:
+        edges.setdefault(levels[-1]["state"], []).append(levels[-1]["next"])
+
+    # DFS cycle detection
+    visited: set[str] = set()
+    in_stack: set[str] = set()
+
+    def _dfs(node: str) -> bool:
+        if node in in_stack:
+            return True  # Cycle found
+        if node in visited:
+            return False
+        visited.add(node)
+        in_stack.add(node)
+        for neighbor in edges.get(node, []):
+            if _dfs(neighbor):
+                return True
+        in_stack.discard(node)
+        return False
+
+    for state in edges:
+        if _dfs(state):
+            raise ValueError(
+                f"Circular approval states detected in model '{model_name}'. "
+                f"State graph must be acyclic. States: {list(edges.keys())}"
+            )
 
 
 @register_preprocessor(order=80, name="approval_patterns")
@@ -44,10 +85,19 @@ def _process_approval_patterns(spec: dict[str, Any]) -> dict[str, Any]:
             new_models.append(model)
             continue
 
-        # Shallow-copy model and deep-copy fields list
-        new_model = {**model, "fields": list(model.get("fields", []))}
-        approval = model["approval"]
-        levels = approval["levels"]
+        new_model = deep_copy_model(model)
+        approval = new_model["approval"]
+        levels = approval.get("levels", [])
+
+        # 0. Validate non-empty levels -- skip model with warning if empty
+        if not levels:
+            logger.warning(
+                "Model '%s' has approval block with empty levels -- skipping "
+                "approval enrichment. Define at least one approval level.",
+                model.get("name", "unknown"),
+            )
+            new_models.append(model)
+            continue
 
         # 1. Validate all roles exist in security_roles (skip if group explicit)
         for level in levels:
@@ -57,6 +107,9 @@ def _process_approval_patterns(spec: dict[str, Any]) -> dict[str, Any]:
                     f"Approval role '{role}' not found in security_roles. "
                     f"Available roles: {list(role_lookup.keys())}"
                 )
+
+        # 1b. Validate state graph is acyclic (BUG-M15)
+        _validate_acyclic_states(levels, model.get("name", "unknown"))
 
         # 2. Build state Selection with auto-prepended draft
         initial_label = approval.get("initial_label", "Draft")
@@ -92,6 +145,7 @@ def _process_approval_patterns(spec: dict[str, Any]) -> dict[str, Any]:
 
         # 5. Build action method specs -- one per level
         action_methods = []
+        escalation_configs = []
         for i, level in enumerate(levels):
             if i == 0:
                 from_state = "draft"
@@ -109,7 +163,7 @@ def _process_approval_patterns(spec: dict[str, Any]) -> dict[str, Any]:
                 "label", level.get("role", "").replace("_", " ").title()
             )
 
-            action_methods.append({
+            method_spec: dict[str, Any] = {
                 "name": f"action_approve_{level['state']}",
                 "from_state": from_state,
                 "to_state": level["state"],
@@ -117,7 +171,35 @@ def _process_approval_patterns(spec: dict[str, Any]) -> dict[str, Any]:
                 "group_xml_id": group_xml_id,
                 "role_label": role_label,
                 "button_label": f"Approve ({role_label})",
-            })
+            }
+
+            # FLAW-18: Conditional routing -- skip level if condition met
+            skip_if = level.get("skip_if")
+            if skip_if:
+                method_spec["skip_if"] = skip_if
+
+            # FLAW-18: Delegation -- allow delegating approval
+            if level.get("allow_delegation"):
+                method_spec["allow_delegation"] = True
+
+            action_methods.append(method_spec)
+
+            # FLAW-18: Escalation config per level
+            escalation = level.get("escalation")
+            if escalation:
+                escalate_to_role = escalation.get("escalate_to")
+                escalate_group = None
+                if escalate_to_role and escalate_to_role in role_lookup:
+                    escalate_group = (
+                        f"{module_name}.group_{module_name}_{escalate_to_role}"
+                    )
+                escalation_configs.append({
+                    "level_state": level["state"],
+                    "timeout_hours": escalation.get("timeout_hours", 48),
+                    "escalate_to_role": escalate_to_role,
+                    "escalate_to_group": escalate_group,
+                    "action_name": f"action_approve_{level['state']}",
+                })
 
         # 6. Build submit action (draft -> first level)
         first_level = levels[0]
@@ -182,16 +264,16 @@ def _process_approval_patterns(spec: dict[str, Any]) -> dict[str, Any]:
         new_model["approval_record_rules"] = record_rules
         new_model["needs_translate"] = True
 
+        # FLAW-18: Escalation config (cron-driven auto-escalation)
+        if escalation_configs:
+            new_model["approval_escalation_configs"] = escalation_configs
+            new_model["has_approval_escalation"] = True
+
         # 11. Add "approval" to override_sources["write"]
-        existing_sources = model.get("override_sources")
-        if existing_sources:
-            merged = defaultdict(set)
-            for key, sources in existing_sources.items():
-                merged[key].update(sources)
-            new_model["override_sources"] = merged
-        else:
-            new_model.setdefault("override_sources", defaultdict(set))
-        new_model["override_sources"]["write"].add("approval")
+        sources = new_model.get("override_sources", {})
+        write_set = set(sources.get("write", set()))
+        write_set.add("approval")
+        new_model["override_sources"] = {**sources, "write": write_set}
         new_model["has_write_override"] = True
 
         # 12. Add "approval" to record_rule_scopes
