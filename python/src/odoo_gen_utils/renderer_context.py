@@ -645,6 +645,18 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
             if ext.get("view_extensions"):
                 manifest_files.append(f"views/{ext_base_var}_views.xml")
 
+    # Phase 62: portal manifest files
+    has_portal = spec.get("has_portal", False)
+    if has_portal:
+        portal_pages = spec.get("portal_pages", [])
+        portal_view_files: set[str] = set()
+        for p in portal_pages:
+            if p.get("show_in_home", True):
+                portal_view_files.add("views/portal_home.xml")
+            portal_view_files.add(f"views/portal_{p['id']}.xml")
+        portal_view_files.add("security/portal_rules.xml")
+        manifest_files.extend(sorted(portal_view_files))
+
     ctx: dict[str, Any] = {
         "module_name": module_name,
         "module_title": spec.get("module_title", module_name.replace("_", " ").title()),
@@ -662,7 +674,7 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         "manifest_files": manifest_files,
         "has_wizards": bool(spec_wizards) or has_import_export,
         "spec_wizards": spec_wizards,
-        "has_controllers": bool(spec.get("controllers")),
+        "has_controllers": bool(spec.get("controllers")) or has_portal,
         "has_import_export": has_import_export,
         "import_export_wizards": import_export_wizards,
         "security_roles": spec.get("security_roles", []),
@@ -681,6 +693,8 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         # Phase 59: extension keys
         "extension_model_files": extension_model_files,
         "has_extensions": has_extensions,
+        # Phase 62: portal keys
+        "has_portal": has_portal,
     }
     # Phase 52: VERSION_GATES for Odoo version-conditional template rendering (DOMN-04)
     _VERSION_GATES: dict[str, dict[str, str]] = {

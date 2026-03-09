@@ -47,6 +47,77 @@ VALID_FIELD_TYPES: frozenset[str] = frozenset({
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Portal-level specs (Phase 62)
+# ---------------------------------------------------------------------------
+
+
+class PortalActionSpec(BaseModel):
+    """Specification for a portal page detail action (e.g., report download)."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    label: str = ""
+    type: str = "report"
+    report_ref: str = ""
+    states: list[str] = []
+
+
+class PortalFilterSpec(BaseModel):
+    """Specification for a portal page filter."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    field: str
+    label: str = ""
+
+
+class PortalPageSpec(BaseModel):
+    """Specification for a single portal page (detail or list)."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    id: str
+    type: str
+    model: str
+    route: str
+    title: str = ""
+    ownership: str
+    fields_visible: list[str] = []
+    fields_editable: list[str] = []
+    list_fields: list[str] = []
+    detail_route: str | None = None
+    detail_fields: list[str] = []
+    detail_actions: list[PortalActionSpec] = []
+    filters: list[PortalFilterSpec] = []
+    default_sort: str = "id desc"
+    show_in_home: bool = True
+    home_icon: str = "fa fa-file"
+    home_counter: bool = False
+    counter_domain: list | None = None
+
+    @field_validator("type")
+    @classmethod
+    def validate_page_type(cls, v: str) -> str:
+        allowed = {"detail", "list"}
+        if v not in allowed:
+            raise ValueError(
+                f"Portal page type must be one of {sorted(allowed)}, got '{v}'"
+            )
+        return v
+
+
+class PortalSpec(BaseModel):
+    """Specification for the portal section of a module spec."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    pages: list[PortalPageSpec] = []
+    auth: str = "portal"
+    menu_label: str = "Portal"
+
+
 class ChainStepSpec(BaseModel):
     """Specification for a single step in a computation chain."""
 
@@ -375,6 +446,7 @@ class ModuleSpec(BaseModel):
     cron_jobs: list[CronJobSpec] = []
     reports: list[ReportSpec] = []
     controllers: list[dict] | None = None
+    portal: PortalSpec | None = None
     dashboards: list[dict] = []
     relationships: list[dict] = []
     computation_chains: list[dict] = []

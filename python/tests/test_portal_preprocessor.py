@@ -264,5 +264,5 @@ class TestPortalPreprocessorRegistry:
         """Portal (95) runs after notifications (90) and before webhooks (100)."""
         entries = get_registered_preprocessors()
         orders_by_name = {e[1]: e[0] for e in entries}
-        assert orders_by_name.get("portal", 0) > orders_by_name.get("notifications", 0)
-        assert orders_by_name.get("portal", 0) < orders_by_name.get("webhooks", 0)
+        assert orders_by_name.get("portal", 0) > orders_by_name.get("notification_patterns", 0)
+        assert orders_by_name.get("portal", 0) < orders_by_name.get("webhook_patterns", 0)
