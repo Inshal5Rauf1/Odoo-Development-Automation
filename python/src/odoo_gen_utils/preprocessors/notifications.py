@@ -3,12 +3,48 @@
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
+from odoo_gen_utils.utils.copy import deep_copy_model
+from odoo_gen_utils.utils.validate import validate_identifier
 
 logger = logging.getLogger(__name__)
+
+# BUG-M17: Stable inter-preprocessor interface keys.
+# These are the keys that the approval preprocessor guarantees to set.
+# Other preprocessors should ONLY access approval data through these keys.
+_APPROVAL_INTERFACE_KEYS = frozenset({
+    "has_approval",
+    "approval_levels",
+    "approval_action_methods",
+    "approval_submit_action",
+    "approval_reject_action",
+    "approval_reset_action",
+    "approval_state_field_name",
+    "on_reject",
+    "reject_allowed_from",
+})
+
+
+def _get_approval_levels(model: dict[str, Any]) -> list[dict[str, Any]]:
+    """BUG-M17: Safely extract approval levels from a model dict.
+
+    Uses the stable interface key ``approval_levels`` set by the approval
+    preprocessor. Returns empty list if the model has no approval or
+    the key is missing.
+    """
+    if not model.get("has_approval"):
+        return []
+    return model.get("approval_levels", [])
+
+
+def _get_approval_block(model: dict[str, Any]) -> dict[str, Any]:
+    """BUG-M17: Safely extract the original approval config block.
+
+    Falls back to empty dict if not present.
+    """
+    return model.get("approval", {})
 
 # Technical/internal fields excluded from notification email body
 _NOTIFICATION_EXCLUDE_NAMES = frozenset({
@@ -50,6 +86,7 @@ def _resolve_recipient(
 
     if recipient.startswith("field:"):
         field_name = recipient[6:]
+        validate_identifier(field_name, "notification recipient field")
         return "{{ object." + field_name + ".email }}"
 
     if recipient.startswith("fixed:"):
@@ -141,12 +178,9 @@ def _process_notification_patterns(spec: dict[str, Any]) -> dict[str, Any]:
             new_models.append(model)
             continue
 
-        # Gather notify objects from the original approval block
-        # The approval block is on the *original* model (before approval preprocessor)
-        # but after approval preprocessing, model has approval_levels which are the
-        # same level dicts (with notify objects still present).
-        approval_levels = model.get("approval_levels", [])
-        approval_block = model.get("approval", {})
+        # BUG-M17: Use stable interface helpers instead of reading internals
+        approval_levels = _get_approval_levels(model)
+        approval_block = _get_approval_block(model)
 
         # Check if any level has notify, or if on_reject_notify is present
         level_notifies = [
@@ -162,13 +196,11 @@ def _process_notification_patterns(spec: dict[str, Any]) -> dict[str, Any]:
 
         has_any_notifications = True
 
-        # Shallow copy model + deep copy mutable lists
-        new_model = {
-            **model,
-            "approval_action_methods": [
-                {**m} for m in model.get("approval_action_methods", [])
-            ],
-        }
+        # H2 fix: Always deep-copy to avoid mutation leaks
+        new_model = deep_copy_model(model)
+        new_model["approval_action_methods"] = [
+            {**m} for m in model.get("approval_action_methods", [])
+        ]
         if model.get("approval_submit_action"):
             new_model["approval_submit_action"] = {**model["approval_submit_action"]}
         if model.get("approval_reject_action"):
@@ -188,6 +220,8 @@ def _process_notification_patterns(spec: dict[str, Any]) -> dict[str, Any]:
             level = approval_levels[level_idx]
             state_label = level.get("label", level["state"].replace("_", " ").title())
 
+            # FLAW-19: Dispatch metadata for actual mail sending
+            dispatch_method = notify.get("dispatch", "mail_template")
             template_entry = {
                 "xml_id": xml_id,
                 "name": template_name.replace("_", " ").title(),
@@ -196,13 +230,25 @@ def _process_notification_patterns(spec: dict[str, Any]) -> dict[str, Any]:
                 "email_to": email_to,
                 "body_intro": f"The record has been transitioned to {state_label}.",
                 "body_fields": body_fields,
+                "dispatch_method": dispatch_method,
             }
+            # FLAW-19: Add activity creation spec if dispatch uses activities
+            if dispatch_method == "mail_activity":
+                template_entry["activity_type_xmlref"] = notify.get(
+                    "activity_type", "mail.mail_activity_data_todo"
+                )
+                template_entry["activity_summary"] = notify.get(
+                    "activity_summary",
+                    f"Approval pending: {state_label}",
+                )
             notification_templates.append(template_entry)
 
             notification_sub = {
                 "template_xml_id": xml_id,
-                "send_mail": True,
+                "send_mail": dispatch_method == "mail_template",
+                "create_activity": dispatch_method == "mail_activity",
                 "email_to": email_to,
+                "dispatch_method": dispatch_method,
             }
 
             # Level 0 notify enriches submit action
@@ -223,6 +269,7 @@ def _process_notification_patterns(spec: dict[str, Any]) -> dict[str, Any]:
             email_to = _resolve_recipient(
                 on_reject_notify["recipients"], module_name, security_roles,
             )
+            reject_dispatch = on_reject_notify.get("dispatch", "mail_template")
             template_entry = {
                 "xml_id": xml_id,
                 "name": template_name.replace("_", " ").title(),
@@ -231,34 +278,62 @@ def _process_notification_patterns(spec: dict[str, Any]) -> dict[str, Any]:
                 "email_to": email_to,
                 "body_intro": "The record has been rejected.",
                 "body_fields": body_fields,
+                "dispatch_method": reject_dispatch,
             }
             notification_templates.append(template_entry)
 
             notification_sub = {
                 "template_xml_id": xml_id,
-                "send_mail": True,
+                "send_mail": reject_dispatch == "mail_template",
+                "create_activity": reject_dispatch == "mail_activity",
                 "email_to": email_to,
+                "dispatch_method": reject_dispatch,
             }
             if new_model.get("approval_reject_action"):
                 new_model["approval_reject_action"]["notification"] = notification_sub
 
         new_model["has_notifications"] = True
+        new_model["has_notification_dispatch"] = True
         new_model["needs_logger"] = True
         new_model["notification_templates"] = notification_templates
+
+        # FLAW-19: Build automated action specs for auto-dispatch
+        automated_actions = []
+        for tmpl in notification_templates:
+            if tmpl["dispatch_method"] == "mail_template":
+                automated_actions.append({
+                    "name": f"auto_send_{tmpl['xml_id']}",
+                    "type": "ir.actions.server",
+                    "model_name": model["name"],
+                    "template_xml_id": tmpl["xml_id"],
+                    "trigger": "on_write",
+                })
+        if automated_actions:
+            new_model["notification_automated_actions"] = automated_actions
 
         new_models.append(new_model)
 
     if not has_any_notifications:
         return spec
 
-    # Build new spec with updated depends
-    new_depends = list(spec.get("depends", []))
-    if "mail" not in new_depends:
-        new_depends.append("mail")
+    # Mail dep: Only inject "mail" when at least one notification uses
+    # mail_template dispatch. Activity-only notifications don't require it.
+    needs_mail = any(
+        tmpl.get("dispatch_method", "mail_template") == "mail_template"
+        for m in new_models
+        for tmpl in m.get("notification_templates", [])
+    )
 
-    return {
+    new_spec = {
         **spec,
         "models": new_models,
-        "depends": new_depends,
         "has_notification_models": True,
     }
+
+    if needs_mail:
+        new_depends = list(spec.get("depends", []))
+        if "mail" not in new_depends:
+            new_depends.append("mail")
+        new_spec["depends"] = new_depends
+
+    return new_spec
