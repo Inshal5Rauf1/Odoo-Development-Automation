@@ -406,3 +406,201 @@ class TestBulkWizardJsTemplate:
         assert "o_bulk_progress" in js
         assert "progress-bar" in js
         assert "progress-text" in js
+
+
+# ===========================================================================
+# render_bulk() Pipeline Stage Integration Tests
+# ===========================================================================
+
+
+class TestRenderBulkStage:
+    """Integration tests for render_bulk() pipeline stage."""
+
+    def test_render_bulk_returns_empty_when_no_bulk(self, tmp_path):
+        """render_bulk() returns Result.ok([]) when spec has no has_bulk_operations."""
+        from odoo_gen_utils.renderer import render_bulk
+
+        env = Environment(
+            loader=FileSystemLoader(str(TEMPLATES_DIR)),
+            undefined=StrictUndefined,
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        spec = {"module_name": "test_mod", "models": []}
+        ctx = {"module_name": "test_mod"}
+        result = render_bulk(env, spec, tmp_path, ctx)
+        assert result.success is True
+        assert result.data == []
+
+    def test_render_bulk_creates_wizard_py(self, tmp_path, bulk_spec_raw):
+        """render_bulk() creates wizard .py file in wizards/ directory."""
+        from odoo_gen_utils.renderer import render_bulk
+        from odoo_gen_utils.preprocessors.bulk_operations import _process_bulk_operations
+
+        env = Environment(
+            loader=FileSystemLoader(str(TEMPLATES_DIR)),
+            undefined=StrictUndefined,
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        spec = _process_bulk_operations(bulk_spec_raw)
+        ctx = {"module_name": "uni_admission"}
+        module_dir = tmp_path / "uni_admission"
+        module_dir.mkdir()
+        (module_dir / "wizards").mkdir(parents=True)
+        (module_dir / "views").mkdir(parents=True)
+
+        result = render_bulk(env, spec, module_dir, ctx)
+        assert result.success is True
+
+        # Check wizard .py files exist
+        wizard_var = _to_python_var("admission.bulk.admit.wizard")
+        assert (module_dir / "wizards" / f"{wizard_var}.py").exists()
+
+    def test_render_bulk_creates_wizard_line_py(self, tmp_path, bulk_spec_raw):
+        """render_bulk() creates wizard line .py file in wizards/ directory."""
+        from odoo_gen_utils.renderer import render_bulk
+        from odoo_gen_utils.preprocessors.bulk_operations import _process_bulk_operations
+
+        env = Environment(
+            loader=FileSystemLoader(str(TEMPLATES_DIR)),
+            undefined=StrictUndefined,
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        spec = _process_bulk_operations(bulk_spec_raw)
+        ctx = {"module_name": "uni_admission"}
+        module_dir = tmp_path / "uni_admission"
+        module_dir.mkdir()
+        (module_dir / "wizards").mkdir(parents=True)
+        (module_dir / "views").mkdir(parents=True)
+
+        result = render_bulk(env, spec, module_dir, ctx)
+        assert result.success is True
+
+        wizard_var = _to_python_var("admission.bulk.admit.wizard")
+        assert (module_dir / "wizards" / f"{wizard_var}_line.py").exists()
+
+    def test_render_bulk_creates_wizard_view_xml(self, tmp_path, bulk_spec_raw):
+        """render_bulk() creates wizard form view .xml in views/ directory."""
+        from odoo_gen_utils.renderer import render_bulk
+        from odoo_gen_utils.preprocessors.bulk_operations import _process_bulk_operations
+
+        env = Environment(
+            loader=FileSystemLoader(str(TEMPLATES_DIR)),
+            undefined=StrictUndefined,
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        spec = _process_bulk_operations(bulk_spec_raw)
+        ctx = {"module_name": "uni_admission"}
+        module_dir = tmp_path / "uni_admission"
+        module_dir.mkdir()
+        (module_dir / "wizards").mkdir(parents=True)
+        (module_dir / "views").mkdir(parents=True)
+
+        result = render_bulk(env, spec, module_dir, ctx)
+        assert result.success is True
+
+        wizard_var = _to_python_var("admission.bulk.admit.wizard")
+        assert (module_dir / "views" / f"{wizard_var}_wizard_form.xml").exists()
+
+    def test_render_bulk_creates_js_file(self, tmp_path, bulk_spec_raw):
+        """render_bulk() creates bulk_progress.js in static/src/js/."""
+        from odoo_gen_utils.renderer import render_bulk
+        from odoo_gen_utils.preprocessors.bulk_operations import _process_bulk_operations
+
+        env = Environment(
+            loader=FileSystemLoader(str(TEMPLATES_DIR)),
+            undefined=StrictUndefined,
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        spec = _process_bulk_operations(bulk_spec_raw)
+        ctx = {"module_name": "uni_admission"}
+        module_dir = tmp_path / "uni_admission"
+        module_dir.mkdir()
+        (module_dir / "wizards").mkdir(parents=True)
+        (module_dir / "views").mkdir(parents=True)
+
+        result = render_bulk(env, spec, module_dir, ctx)
+        assert result.success is True
+
+        assert (module_dir / "static" / "src" / "js" / "bulk_progress.js").exists()
+
+    def test_render_bulk_updates_wizards_init(self, tmp_path, bulk_spec_raw):
+        """render_bulk() updates wizards/__init__.py with both wizard and line imports."""
+        from odoo_gen_utils.renderer import render_bulk
+        from odoo_gen_utils.preprocessors.bulk_operations import _process_bulk_operations
+
+        env = Environment(
+            loader=FileSystemLoader(str(TEMPLATES_DIR)),
+            undefined=StrictUndefined,
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        spec = _process_bulk_operations(bulk_spec_raw)
+        ctx = {"module_name": "uni_admission"}
+        module_dir = tmp_path / "uni_admission"
+        module_dir.mkdir()
+        (module_dir / "wizards").mkdir(parents=True)
+        (module_dir / "views").mkdir(parents=True)
+
+        render_bulk(env, spec, module_dir, ctx)
+
+        init_path = module_dir / "wizards" / "__init__.py"
+        assert init_path.exists()
+        init_content = init_path.read_text()
+
+        wizard_var = _to_python_var("admission.bulk.admit.wizard")
+        assert f"from . import {wizard_var}" in init_content
+        assert f"from . import {wizard_var}_line" in init_content
+
+    def test_render_bulk_multiple_operations(self, tmp_path, bulk_spec_raw):
+        """render_bulk() handles multiple bulk operations (creates files for each)."""
+        from odoo_gen_utils.renderer import render_bulk
+        from odoo_gen_utils.preprocessors.bulk_operations import _process_bulk_operations
+
+        env = Environment(
+            loader=FileSystemLoader(str(TEMPLATES_DIR)),
+            undefined=StrictUndefined,
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        spec = _process_bulk_operations(bulk_spec_raw)
+        ctx = {"module_name": "uni_admission"}
+        module_dir = tmp_path / "uni_admission"
+        module_dir.mkdir()
+        (module_dir / "wizards").mkdir(parents=True)
+        (module_dir / "views").mkdir(parents=True)
+
+        result = render_bulk(env, spec, module_dir, ctx)
+        assert result.success is True
+
+        # Both ops should generate files
+        admit_var = _to_python_var("admission.bulk.admit.wizard")
+        challan_var = _to_python_var("fee.bulk.challan.wizard")
+
+        assert (module_dir / "wizards" / f"{admit_var}.py").exists()
+        assert (module_dir / "wizards" / f"{challan_var}.py").exists()
+        assert (module_dir / "views" / f"{admit_var}_wizard_form.xml").exists()
+        assert (module_dir / "views" / f"{challan_var}_wizard_form.xml").exists()
+
+
+class TestStageNamesUpdate:
+    """Tests for STAGE_NAMES constant update."""
+
+    def test_stage_names_has_14_entries(self):
+        """STAGE_NAMES has 14 entries with bulk as 14th."""
+        from odoo_gen_utils.renderer import STAGE_NAMES
+
+        assert len(STAGE_NAMES) == 14
+        assert STAGE_NAMES[13] == "bulk"
+
+    def test_stage_names_bulk_after_portal(self):
+        """bulk comes after portal in STAGE_NAMES."""
+        from odoo_gen_utils.renderer import STAGE_NAMES
+
+        portal_idx = STAGE_NAMES.index("portal")
+        bulk_idx = STAGE_NAMES.index("bulk")
+        assert bulk_idx == portal_idx + 1
