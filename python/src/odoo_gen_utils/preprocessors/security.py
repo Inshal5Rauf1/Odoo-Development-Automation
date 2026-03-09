@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
@@ -123,10 +122,17 @@ def _security_detect_record_rule_scopes(model: dict[str, Any]) -> list[str]:
     - 'department': if field named department_id exists
     - 'company': if field named company_id (Many2one) exists
 
-    If model has 'record_rules' key, use that instead (override).
+    If model has 'record_rules' key with a list of strings, use that (override).
+    If model has 'record_rules' key with a list of dicts, those are custom rules
+    handled separately -- still auto-detect scopes.
     """
-    if model.get("record_rules") is not None:
-        return list(model["record_rules"])
+    rr = model.get("record_rules")
+    if rr is not None:
+        # If it's a list of strings, it's scope overrides
+        if rr and isinstance(rr[0], str):
+            return list(rr)
+        # If it's a list of dicts, those are custom rules (handled in template);
+        # still auto-detect standard scopes
 
     fields = model.get("fields", [])
     scopes: list[str] = []
@@ -151,16 +157,104 @@ def _security_detect_record_rule_scopes(model: dict[str, Any]) -> list[str]:
     return scopes
 
 
+def _security_build_record_rule_bindings(
+    spec: dict[str, Any],
+    roles: list[dict[str, Any]],
+    module_name: str,
+) -> dict[str, Any]:
+    """Build record_rule_bindings on each model for template rendering.
+
+    For each scope, determines which role's group to bind the rule to:
+    - 'ownership'/'department' -> lowest role (index 0)
+    - 'company' -> global (no group binding)
+    - 'approval' -> handled by approval preprocessor (pass-through)
+    - Custom rules from model's record_rules list of dicts -> resolved
+
+    Also processes custom record rules defined as dicts on models.
+
+    Pure function.
+    """
+    lowest_role = roles[0] if roles else None
+    highest_role = next((r for r in roles if r.get("is_highest")), roles[-1] if roles else None)
+    role_lookup = {r["name"]: r for r in roles}
+
+    new_models = []
+    for model in spec.get("models", []):
+        bindings: dict[str, str] = {}
+        for scope in model.get("record_rule_scopes", []):
+            if scope in ("ownership", "department"):
+                if lowest_role:
+                    bindings[scope] = lowest_role["xml_id"]
+            elif scope == "company":
+                bindings[scope] = "__global__"
+            # 'approval' scope is handled by approval preprocessor
+
+        enriched = {**model, "record_rule_bindings": bindings}
+
+        # Process custom record rules (list of dicts on model)
+        raw_rules = model.get("record_rules")
+        if raw_rules and isinstance(raw_rules, list) and raw_rules and isinstance(raw_rules[0], dict):
+            custom_rules = []
+            for rule in raw_rules:
+                resolved = {**rule}
+                # Resolve group reference
+                group_ref = rule.get("group")
+                if group_ref and group_ref in role_lookup:
+                    resolved["group_xml_id"] = f"{module_name}.{role_lookup[group_ref]['xml_id']}"
+                elif group_ref and "." in group_ref:
+                    resolved["group_xml_id"] = group_ref
+                elif group_ref:
+                    resolved["group_xml_id"] = f"{module_name}.group_{module_name}_{group_ref}"
+                # Generate xml_id if not provided
+                if "xml_id" not in resolved:
+                    model_var = _to_python_var(model["name"])
+                    rule_name = _to_python_var(rule.get("name", "custom"))
+                    resolved["xml_id"] = f"rule_{model_var}_{rule_name}"
+                custom_rules.append(resolved)
+            enriched["custom_record_rules"] = custom_rules
+
+        new_models.append(enriched)
+
+    return {**spec, "models": new_models}
+
+
+def _resolve_group_ref(
+    raw: str, module_name: str, role_names: set[str]
+) -> str:
+    """Resolve a single group reference to a full external ID.
+
+    Handles:
+    - Full external IDs (containing '.') -- returned as-is
+    - Bare role names ('manager') -- resolved to module.group_module_role
+    - Unknown names -- returned as-is (template will render it literally)
+    """
+    if "." in raw:
+        return raw
+    if raw in role_names:
+        return f"{module_name}.group_{module_name}_{raw}"
+    return raw
+
+
+def _resolve_groups_value(
+    groups_val: str, module_name: str, role_names: set[str]
+) -> str:
+    """Resolve a comma-separated groups value, handling each ref individually."""
+    parts = [p.strip() for p in groups_val.split(",") if p.strip()]
+    resolved = [_resolve_group_ref(p, module_name, role_names) for p in parts]
+    return ",".join(resolved)
+
+
 def _security_enrich_fields(
     spec: dict[str, Any],
     roles: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Enrich model fields with groups= attribute for sensitive/restricted fields.
 
-    - sensitive:true fields without explicit groups get highest role group
-    - Bare role name in groups (e.g. 'manager') resolved to full external ID
-    - Full external IDs (containing '.') are left as-is
-    - Non-sensitive fields without groups are unchanged
+    Resolution order for each field:
+    1. Explicit ``field_security`` mapping on the model (field_name -> role/ref)
+    2. ``groups`` value already on the field (bare role names resolved)
+    3. ``sensitive: true`` without groups -> defaults to highest role group
+    4. Comma-separated groups (e.g. 'manager,auditor') -> each part resolved
 
     Pure function -- does NOT mutate the input spec.
     """
@@ -170,22 +264,28 @@ def _security_enrich_fields(
 
     new_models = []
     for model in spec.get("models", []):
+        # Per-model field_security overrides: {field_name: "role_or_ref"}
+        field_security = model.get("field_security", {})
+
         new_fields = []
         for field in model.get("fields", []):
             enriched = {**field}
-            groups_val = field.get("groups")
+            fname = field.get("name", "")
 
-            if field.get("sensitive") and not groups_val:
-                # Default to highest role group
+            # Priority 1: explicit field_security mapping
+            if fname in field_security:
+                enriched["groups"] = _resolve_groups_value(
+                    field_security[fname], module_name, role_names
+                )
+            elif field.get("groups"):
+                # Priority 2: resolve existing groups value
+                enriched["groups"] = _resolve_groups_value(
+                    field["groups"], module_name, role_names
+                )
+            elif field.get("sensitive") and not field.get("groups"):
+                # Priority 3: sensitive fields default to highest role
                 if highest_role:
                     enriched["groups"] = f"{module_name}.{highest_role['xml_id']}"
-            elif groups_val:
-                if "." in groups_val:
-                    # Full external ID -- keep as-is
-                    pass
-                elif groups_val in role_names:
-                    # Bare role name -- resolve to full external ID
-                    enriched["groups"] = f"{module_name}.group_{module_name}_{groups_val}"
 
             new_fields.append(enriched)
         new_models.append({**model, "fields": new_fields})
@@ -310,6 +410,7 @@ def _inject_legacy_security(spec: dict[str, Any]) -> dict[str, Any]:
     result = {**spec, "security_roles": merged_roles, "models": enriched_models}
     result = _security_enrich_fields(result, merged_roles)
     result = _security_auto_fix_views(result)
+    result = _security_build_record_rule_bindings(result, merged_roles, module_name)
     return result
 
 
@@ -359,4 +460,5 @@ def _process_security_patterns(spec: dict[str, Any]) -> dict[str, Any]:
     result = {**spec, "security_roles": merged_roles, "models": enriched_models}
     result = _security_enrich_fields(result, merged_roles)
     result = _security_auto_fix_views(result)
+    result = _security_build_record_rule_bindings(result, merged_roles, module_name)
     return result

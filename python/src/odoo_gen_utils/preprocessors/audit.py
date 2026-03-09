@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
 from odoo_gen_utils.renderer_utils import _to_class
+from odoo_gen_utils.utils.copy import deep_copy_model, merge_override_source
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,8 @@ def _build_audit_log_model(
         "chatter": False,
         "audit": False,
         "record_rule_scopes": [],
+        "has_export_method": True,
+        "export_formats": ["csv", "json"],
         "fields": [
             {
                 "name": "res_model",
@@ -58,6 +60,18 @@ def _build_audit_log_model(
                 "readonly": True,
             },
             {
+                "name": "old_values",
+                "type": "Json",
+                "string": "Old Values",
+                "readonly": True,
+            },
+            {
+                "name": "new_values",
+                "type": "Json",
+                "string": "New Values",
+                "readonly": True,
+            },
+            {
                 "name": "user_id",
                 "type": "Many2one",
                 "comodel_name": "res.users",
@@ -77,6 +91,29 @@ def _build_audit_log_model(
                 "string": "Operation",
                 "required": True,
                 "readonly": True,
+            },
+            {
+                "name": "timestamp",
+                "type": "Datetime",
+                "string": "Timestamp",
+                "required": True,
+                "readonly": True,
+                "index": True,
+                "default": "fields.Datetime.now",
+            },
+            {
+                "name": "ip_address",
+                "type": "Char",
+                "string": "IP Address",
+                "readonly": True,
+                "size": 45,
+            },
+            {
+                "name": "field_names",
+                "type": "Char",
+                "string": "Changed Fields",
+                "readonly": True,
+                "help": "Comma-separated list of changed field names",
             },
         ],
     }
@@ -116,8 +153,7 @@ def _process_audit_patterns(spec: dict[str, Any]) -> dict[str, Any]:
             new_models.append(model)
             continue
 
-        # Shallow-copy model and deep-copy fields list
-        new_model = {**model, "fields": list(model.get("fields", []))}
+        new_model = deep_copy_model(model)
 
         # Build exclude set
         spec_excludes = set(model.get("audit_exclude", []))
@@ -139,17 +175,16 @@ def _process_audit_patterns(spec: dict[str, Any]) -> dict[str, Any]:
         new_model["audit_exclude"] = sorted(all_excludes)
         new_model["has_write_override"] = True
 
-        # Add "audit" to override_sources["write"] -- preserve existing sources
-        existing_sources = model.get("override_sources")
-        if existing_sources:
-            # Copy the defaultdict and its sets
-            merged = defaultdict(set)
-            for key, sources in existing_sources.items():
-                merged[key].update(sources)
-            new_model["override_sources"] = merged
-        else:
-            new_model.setdefault("override_sources", defaultdict(set))
-        new_model["override_sources"]["write"].add("audit")
+        # Audit config: retention policy and export settings
+        audit_config = model.get("audit") if isinstance(model.get("audit"), dict) else {}
+        new_model["audit_retention_days"] = audit_config.get("retention_days", 365 * 7)
+        new_model["audit_track_ip"] = audit_config.get("track_ip", True)
+        new_model["audit_track_old_values"] = audit_config.get("track_old_values", True)
+
+        # Add "audit" to override_sources for write and create+unlink
+        merge_override_source(new_model, "write", "audit")
+        merge_override_source(new_model, "create", "audit")
+        new_model["has_create_override"] = True
 
         new_models.append(new_model)
 

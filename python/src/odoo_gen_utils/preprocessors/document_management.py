@@ -43,6 +43,10 @@ for rec in self:
 _ACTION_VERIFY_BODY = """\
 \"\"\"Verify the document as authentic.\"\"\"
 self.ensure_one()
+if self.verification_state == 'verified':
+    raise UserError(
+        _("Document '%s' is already verified. Reset to pending first.") % self.name
+    )
 self.write({
     'verification_state': 'verified',
     'verified_by': self.env.uid,
@@ -301,6 +305,58 @@ def _build_document_document_model(
             },
         ])
 
+    # Classification fields
+    enable_classification = config.get("enable_classification", True)
+    if enable_classification:
+        fields.extend([
+            {
+                "name": "classification",
+                "type": "Selection",
+                "string": "Classification",
+                "default": "internal",
+                "selection": [
+                    ("public", "Public"),
+                    ("internal", "Internal"),
+                    ("confidential", "Confidential"),
+                    ("restricted", "Restricted"),
+                ],
+                "tracking": True,
+            },
+            {
+                "name": "access_groups",
+                "type": "Char",
+                "string": "Access Groups",
+                "help": "Comma-separated group XML IDs for restricted access",
+            },
+        ])
+
+    # Expiry fields
+    enable_expiry = config.get("enable_expiry", True)
+    if enable_expiry:
+        fields.extend([
+            {
+                "name": "expiry_date",
+                "type": "Date",
+                "string": "Expiry Date",
+                "tracking": True,
+                "help": "Document expires after this date",
+            },
+            {
+                "name": "is_expired",
+                "type": "Boolean",
+                "string": "Expired",
+                "compute": "_compute_is_expired",
+                "store": True,
+                "depends": ["expiry_date"],
+            },
+            {
+                "name": "renewal_reminder_days",
+                "type": "Integer",
+                "string": "Reminder (days before expiry)",
+                "default": 30,
+            },
+        ])
+
     # Notes field (always present)
     fields.append({
         "name": "notes",
@@ -454,11 +510,14 @@ def _process_document_management(spec: dict[str, Any]) -> dict[str, Any]:
 
     new_spec: dict[str, Any] = {**spec, "models": new_models}
 
-    # Inject mail dependency
-    depends = list(new_spec.get("depends", []))
-    if "mail" not in depends:
-        depends.append("mail")
-    new_spec["depends"] = depends
+    # Inject mail dependency only when document model uses mail.thread
+    doc_model = new_models[-1]  # document.document is last appended
+    uses_mail = "mail.thread" in (doc_model.get("inherit") or [])
+    if uses_mail:
+        depends = list(new_spec.get("depends", []))
+        if "mail" not in depends:
+            depends.append("mail")
+        new_spec["depends"] = depends
 
     # Inject security roles
     new_spec["security_roles"] = _inject_security_roles(
