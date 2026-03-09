@@ -2,6 +2,8 @@
 import base64
 import io
 
+from markupsafe import escape
+
 from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
@@ -55,12 +57,12 @@ class {{ wizard_class }}(models.TransientModel):
         html = "<table class='table table-sm'>"
         html += "<thead><tr>"
         for cell in rows[0]:
-            html += "<th>%s</th>" % (cell or "")
+            html += f"<th>{escape(cell or '')}</th>"
         html += "</tr></thead><tbody>"
         for row in rows[1:]:
             html += "<tr>"
             for cell in row:
-                html += "<td>%s</td>" % (cell or "")
+                html += f"<td>{escape(cell or '')}</td>"
             html += "</tr>"
         html += "</tbody></table>"
         self.write({"state": "preview", "preview_html": html})
@@ -112,6 +114,32 @@ class {{ wizard_class }}(models.TransientModel):
         if not headers:
             return {}
         return dict(zip(headers, row))
+
+    def action_download_template(self):
+        """Generate and download an empty xlsx template with correct headers."""
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Template"
+        export_fields = [
+{%- for field in export_fields %}
+            "{{ field.name }}",
+{%- endfor %}
+        ]
+        ws.append(export_fields)
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        attachment = self.env["ir.attachment"].create({
+            "name": "{{ model_description }}_template.xlsx",
+            "datas": base64.b64encode(output.read()),
+            "type": "binary",
+        })
+        return {
+            "type": "ir.actions.act_url",
+            "url": "/web/content/%d?download=true" % attachment.id,
+            "target": "new",
+        }
 
     def action_export(self):
         """Export all records of {{ model_name }} to xlsx and return download action."""

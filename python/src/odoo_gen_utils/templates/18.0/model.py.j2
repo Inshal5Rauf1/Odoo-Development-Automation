@@ -36,7 +36,7 @@ class {{ model_name | to_class }}(models.Model):
     currency_id = fields.Many2one(
         comodel_name="res.currency",
         string="Currency",
-        default=lambda self: self.env.company.currency_id,
+        default={{ currency_default | default("lambda self: self.env.company.currency_id") }},
     )
 {% endif %}
 {% for field in fields %}
@@ -203,7 +203,7 @@ class {{ model_name | to_class }}(models.Model):
 
     @api.model
     def _default_{{ field.name }}(self):
-        return self.env["ir.sequence"].next_by_code("{{ model_name }}") or "/"
+        return self.env["ir.sequence"].next_by_code("{{ field.sequence_code | default(model_name) }}") or "/"
 {% endfor %}
 {% for field in computed_fields %}
 
@@ -257,10 +257,11 @@ class {{ model_name | to_class }}(models.Model):
 {% endfor %}
 {% if is_cacheable %}
 
-    @tools.ormcache('self.env.uid', '{{ cache_lookup_field }}')
-    def _get_by_{{ cache_lookup_field }}(self, {{ cache_lookup_field }}):
-        """Cached lookup by {{ cache_lookup_field }} for near-static reference data."""
-        return self.search([('{{ cache_lookup_field }}', '=', {{ cache_lookup_field }})], limit=1).id
+    @tools.ormcache('self.env.uid'{% for ck in cache_key_fields | default([cache_lookup_field]) %}, '{{ ck }}'{% endfor %})
+    def _get_cached(self{% for ck in cache_key_fields | default([cache_lookup_field]) %}, {{ ck }}{% endfor %}):
+        """Cached lookup by {{ cache_key_fields | default([cache_lookup_field]) | join(', ') }} for near-static reference data."""
+        domain = [{% for ck in cache_key_fields | default([cache_lookup_field]) %}('{{ ck }}', '=', {{ ck }}){% if not loop.last %}, {% endif %}{% endfor %}]
+        return self.search(domain, limit=1).id
 {% endif %}
 {% if has_create_override %}
 

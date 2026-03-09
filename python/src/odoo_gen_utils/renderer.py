@@ -720,6 +720,18 @@ def render_reports(
                 module_dir / "views" / f"{model_xml}_pivot.xml",
                 dash_ctx,
             ))
+            if dashboard.get("kanban") or dashboard.get("kanban_fields"):
+                created.append(render_template(
+                    env, "view_kanban.xml.j2",
+                    module_dir / "views" / f"{model_xml}_kanban.xml",
+                    dash_ctx,
+                ))
+            if dashboard.get("cohort_date_start"):
+                created.append(render_template(
+                    env, "view_cohort.xml.j2",
+                    module_dir / "views" / f"{model_xml}_cohort.xml",
+                    dash_ctx,
+                ))
         return Result.ok(created)
     except Exception as exc:
         return Result.fail(f"render_reports failed: {exc}")
