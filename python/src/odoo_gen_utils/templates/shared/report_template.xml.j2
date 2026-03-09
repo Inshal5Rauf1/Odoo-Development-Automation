@@ -80,9 +80,7 @@
                             <p class="text-muted"><small>{{ report.footer_text }}</small></p>
                         </div>
 {% endif %}
-{% if not doc_last %}
-                        <div style="page-break-after: always;"/>
-{% endif %}
+                        <div t-if="not doc_last" style="page-break-after: always;"/>
                     </div>
                 </t>
             </t>
