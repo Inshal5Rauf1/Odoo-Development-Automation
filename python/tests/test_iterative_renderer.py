@@ -34,15 +34,22 @@ def _load_fixture(name: str) -> dict:
 
 
 def _do_full_render(spec: dict, output_dir: Path) -> list[Path]:
-    """Run render_module with no_context7 + no verifier for fast testing."""
+    """Run render_module with no_context7 + no verifier for fast testing.
+
+    Includes ManifestHook to save manifest (needed for conflict detection).
+    """
+    from odoo_gen_utils.hooks import ManifestHook
     from odoo_gen_utils.renderer import get_template_dir, render_module
 
+    module_name = spec.get("module_name", "unknown")
+    hooks = [ManifestHook(module_path=output_dir / module_name)]
     files, warnings = render_module(
         spec,
         get_template_dir(),
         output_dir,
         verifier=None,
         no_context7=True,
+        hooks=hooks,
     )
     return files
 

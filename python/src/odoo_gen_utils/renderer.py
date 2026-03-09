@@ -879,6 +879,8 @@ def render_module(
     fresh_context7: bool = False,
     hooks: list[RenderHook] | None = None,
     resume_from: "GenerationManifest | None" = None,
+    force: bool = False,
+    dry_run: bool = False,
 ) -> "tuple[list[Path], list[VerificationWarning]]":
     """Orchestrate rendering of a complete Odoo module via 11 named stage functions.
 
@@ -890,16 +892,65 @@ def render_module(
         hooks: Optional list of RenderHook observers. None = zero overhead.
         resume_from: Optional GenerationManifest from a previous run. Completed
             stages with intact artifacts are skipped.
+        force: Force full regeneration, ignore spec stash.
+        dry_run: Show what would change without writing files.
 
     Returns:
         Tuple of (created_files, verification_warnings).
     """
+    # Phase 60: Capture raw spec BEFORE validation for iterative stash comparison
+    import copy
+    spec_raw = copy.deepcopy(spec)
+
     # Phase 47: Validate spec against Pydantic schema BEFORE any processing
     validated = validate_spec(spec)
     spec = validated.model_dump(exclude_none=True)  # Convert back to dict for preprocessor pipeline
 
     # Phase 28: validate no circular dependencies BEFORE any preprocessing
     _validate_no_cycles(spec)
+
+    # Phase 60: Iterative mode detection
+    module_name_raw = spec.get("module_name", "unknown")
+    module_dir_early = output_dir / module_name_raw
+    iterative_mode = False
+    affected_stages: frozenset[str] | None = None
+    existing_manifest: "GenerationManifest | None" = None
+    diff_summary: dict[str, Any] = {}
+
+    if not force:
+        from odoo_gen_utils.iterative import (
+            compute_spec_diff,
+            determine_affected_stages as _determine_affected,
+            load_spec_stash,
+        )
+        old_spec = load_spec_stash(module_dir_early)
+        if old_spec is not None:
+            diff_result = compute_spec_diff(old_spec, spec_raw)
+            if diff_result is None:
+                _logger.info(
+                    "Spec unchanged. Nothing to do. Use --force to regenerate."
+                )
+                return ([], [])
+
+            affected = _determine_affected(diff_result, old_spec, spec_raw)
+            diff_summary = affected.diff_summary
+
+            if dry_run:
+                _logger.info(
+                    "Dry run: diff categories=%s, affected stages=%s",
+                    list(diff_summary.keys()),
+                    sorted(affected.stages),
+                )
+                return ([], [])
+
+            iterative_mode = True
+            affected_stages = affected.stages
+            existing_manifest = load_manifest(module_dir_early)
+            _logger.info(
+                "Iterative mode: %d categories, stages=%s",
+                len(diff_summary),
+                sorted(affected_stages),
+            )
 
     env = create_versioned_renderer(spec.get("odoo_version", "17.0"))
 
@@ -947,7 +998,7 @@ def render_module(
     created_files: list[Path] = []
 
     # Phase 54: Named stage tuples replace anonymous lambdas
-    stages: list[tuple[str, Callable[[], Result]]] = [
+    all_stages: list[tuple[str, Callable[[], Result]]] = [
         ("manifest", lambda: render_manifest(env, spec, module_dir, ctx)),
         ("models", lambda: render_models(env, spec, module_dir, ctx, verifier=verifier, warnings_out=all_warnings)),
         ("extensions", lambda: render_extensions(env, spec, module_dir, ctx)),
@@ -961,6 +1012,23 @@ def render_module(
         ("reports", lambda: render_reports(env, spec, module_dir, ctx)),
         ("controllers", lambda: render_controllers(env, spec, module_dir, ctx)),
     ]
+
+    # Phase 60: Filter stages in iterative mode
+    if iterative_mode and affected_stages is not None:
+        stages = [
+            (name, fn) for name, fn in all_stages
+            if name in affected_stages
+        ]
+        _logger.info(
+            "Iterative: running %d/%d stages: %s",
+            len(stages), len(all_stages),
+            [name for name, _ in stages],
+        )
+    else:
+        stages = all_stages
+
+    # Phase 60: Load conflict detection tools when iterative mode is active
+    skeleton_dir = output_dir / ".odoo-gen-skeleton" / module_name
 
     for stage_name, stage_fn in stages:
         # Phase 54: Resume -- skip completed stages with intact artifacts
@@ -995,12 +1063,57 @@ def render_module(
             notify_hooks(hooks, "on_stage_complete", module_name, stage_name, stage_result, stage_files)
             break
 
+        # Phase 60: Conflict detection + stub merge for iterative mode
+        if iterative_mode and existing_manifest is not None:
+            from odoo_gen_utils.iterative import (
+                detect_conflicts,
+                extract_filled_stubs,
+                inject_stubs_into,
+            )
+            conflicts = detect_conflicts(
+                existing_manifest, stage_files, module_dir, skeleton_dir,
+            )
+
+            # Handle stub-mergeable files: extract old stubs, inject into new
+            for rel_path in conflicts.stub_mergeable:
+                file_path = module_dir / rel_path
+                if file_path.exists() and file_path.suffix == ".py":
+                    try:
+                        current_lines = file_path.read_text(encoding="utf-8").splitlines()
+                        filled = extract_filled_stubs(current_lines)
+                        if filled:
+                            new_content = file_path.read_text(encoding="utf-8")
+                            merged = inject_stubs_into(new_content, filled)
+                            file_path.write_text(merged, encoding="utf-8")
+                            _logger.info("Auto-merged stubs in %s", rel_path)
+                    except Exception as exc:
+                        _logger.warning("Stub merge failed for %s: %s", rel_path, exc)
+
+            # Handle conflict files: write to .odoo-gen-pending/
+            pending_dir = module_dir / ".odoo-gen-pending"
+            for rel_path in conflicts.conflicts:
+                file_path = module_dir / rel_path
+                if file_path.exists():
+                    pending_path = pending_dir / rel_path
+                    pending_path.parent.mkdir(parents=True, exist_ok=True)
+                    # Copy the newly rendered version to pending
+                    shutil.copy2(file_path, pending_path)
+                    _logger.info("Conflict: %s -> .odoo-gen-pending/%s", rel_path, rel_path)
+
         stage_result = StageResult(
             status="complete", duration_ms=duration_ms, artifacts=stage_files,
         )
         session.record_stage(stage_name, stage_result)
         created_files.extend(result.data or [])
         notify_hooks(hooks, "on_stage_complete", module_name, stage_name, stage_result, stage_files)
+
+    # Phase 60: Merge iterative session with existing manifest for skipped stages
+    if iterative_mode and existing_manifest is not None:
+        for sname, sresult in existing_manifest.stages.items():
+            if sname not in session._stages:
+                session.record_stage(sname, StageResult(
+                    status="skipped", reason="iterative-unchanged",
+                ))
 
     # Phase 58: Skeleton copy for E16 baseline comparison
     try:
@@ -1037,5 +1150,12 @@ def render_module(
         models_registered=[m.get("model_name", "") for m in spec.get("models", [])],
     )
     notify_hooks(hooks, "on_render_complete", module_name, manifest)
+
+    # Phase 60: Save spec stash after successful generation
+    from odoo_gen_utils.iterative import save_spec_stash
+    try:
+        save_spec_stash(spec_raw, module_dir)
+    except Exception as exc:
+        _logger.warning("Failed to save spec stash: %s", exc)
 
     return created_files, all_warnings

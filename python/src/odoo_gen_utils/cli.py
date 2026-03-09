@@ -444,7 +444,9 @@ def _parse_module_dir_to_spec(
 @click.option("--fresh-context7", is_flag=True, default=False, help="Ignore Context7 cache, force re-query")
 @click.option("--skip-validation", is_flag=True, default=False, help="Skip semantic validation after rendering")
 @click.option("--resume", is_flag=True, default=False, help="Resume from last generation (skip completed stages)")
-def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_context7: bool, skip_validation: bool, resume: bool) -> None:
+@click.option("--force", is_flag=True, default=False, help="Full regeneration, ignore existing spec stash")
+@click.option("--dry-run", "dry_run", is_flag=True, default=False, help="Show what would change without writing files")
+def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_context7: bool, skip_validation: bool, resume: bool, force: bool, dry_run: bool) -> None:
     """Render a complete Odoo module from a JSON specification file."""
     from pydantic import ValidationError as PydanticValidationError
 
@@ -492,6 +494,7 @@ def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_
             spec, template_dir, output_path, verifier=verifier,
             no_context7=no_context7, fresh_context7=fresh_context7,
             hooks=render_hooks, resume_from=resume_manifest,
+            force=force, dry_run=dry_run,
         )
         for f in files:
             click.echo(str(f))
@@ -499,6 +502,19 @@ def render_module_cmd(spec_file: str, output_dir: str, no_context7: bool, fresh_
             click.echo(f"WARN [{w.check_type}] {w.subject}: {w.message}", err=True)
             if w.suggestion:
                 click.echo(f"  Suggestion: {w.suggestion}", err=True)
+
+        # Phase 60: Show pending conflicts summary
+        pending_dir = output_path / module_name / ".odoo-gen-pending"
+        if pending_dir.exists():
+            pending_files = [
+                str(f.relative_to(pending_dir))
+                for f in pending_dir.rglob("*") if f.is_file()
+            ]
+            if pending_files:
+                click.echo(f"\nPending conflicts ({len(pending_files)} files):", err=True)
+                for pf in pending_files:
+                    click.echo(f"  {pf}", err=True)
+                click.echo("Use 'odoo-gen resolve' to manage pending files.", err=True)
 
         # Logic Writer: generate stub report
         try:
