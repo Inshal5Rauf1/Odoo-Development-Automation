@@ -43,7 +43,7 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 ### Portal
 
 - [x] **PRTL-01**: Generate portal controllers inheriting portal.CustomerPortal with ir.http routes, authentication, and JSON serialization
-- [ ] **PRTL-02**: Generate QWeb portal templates inheriting portal.portal_my_home with portal menu items and page templates
+- [x] **PRTL-02**: Generate QWeb portal templates inheriting portal.portal_my_home with portal menu items and page templates
 - [x] **PRTL-03**: Generate portal-specific record rules restricting data to the portal user's linked records (e.g., parent sees only their child's data)
 
 ### Bulk Operations
@@ -100,7 +100,7 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 | CCHN-02 | Phase 61 | Complete |
 | CCHN-03 | Phase 61 | Complete |
 | PRTL-01 | Phase 62 | Complete |
-| PRTL-02 | Phase 62 | Pending |
+| PRTL-02 | Phase 62 | Complete |
 | PRTL-03 | Phase 62 | Complete |
 | BULK-01 | Phase 63 | Pending |
 | BULK-02 | Phase 63 | Pending |
