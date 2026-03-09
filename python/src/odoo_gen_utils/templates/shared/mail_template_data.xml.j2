@@ -9,7 +9,7 @@
         <field name="body_html" type="html">
             <![CDATA[
             <div style="margin: 0px; padding: 0px;">
-                <p>{{ template.body_intro }}</p>
+                <p>{{ template.body_intro | replace(']]>', ']]]]><![CDATA[>') }}</p>
                 <table style="border-collapse: collapse; width: 100%;">
 {% for field in template.body_fields %}
                     <tr>

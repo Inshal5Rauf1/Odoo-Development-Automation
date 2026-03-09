@@ -569,6 +569,11 @@ def _compute_manifest_data(
             dashboard_models_seen.add(model_xml)
             manifest_files.append(f"views/{model_xml}_graph.xml")
             manifest_files.append(f"views/{model_xml}_pivot.xml")
+            # Phase 63: kanban/cohort views (conditionally rendered by renderer.py)
+            if dashboard.get("kanban") or dashboard.get("kanban_fields"):
+                manifest_files.append(f"views/{model_xml}_kanban.xml")
+            if dashboard.get("cohort_date_start"):
+                manifest_files.append(f"views/{model_xml}_cohort.xml")
 
     manifest_files.append("views/menu.xml")
     manifest_files.extend(wizard_view_files)

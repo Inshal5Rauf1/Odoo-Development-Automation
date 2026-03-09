@@ -6,8 +6,8 @@
 
     <record id="seq_{{ module_name }}_{{ item.model_var }}" model="ir.sequence">
         <field name="name">{{ module_title }} {{ item.model.name | replace('.', ' ') | title }} Sequence</field>
-        <field name="code">{{ item.model.name }}</field>
-        <field name="prefix">{{ item.model.name.split('.')[0] | upper }}/%(year)s/%(month)s/</field>
+        <field name="code">{{ item.sequence_code | default(item.model.name) }}</field>
+        <field name="prefix">{{ item.sequence_prefix | default(item.model.name.split('.')[0] | upper + '/%(year)s/%(month)s/') }}</field>
         <field name="padding">5</field>
         <field name="number_next">1</field>
         <field name="number_increment">1</field>

@@ -109,9 +109,14 @@
 {% if field.name in sequence_field_names %}
                             <field name="{{ field.name }}"{% if state_field %} readonly="{{ state_field.name }} != 'draft'"{% endif %}/>
 {% elif field.type == 'Many2one' %}
+{% if field.no_create is defined and field.no_create %}
                             <field name="{{ field.name }}"
                                    options="{'no_create': True}"
                             />
+{% else %}
+                            <field name="{{ field.name }}"
+                            />
+{% endif %}
 {% else %}
                             <field name="{{ field.name }}"
                             />
@@ -128,9 +133,14 @@
 {% if field.name in sequence_field_names %}
                             <field name="{{ field.name }}"{% if state_field %} readonly="{{ state_field.name }} != 'draft'"{% endif %}/>
 {% elif field.type == 'Many2one' %}
+{% if field.no_create is defined and field.no_create %}
                             <field name="{{ field.name }}"
                                    options="{'no_create': True}"
                             />
+{% else %}
+                            <field name="{{ field.name }}"
+                            />
+{% endif %}
 {% else %}
                             <field name="{{ field.name }}"
                             />
@@ -154,7 +164,11 @@
                     <notebook>
                         <page string="{{ field.string | default(field.name | replace('_', ' ') | title) }}">
                             <field name="{{ field.name }}">
-                                <tree editable="bottom">
+{% if field.editable is defined and field.editable %}
+                                <tree editable="{{ field.editable }}">
+{% else %}
+                                <tree>
+{% endif %}
 {% for submodel in models %}
 {% if submodel.name == field.comodel_name %}
 {% for subfield in submodel.fields %}
