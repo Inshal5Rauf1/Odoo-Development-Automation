@@ -73,7 +73,7 @@ _logger = logging.getLogger("odoo-gen.renderer")
 
 STAGE_NAMES: list[str] = [
     "manifest", "models", "extensions", "views", "security", "mail_templates",
-    "wizards", "tests", "static", "cron", "reports", "controllers",
+    "wizards", "tests", "static", "cron", "reports", "controllers", "portal",
 ]
 
 
@@ -829,6 +829,131 @@ def render_controllers(
         return Result.fail(f"render_controllers failed: {exc}")
 
 
+def render_portal(
+    env: Environment,
+    spec: dict[str, Any],
+    module_dir: Path,
+    module_context: dict[str, Any],
+) -> "Result[list[Path]]":
+    """Render portal controller, QWeb templates, and record rules.
+
+    Generates:
+    - controllers/portal.py (CustomerPortal subclass)
+    - controllers/__init__.py updated with portal import
+    - views/portal_home.xml (home counter entries)
+    - views/portal_{page_id}.xml per page (list/detail/editable templates)
+    - security/portal_rules.xml (ownership-based record rules)
+
+    Returns Result.ok([]) when spec has no portal section.
+    """
+    try:
+        if not spec.get("has_portal"):
+            return Result.ok([])
+
+        created: list[Path] = []
+        module_name = module_context["module_name"]
+        portal_pages = spec.get("portal_pages", [])
+        portal_auth = spec.get("portal_auth", "portal")
+
+        # Build unique model metadata for domain helpers and rules
+        models_seen: dict[str, dict[str, Any]] = {}
+        editable_models: set[str] = set()
+        for page in portal_pages:
+            model = page["model"]
+            if model not in models_seen:
+                models_seen[model] = {
+                    "model": model,
+                    "model_var": _to_python_var(model),
+                    "model_class": _to_class(model),
+                    "ownership": page["ownership"],
+                }
+            if page.get("fields_editable"):
+                editable_models.add(model)
+
+        controller_class = _to_class(module_name) + "Portal"
+
+        portal_ctx = {
+            **module_context,
+            "controller_class": controller_class,
+            "portal_pages": portal_pages,
+            "portal_auth": portal_auth,
+            "portal_models": list(models_seen.values()),
+            "editable_models": editable_models,
+        }
+
+        # Render controller
+        created.append(render_template(
+            env, "portal_controller.py.j2",
+            module_dir / "controllers" / "portal.py",
+            portal_ctx,
+        ))
+
+        # Update controllers/__init__.py to import portal module
+        init_path = module_dir / "controllers" / "__init__.py"
+        init_path.parent.mkdir(parents=True, exist_ok=True)
+        existing_imports = ""
+        if init_path.exists():
+            existing_imports = init_path.read_text(encoding="utf-8")
+        if "from . import portal" not in existing_imports:
+            new_content = existing_imports.rstrip("\n")
+            if new_content:
+                new_content += "\n"
+            new_content += "from . import portal\n"
+            init_path.write_text(new_content, encoding="utf-8")
+        created.append(init_path)
+
+        # Render home counter template (one file with all home counter entries)
+        home_pages = [p for p in portal_pages if p.get("show_in_home", True)]
+        if home_pages:
+            created.append(render_template(
+                env, "portal_home_counter.xml.j2",
+                module_dir / "views" / "portal_home.xml",
+                portal_ctx,
+            ))
+
+        # Render per-page QWeb templates
+        for page in portal_pages:
+            page_ctx = {**portal_ctx, "page": page}
+            if page["type"] == "list":
+                # List page template
+                created.append(render_template(
+                    env, "portal_list.xml.j2",
+                    module_dir / "views" / f"portal_{page['id']}.xml",
+                    page_ctx,
+                ))
+                # Detail page template (if detail_route exists)
+                if page.get("detail_route"):
+                    created.append(render_template(
+                        env, "portal_detail.xml.j2",
+                        module_dir / "views" / f"portal_{page['id']}_detail.xml",
+                        page_ctx,
+                    ))
+            elif page["type"] == "detail":
+                if page.get("fields_editable"):
+                    created.append(render_template(
+                        env, "portal_detail_editable.xml.j2",
+                        module_dir / "views" / f"portal_{page['id']}.xml",
+                        page_ctx,
+                    ))
+                else:
+                    created.append(render_template(
+                        env, "portal_detail.xml.j2",
+                        module_dir / "views" / f"portal_{page['id']}.xml",
+                        page_ctx,
+                    ))
+
+        # Render portal record rules
+        created.append(render_template(
+            env, "portal_rules.xml.j2",
+            module_dir / "security" / "portal_rules.xml",
+            portal_ctx,
+        ))
+
+        return Result.ok(created)
+    except Exception as exc:
+        return Result.fail(f"render_portal failed: {exc}")
+
+
 def render_mail_templates(
     env: Environment,
     spec: dict[str, Any],
@@ -1011,6 +1136,7 @@ def render_module(
         ("cron", lambda: render_cron(env, spec, module_dir, ctx)),
         ("reports", lambda: render_reports(env, spec, module_dir, ctx)),
         ("controllers", lambda: render_controllers(env, spec, module_dir, ctx)),
+        ("portal", lambda: render_portal(env, spec, module_dir, ctx)),
     ]
 
     # Phase 60: Filter stages in iterative mode

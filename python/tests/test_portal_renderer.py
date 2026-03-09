@@ -495,3 +495,229 @@ class TestPortalRulesTemplate:
         assert "rule_portal_uni_enrollment_read" in output
         assert "rule_portal_fee_invoice_read" in output
         assert "rule_portal_exam_result_read" in output
+
+
+# ---------------------------------------------------------------------------
+# Test: render_portal() integration
+# ---------------------------------------------------------------------------
+
+
+class TestRenderPortalFunction:
+    """Verify render_portal() stage function produces all expected files."""
+
+    def test_render_portal_creates_controller_file(self, tmp_path):
+        """render_portal creates controllers/portal.py."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        result = render_portal(env, spec, module_dir, ctx)
+        assert result.success
+        assert (module_dir / "controllers" / "portal.py").exists()
+
+    def test_render_portal_creates_controllers_init(self, tmp_path):
+        """render_portal creates or updates controllers/__init__.py."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        result = render_portal(env, spec, module_dir, ctx)
+        assert result.success
+        init_path = module_dir / "controllers" / "__init__.py"
+        assert init_path.exists()
+        assert "from . import portal" in init_path.read_text()
+
+    def test_render_portal_creates_home_counter(self, tmp_path):
+        """render_portal creates views/portal_home.xml."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        result = render_portal(env, spec, module_dir, ctx)
+        assert result.success
+        assert (module_dir / "views" / "portal_home.xml").exists()
+
+    def test_render_portal_creates_list_pages(self, tmp_path):
+        """render_portal creates per-page list QWeb XML."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        result = render_portal(env, spec, module_dir, ctx)
+        assert result.success
+        assert (module_dir / "views" / "portal_student_enrollments.xml").exists()
+        assert (module_dir / "views" / "portal_student_fees.xml").exists()
+        assert (module_dir / "views" / "portal_student_results.xml").exists()
+
+    def test_render_portal_creates_detail_pages(self, tmp_path):
+        """render_portal creates detail QWeb XML for list pages with detail_route."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        result = render_portal(env, spec, module_dir, ctx)
+        assert result.success
+        assert (module_dir / "views" / "portal_student_enrollments_detail.xml").exists()
+        assert (module_dir / "views" / "portal_student_fees_detail.xml").exists()
+
+    def test_render_portal_creates_editable_detail(self, tmp_path):
+        """render_portal creates editable detail for profile page."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        result = render_portal(env, spec, module_dir, ctx)
+        assert result.success
+        assert (module_dir / "views" / "portal_student_profile.xml").exists()
+        content = (module_dir / "views" / "portal_student_profile.xml").read_text()
+        assert "csrf_token" in content
+
+    def test_render_portal_creates_rules(self, tmp_path):
+        """render_portal creates security/portal_rules.xml."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        result = render_portal(env, spec, module_dir, ctx)
+        assert result.success
+        rules_path = module_dir / "security" / "portal_rules.xml"
+        assert rules_path.exists()
+        content = rules_path.read_text()
+        assert "base.group_portal" in content
+        assert 'noupdate="1"' in content
+
+    def test_render_portal_noop_without_portal(self, tmp_path):
+        """render_portal returns ok([]) when spec has no portal."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = {"module_name": "test_mod", "models": []}
+        env = _make_env()
+        module_dir = tmp_path / "test_mod"
+        module_dir.mkdir()
+        ctx = {"module_name": "test_mod"}
+
+        result = render_portal(env, spec, module_dir, ctx)
+        assert result.success
+        assert result.data == []
+
+    def test_controller_content_has_customer_portal(self, tmp_path):
+        """Generated controller inherits CustomerPortal."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        render_portal(env, spec, module_dir, ctx)
+        content = (module_dir / "controllers" / "portal.py").read_text()
+        assert "CustomerPortal" in content
+        assert "_prepare_home_portal_values" in content
+
+    def test_controller_has_route_decorators(self, tmp_path):
+        """Generated controller has @http.route decorators."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        render_portal(env, spec, module_dir, ctx)
+        content = (module_dir / "controllers" / "portal.py").read_text()
+        assert "@http.route" in content
+        assert "'/my/enrollments'" in content
+
+    def test_qweb_home_has_portal_my_home(self, tmp_path):
+        """Generated home counter XML inherits portal.portal_my_home."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        render_portal(env, spec, module_dir, ctx)
+        content = (module_dir / "views" / "portal_home.xml").read_text()
+        assert "portal.portal_my_home" in content
+        assert "portal.portal_docs_entry" in content
+
+    def test_rules_has_correct_perms(self, tmp_path):
+        """Generated rules have explicit perm fields."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        render_portal(env, spec, module_dir, ctx)
+        content = (module_dir / "security" / "portal_rules.xml").read_text()
+        assert 'perm_read" eval="True"' in content
+        assert 'perm_write" eval="False"' in content
+
+    def test_render_portal_file_count(self, tmp_path):
+        """render_portal creates expected number of files."""
+        from odoo_gen_utils.renderer import render_portal
+
+        spec = _load_fixture()
+        env = _make_env()
+        module_dir = tmp_path / "uni_student_portal"
+        module_dir.mkdir()
+        ctx = _build_portal_context(spec)
+
+        result = render_portal(env, spec, module_dir, ctx)
+        assert result.success
+        # Expected: controller, init, home, 3 list pages, 2 detail pages,
+        # 1 editable page, 1 rules = 11 files
+        assert len(result.data) >= 10
+
+
+# ---------------------------------------------------------------------------
+# Test: STAGE_NAMES includes portal
+# ---------------------------------------------------------------------------
+
+
+class TestStageNamesIncludesPortal:
+    """Verify STAGE_NAMES has 13 entries with portal as last."""
+
+    def test_stage_count(self):
+        from odoo_gen_utils.renderer import STAGE_NAMES
+        assert len(STAGE_NAMES) == 13
+
+    def test_portal_after_controllers(self):
+        from odoo_gen_utils.renderer import STAGE_NAMES
+        assert STAGE_NAMES[-1] == "portal"
+        assert STAGE_NAMES[-2] == "controllers"

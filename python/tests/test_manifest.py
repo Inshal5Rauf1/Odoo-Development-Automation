@@ -441,14 +441,14 @@ class TestRenderModuleManifest:
         for name in STAGE_NAMES:
             assert name in manifest.stages
 
-    def test_stage_names_constant_has_all_12_stages(self):
-        """STAGE_NAMES constant lists all 12 stages (Phase 59: +extensions)."""
+    def test_stage_names_constant_has_all_13_stages(self):
+        """STAGE_NAMES constant lists all 13 stages (Phase 62: +portal)."""
         from odoo_gen_utils.renderer import STAGE_NAMES
 
-        assert len(STAGE_NAMES) == 12
+        assert len(STAGE_NAMES) == 13
         expected = [
             "manifest", "models", "extensions", "views", "security", "mail_templates",
-            "wizards", "tests", "static", "cron", "reports", "controllers",
+            "wizards", "tests", "static", "cron", "reports", "controllers", "portal",
         ]
         assert STAGE_NAMES == expected
 
@@ -598,8 +598,8 @@ class TestResumeSpecChanged:
             resume_from=old_manifest,
         )
 
-        # ALL 12 stages should have been called (full re-run, Phase 59: +extensions)
-        assert len(called_stages) == 12
+        # ALL 13 stages should have been called (full re-run, Phase 62: +portal)
+        assert len(called_stages) == 13
         assert called_stages == STAGE_NAMES
 
 
