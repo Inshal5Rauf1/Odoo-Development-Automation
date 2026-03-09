@@ -178,7 +178,7 @@ Plans:
 **Requirements**: MEXT-01, MEXT-02, MEXT-03
 **Success Criteria** (what must be TRUE):
   1. Generated _inherit model files correctly extend base Odoo models (e.g., _inherit = "hr.payslip") with new fields and proper super() call patterns in overridden methods
-  2. Generated xpath view XML injects fields into existing form/tree/search views from base modules at correct insertion points
+  2. Generated xpath view XML injects fields into existing form/tree views from base modules at correct insertion points
   3. Generated __manifest__.py includes the extended module in depends and the model registry validates the base module exists before generation proceeds
 **Plans:** 2/2 plans complete
 Plans:
@@ -219,7 +219,10 @@ Plans:
   1. Generated portal controllers inherit portal.CustomerPortal with ir.http routes, proper authentication decorators, and JSON serialization of record data
   2. Generated QWeb templates inherit portal.portal_my_home, add portal menu items, and render page templates with correct t-field/t-foreach directives
   3. Generated portal record rules restrict data access to the portal user's linked records (e.g., parent sees only their child's enrollment data) with correct domain expressions
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 62-01-PLAN.md — Pydantic schema + preprocessor (order=95) + E23 ownership path validation
+- [ ] 62-02-PLAN.md — 6 Jinja portal templates + render_portal() pipeline stage
 
 ### Phase 63: Bulk Operations
 **Goal**: Users can generate bulk operation patterns -- mass creation with batched post-processing, wizard-based batch operations, and chunked processing with progress notifications
@@ -243,8 +246,8 @@ Plans:
 | 58. Logic Writer Overrides & Actions | 2/2 | Complete    | 2026-03-08 |
 | 59. Module Extension Pattern | 2/2 | Complete    | 2026-03-08 |
 | 60. Iterative Refinement | 2/2 | Complete    | 2026-03-09 |
-| 61. Computed Chain Generator | 2/2 | Complete   | 2026-03-09 |
-| 62. Portal Controllers | 0/? | Not started | - |
+| 61. Computed Chain Generator | 2/2 | Complete    | 2026-03-09 |
+| 62. Portal Controllers | 0/2 | In progress | - |
 | 63. Bulk Operations | 0/? | Not started | - |
 
 ---
