@@ -160,11 +160,11 @@ class TestRegistryIntegration:
         yield
         clear_registry()
 
-    def test_registry_count_is_16(self):
-        """After full import, exactly 16 preprocessors are registered."""
+    def test_registry_count_is_17(self):
+        """After full import, exactly 17 preprocessors are registered."""
         entries = get_registered_preprocessors()
-        assert len(entries) == 16, (
-            f"Expected 16 registered preprocessors, got {len(entries)}: "
+        assert len(entries) == 17, (
+            f"Expected 17 registered preprocessors, got {len(entries)}: "
             f"{[(e[0], e[1]) for e in entries]}"
         )
 
@@ -172,11 +172,11 @@ class TestRegistryIntegration:
         """The order sequence matches the expected pipeline order."""
         entries = get_registered_preprocessors()
         orders = [e[0] for e in entries]
-        expected = [10, 12, 15, 22, 25, 27, 28, 30, 40, 50, 60, 70, 80, 90, 95, 100]
+        expected = [10, 12, 15, 22, 25, 27, 28, 30, 40, 50, 60, 70, 80, 85, 90, 95, 100]
         assert orders == expected, f"Expected {expected}, got {orders}"
 
     def test_auto_discovery_finds_all_modules(self):
-        """All 14 non-underscore .py files in preprocessors/ are importable."""
+        """All non-underscore .py files in preprocessors/ are importable."""
         import pkgutil
         from pathlib import Path
 
@@ -188,8 +188,8 @@ class TestRegistryIntegration:
             for _finder, name, _ispkg in pkgutil.iter_modules([pkg_path])
             if not name.startswith("_")
         ]
-        assert len(discovered) == 16, (
-            f"Expected 16 discoverable modules, got {len(discovered)}: {discovered}"
+        assert len(discovered) == 17, (
+            f"Expected 17 discoverable modules, got {len(discovered)}: {discovered}"
         )
 
     def test_run_preprocessors_callable(self):

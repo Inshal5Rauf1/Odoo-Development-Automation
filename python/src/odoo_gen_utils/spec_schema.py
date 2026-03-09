@@ -48,6 +48,54 @@ VALID_FIELD_TYPES: frozenset[str] = frozenset({
 
 
 # ---------------------------------------------------------------------------
+# Bulk operation specs (Phase 63)
+# ---------------------------------------------------------------------------
+
+
+class BulkWizardFieldSpec(BaseModel):
+    """Specification for an extra wizard field in a bulk operation."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    name: str
+    type: str
+    required: bool = False
+    comodel: str | None = None
+
+
+class BulkOperationSpec(BaseModel):
+    """Specification for a single bulk operation (state_transition, create_related, update_fields)."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    id: str
+    name: str
+    source_model: str
+    wizard_model: str
+    operation: str  # state_transition | create_related | update_fields
+    source_domain: list = []
+    target_state: str | None = None
+    action_method: str | None = None
+    create_model: str | None = None
+    create_fields: dict[str, str] = {}
+    wizard_fields: list[BulkWizardFieldSpec] = []
+    preview_fields: list[str] = []
+    side_effects: list[str] = []
+    batch_size: int | None = None
+    allow_partial: bool = True
+
+    @field_validator("operation")
+    @classmethod
+    def validate_operation_type(cls, v: str) -> str:
+        allowed = {"state_transition", "create_related", "update_fields"}
+        if v not in allowed:
+            raise ValueError(
+                f"operation must be one of {sorted(allowed)}, got '{v}'"
+            )
+        return v
+
+
+# ---------------------------------------------------------------------------
 # Portal-level specs (Phase 62)
 # ---------------------------------------------------------------------------
 
@@ -447,6 +495,7 @@ class ModuleSpec(BaseModel):
     reports: list[ReportSpec] = []
     controllers: list[dict] | None = None
     portal: PortalSpec | None = None
+    bulk_operations: list[BulkOperationSpec] = []
     dashboards: list[dict] = []
     relationships: list[dict] = []
     computation_chains: list[dict] = []

@@ -104,6 +104,9 @@ from odoo_gen_utils.preprocessors.notifications import (  # noqa: E402,F401
 from odoo_gen_utils.preprocessors.webhooks import (  # noqa: E402,F401
     _process_webhook_patterns,
 )
+from odoo_gen_utils.preprocessors.bulk_operations import (  # noqa: E402,F401
+    _process_bulk_operations,
+)
 from odoo_gen_utils.preprocessors.portal import (  # noqa: E402,F401
     _process_portal,
 )

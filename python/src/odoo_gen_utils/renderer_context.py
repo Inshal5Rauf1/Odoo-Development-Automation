@@ -645,6 +645,14 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
             if ext.get("view_extensions"):
                 manifest_files.append(f"views/{ext_base_var}_views.xml")
 
+    # Phase 63: bulk operation manifest files
+    has_bulk_operations = spec.get("has_bulk_operations", False)
+    if has_bulk_operations:
+        for bop in spec.get("bulk_operations", []):
+            wiz_var = _to_python_var(bop["wizard_model"])
+            manifest_files.append(f"views/{wiz_var}_wizard_form.xml")
+        manifest_files.append("static/src/js/bulk_progress.js")
+
     # Phase 62: portal manifest files
     has_portal = spec.get("has_portal", False)
     if has_portal:
@@ -695,6 +703,8 @@ def _build_module_context(spec: dict[str, Any], module_name: str) -> dict[str, A
         "has_extensions": has_extensions,
         # Phase 62: portal keys
         "has_portal": has_portal,
+        # Phase 63: bulk operation keys
+        "has_bulk_operations": has_bulk_operations,
     }
     # Phase 52: VERSION_GATES for Odoo version-conditional template rendering (DOMN-04)
     _VERSION_GATES: dict[str, dict[str, str]] = {
