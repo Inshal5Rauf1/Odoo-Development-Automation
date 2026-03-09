@@ -31,7 +31,7 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 ### Iterative Refinement
 
 - [x] **ITER-01**: Add field to existing generated module — read generation manifest, inject field into model, update view XML, re-validate, without regenerating unchanged files
-- [ ] **ITER-02**: Add model to existing generated module — create model file, update __init__.py, add views/security, update manifest depends, without regenerating existing models
+- [x] **ITER-02**: Add model to existing generated module — create model file, update __init__.py, add views/security, update manifest depends, without regenerating existing models
 - [x] **ITER-03**: Re-run only affected stages using generation manifest to detect what exists and model registry to validate new references
 
 ### Computed Chains
@@ -94,7 +94,7 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 | MEXT-02 | Phase 59 | Complete |
 | MEXT-03 | Phase 59 | Complete |
 | ITER-01 | Phase 60 | Complete |
-| ITER-02 | Phase 60 | Pending |
+| ITER-02 | Phase 60 | Complete |
 | ITER-03 | Phase 60 | Complete |
 | CCHN-01 | Phase 61 | Pending |
 | CCHN-02 | Phase 61 | Pending |

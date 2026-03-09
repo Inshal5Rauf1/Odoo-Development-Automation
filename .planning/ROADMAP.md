@@ -113,7 +113,7 @@
 - [x] **Phase 57: Logic Writer Computed & Constraints** - LLM generates _compute_*, _check_*, and validates output via semantic checker (completed 2026-03-08)
 - [x] **Phase 58: Logic Writer Overrides & Actions** - LLM generates create/write overrides, action_*, and _cron_* methods (completed 2026-03-08)
 - [x] **Phase 59: Module Extension Pattern** - Generate _inherit models, xpath view inheritance, and dependency validation (completed 2026-03-08)
-- [ ] **Phase 60: Iterative Refinement** - Add field/model to existing modules without full regeneration
+- [x] **Phase 60: Iterative Refinement** - Add field/model to existing modules without full regeneration (completed 2026-03-09)
 - [ ] **Phase 61: Computed Chain Generator** - Cross-model computed field chains with dependency ordering and cycle detection
 - [ ] **Phase 62: Portal Controllers** - Generate portal.CustomerPortal controllers, QWeb templates, and portal record rules
 - [ ] **Phase 63: Bulk Operations** - Generate model_create_multi, batch wizards, and chunked processing helpers
@@ -193,7 +193,7 @@ Plans:
   1. Adding a field to an existing model updates only the model file, relevant view XML, and security CSV -- other files remain untouched (verified by checksum or manifest comparison)
   2. Adding a new model creates its model file, updates __init__.py, adds views/security, and updates manifest depends -- existing model files are not regenerated
   3. Generation manifest tracks what exists, and only affected pipeline stages re-run (not the full pipeline) -- the model registry validates new references against existing models
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 60-01-PLAN.md — Iterative subpackage core: spec stash, diff-to-stage mapping, conflict detection, stub-zone merge
 - [ ] 60-02-PLAN.md — Renderer iterative mode, --force/--dry-run CLI flags, resolve command group
@@ -239,7 +239,7 @@ Plans:
 | 57. Logic Writer Computed & Constraints | 2/2 | Complete    | 2026-03-08 |
 | 58. Logic Writer Overrides & Actions | 2/2 | Complete    | 2026-03-08 |
 | 59. Module Extension Pattern | 2/2 | Complete    | 2026-03-08 |
-| 60. Iterative Refinement | 1/2 | In Progress|  |
+| 60. Iterative Refinement | 2/2 | Complete   | 2026-03-09 |
 | 61. Computed Chain Generator | 0/? | Not started | - |
 | 62. Portal Controllers | 0/? | Not started | - |
 | 63. Bulk Operations | 0/? | Not started | - |
