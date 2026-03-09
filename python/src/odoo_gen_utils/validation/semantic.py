@@ -5,9 +5,9 @@ manifest dependency gaps, and ORM pattern violations in rendered output
 files -- eliminating the Docker round-trip for the majority of
 generation bugs.
 
-22 checks total:
-  ERRORS (E1-E13, E15-E17, E23) -- generation is broken, will fail at install
-  WARNINGS (W1-W7) -- might be wrong, might be intentional
+25 checks total:
+  ERRORS (E1-E13, E15-E17, E23-E25) -- generation is broken, will fail at install
+  WARNINGS (W1-W8) -- might be wrong, might be intentional
 
 All stdlib: ast, xml.etree, csv, difflib, dataclasses, time, pathlib.
 """
@@ -2029,9 +2029,168 @@ def semantic_validate(
             else:
                 result.warnings.append(issue)
 
+    # E24/E25/W8: Bulk operation validation
+    if spec is not None:
+        result.errors.extend(_check_e24(output_dir, spec, registry))
+        result.errors.extend(_check_e25(output_dir, spec, registry))
+        result.warnings.extend(_check_w8(output_dir, spec, registry))
+
     elapsed = time.perf_counter() - start
     result.duration_ms = int(elapsed * 1000)
     return result
+
+
+# ---------------------------------------------------------------------------
+# E24: Bulk operation source_model validation
+# ---------------------------------------------------------------------------
+
+
+def _model_exists_in_spec(model_name: str, spec: dict[str, Any] | None) -> bool:
+    """Check if a model name exists in spec['models']."""
+    if spec is None:
+        return False
+    return any(m.get("name") == model_name for m in spec.get("models", []))
+
+
+def _model_exists_in_registry(
+    model_name: str, registry: "ModelRegistry | None"
+) -> bool:
+    """Check if a model name exists in registry."""
+    if registry is None:
+        return False
+    return registry.show_model(model_name) is not None
+
+
+def _check_e24(
+    output_dir: Path,
+    spec: dict[str, Any] | None = None,
+    registry: "ModelRegistry | None" = None,
+) -> list[ValidationIssue]:
+    """E24: Bulk operation source_model validation.
+
+    For each bulk operation, validates that source_model exists in
+    spec models or in the registry.
+    """
+    if spec is None:
+        return []
+    issues: list[ValidationIssue] = []
+    for op in spec.get("bulk_operations", []):
+        source_model = op.get("source_model", "")
+        op_id = op.get("id", "unknown")
+        if not _model_exists_in_spec(source_model, spec) and not _model_exists_in_registry(
+            source_model, registry
+        ):
+            issues.append(
+                ValidationIssue(
+                    code="E24",
+                    severity="error",
+                    file="bulk_operations",
+                    line=None,
+                    message=(
+                        f"Bulk operation '{op_id}': source_model '{source_model}' "
+                        f"not found in spec models or registry"
+                    ),
+                )
+            )
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# E25: Bulk operation create_model validation
+# ---------------------------------------------------------------------------
+
+
+def _check_e25(
+    output_dir: Path,
+    spec: dict[str, Any] | None = None,
+    registry: "ModelRegistry | None" = None,
+) -> list[ValidationIssue]:
+    """E25: Bulk operation create_model validation.
+
+    For each create_related bulk operation, validates that create_model
+    exists in spec models or in the registry.
+    """
+    if spec is None:
+        return []
+    issues: list[ValidationIssue] = []
+    for op in spec.get("bulk_operations", []):
+        if op.get("operation") != "create_related":
+            continue
+        create_model = op.get("create_model", "")
+        op_id = op.get("id", "unknown")
+        if not create_model:
+            continue
+        if not _model_exists_in_spec(create_model, spec) and not _model_exists_in_registry(
+            create_model, registry
+        ):
+            issues.append(
+                ValidationIssue(
+                    code="E25",
+                    severity="error",
+                    file="bulk_operations",
+                    line=None,
+                    message=(
+                        f"Bulk operation '{op_id}': create_model '{create_model}' "
+                        f"not found in spec models or registry"
+                    ),
+                )
+            )
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# W8: Bulk operation create_fields reference validation
+# ---------------------------------------------------------------------------
+
+
+def _check_w8(
+    output_dir: Path,
+    spec: dict[str, Any] | None = None,
+    registry: "ModelRegistry | None" = None,
+) -> list[ValidationIssue]:
+    """W8: Bulk operation create_fields source reference validation.
+
+    For each create_related bulk operation with create_fields,
+    validates that source.X references point to existing fields
+    in the source model.
+    """
+    if spec is None:
+        return []
+    issues: list[ValidationIssue] = []
+    for op in spec.get("bulk_operations", []):
+        if op.get("operation") != "create_related":
+            continue
+        create_fields = op.get("create_fields", {})
+        if not create_fields:
+            continue
+        source_model = op.get("source_model", "")
+        op_id = op.get("id", "unknown")
+
+        # Resolve source model fields
+        source_fields = _resolve_model_fields(source_model, spec, registry)
+
+        for _target_field, source_ref in create_fields.items():
+            if not source_ref.startswith("source."):
+                continue
+            field_name = source_ref[len("source."):]
+            # "id" is always valid (every Odoo record has id)
+            if field_name == "id":
+                continue
+            if source_fields is not None and field_name not in source_fields:
+                issues.append(
+                    ValidationIssue(
+                        code="W8",
+                        severity="warning",
+                        file="bulk_operations",
+                        line=None,
+                        message=(
+                            f"Bulk operation '{op_id}': create_fields references "
+                            f"source field '{field_name}' not found in "
+                            f"source model '{source_model}'"
+                        ),
+                    )
+                )
+    return issues
 
 
 # ---------------------------------------------------------------------------

@@ -360,6 +360,8 @@ def _build_model_context(spec: dict[str, Any], model: dict[str, Any]) -> dict[st
         "transient_max_count": model.get("transient_max_count"),
         # Phase 34 keys
         "is_bulk": is_bulk,
+        # Phase 63: bulk post-processing batch size (set by bulk_operations preprocessor)
+        "bulk_post_processing_batch_size": model.get("bulk_post_processing_batch_size"),
         "is_cacheable": is_cacheable,
         "cache_lookup_field": cache_lookup_field,
         "needs_tools": needs_tools,

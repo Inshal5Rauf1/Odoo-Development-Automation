@@ -496,7 +496,18 @@ class {{ model_name | to_class }}(models.Model):
         })
 {% endif %}
 {% endif %}
-{% if is_bulk %}
+{% if bulk_post_processing_batch_size %}
+
+    def _post_create_processing(self):
+        """Batched post-processing for bulk-created records."""
+        batch_size = {{ bulk_post_processing_batch_size }}
+        for i in range(0, len(self), batch_size):
+            batch = self[i:i + batch_size]
+            # --- BUSINESS LOGIC START ---
+            # TODO: implement batched post-processing for {{ model_name }}
+            pass
+            # --- BUSINESS LOGIC END ---
+{% elif is_bulk %}
 
     def _post_create_processing(self):
         """Post-creation logic executed for each record in batch."""
