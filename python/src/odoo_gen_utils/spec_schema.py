@@ -43,6 +43,37 @@ VALID_FIELD_TYPES: frozenset[str] = frozenset({
 })
 
 # ---------------------------------------------------------------------------
+# Chain-level specs (Phase 61)
+# ---------------------------------------------------------------------------
+
+
+class ChainStepSpec(BaseModel):
+    """Specification for a single step in a computation chain."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    model: str
+    field: str
+    type: str
+    source: str  # direct_input | lookup | computation | aggregation
+    depends: list[str] = []
+    description: str = ""
+    aggregation: str | None = None
+    lookup_table: dict[str, float] | None = None
+    digits: list[int] | None = None
+
+
+class ChainSpec(BaseModel):
+    """Specification for a named computation chain with ordered steps."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    chain_id: str
+    description: str = ""
+    steps: list[ChainStepSpec] = []
+
+
+# ---------------------------------------------------------------------------
 # Leaf-level specs
 # ---------------------------------------------------------------------------
 

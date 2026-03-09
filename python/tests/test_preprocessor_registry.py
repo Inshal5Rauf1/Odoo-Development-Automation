@@ -172,7 +172,7 @@ class TestRegistryIntegration:
         """The order sequence matches the expected pipeline order."""
         entries = get_registered_preprocessors()
         orders = [e[0] for e in entries]
-        expected = [10, 12, 15, 20, 25, 27, 28, 30, 40, 50, 60, 70, 80, 90, 100]
+        expected = [10, 12, 15, 22, 25, 27, 28, 30, 40, 50, 60, 70, 80, 90, 100]
         assert orders == expected, f"Expected {expected}, got {orders}"
 
     def test_auto_discovery_finds_all_modules(self):
