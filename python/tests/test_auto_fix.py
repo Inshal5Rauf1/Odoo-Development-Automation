@@ -1901,3 +1901,224 @@ class TestFixC8116MultiLineValue:
         content = manifest.read_text(encoding="utf-8")
         assert '"description"' not in content
         assert '"license": "LGPL-3"' in content
+
+
+# ---------------------------------------------------------------------------
+# FIXABLE_DOCKER_PATTERNS — edge-case tests (Task #13)
+# ---------------------------------------------------------------------------
+
+
+class TestFixXmlParseErrorEdgeCases:
+    """Edge cases for fix_xml_parse_error auto-fix path."""
+
+    def test_heuristic_fallback_no_mismatch_pattern(self, tmp_path: Path):
+        """When error output lacks explicit mismatch info, heuristic tag
+        counting still fixes the orphaned closing tag."""
+        from odoo_gen_utils.auto_fix import fix_xml_parse_error
+
+        module_dir = tmp_path / "test_module"
+        (module_dir / "views").mkdir(parents=True)
+        # <grup> is a typo for <group> — the closing tag </grup> has no opener
+        (module_dir / "views" / "v.xml").write_text(
+            "<odoo><form><group><field name='x'/></grup></form></odoo>",
+            encoding="utf-8",
+        )
+        # Error output without "Opening and ending tag mismatch" pattern
+        error_output = "lxml.etree.XMLSyntaxError: views/v.xml parse error"
+        result = fix_xml_parse_error(module_dir, error_output)
+        assert result is True
+        content = (module_dir / "views" / "v.xml").read_text(encoding="utf-8")
+        assert "</grup>" not in content
+
+    def test_no_xml_files_returns_false(self, tmp_path: Path):
+        """Returns False when module has no views/ directory."""
+        from odoo_gen_utils.auto_fix import fix_xml_parse_error
+
+        module_dir = tmp_path / "test_module"
+        module_dir.mkdir()
+        result = fix_xml_parse_error(module_dir, "some xml error")
+        assert result is False
+
+    def test_path_traversal_blocked(self, tmp_path: Path):
+        """Path traversal in error output file reference is blocked (SEC-06)."""
+        from odoo_gen_utils.auto_fix import fix_xml_parse_error
+
+        module_dir = tmp_path / "test_module"
+        module_dir.mkdir()
+        # Create a file outside the module
+        outside = tmp_path / "secret.xml"
+        outside.write_text("<bad>data</bad>", encoding="utf-8")
+
+        error_output = f'File "{outside}" parse error'
+        # Should not reach outside file — returns False
+        result = fix_xml_parse_error(module_dir, error_output)
+        assert result is False
+
+
+class TestFixMissingAclEdgeCases:
+    """Edge cases for fix_missing_acl auto-fix path."""
+
+    def test_multiple_models_all_get_acl(self, tmp_path: Path):
+        """When module defines multiple models, all get ACL entries."""
+        from odoo_gen_utils.auto_fix import fix_missing_acl
+
+        module_dir = tmp_path / "test_module"
+        (module_dir / "models").mkdir(parents=True)
+        (module_dir / "models" / "__init__.py").write_text(
+            "from . import a, b\n", encoding="utf-8"
+        )
+        (module_dir / "models" / "a.py").write_text(
+            'from odoo import models\n\nclass A(models.Model):\n'
+            '    _name = "mod.a"\n    _description = "A"\n',
+            encoding="utf-8",
+        )
+        (module_dir / "models" / "b.py").write_text(
+            'from odoo import models\n\nclass B(models.Model):\n'
+            '    _name = "mod.b"\n    _description = "B"\n',
+            encoding="utf-8",
+        )
+        (module_dir / "__manifest__.py").write_text(
+            '{\n    "name": "T",\n    "version": "17.0.1.0.0",\n'
+            '    "license": "LGPL-3",\n    "depends": ["base"],\n    "data": [],\n}\n',
+            encoding="utf-8",
+        )
+
+        result = fix_missing_acl(module_dir, "no access rule ir.model.access")
+        assert result is True
+
+        csv_content = (module_dir / "security" / "ir.model.access.csv").read_text(encoding="utf-8")
+        assert "model_mod_a" in csv_content
+        assert "model_mod_b" in csv_content
+
+    def test_no_models_dir_returns_false(self, tmp_path: Path):
+        """Returns False when module has no models/ directory."""
+        from odoo_gen_utils.auto_fix import fix_missing_acl
+
+        module_dir = tmp_path / "test_module"
+        module_dir.mkdir()
+        result = fix_missing_acl(module_dir, "some error")
+        assert result is False
+
+
+class TestFixManifestLoadOrderEdgeCases:
+    """Edge cases for fix_manifest_load_order auto-fix path."""
+
+    def test_no_manifest_returns_false(self, tmp_path: Path):
+        """Returns False when __manifest__.py is missing."""
+        from odoo_gen_utils.auto_fix import fix_manifest_load_order
+
+        module_dir = tmp_path / "test_module"
+        module_dir.mkdir()
+        result = fix_manifest_load_order(module_dir, "some error")
+        assert result is False
+
+    def test_single_data_file_returns_false(self, tmp_path: Path):
+        """Returns False when data list has only one file (nothing to reorder)."""
+        from odoo_gen_utils.auto_fix import fix_manifest_load_order
+
+        module_dir = tmp_path / "test_module"
+        module_dir.mkdir()
+        (module_dir / "__manifest__.py").write_text(
+            '{\n    "name": "T",\n    "data": ["views/form.xml"],\n}\n',
+            encoding="utf-8",
+        )
+        result = fix_manifest_load_order(module_dir, "some error")
+        assert result is False
+
+    def test_preserves_non_action_files(self, tmp_path: Path):
+        """Non-action/non-menu files (security, data) stay in their group."""
+        from odoo_gen_utils.auto_fix import fix_manifest_load_order
+
+        module_dir = tmp_path / "test_module"
+        (module_dir / "views").mkdir(parents=True)
+        (module_dir / "security").mkdir(parents=True)
+
+        # Action definer
+        (module_dir / "views" / "actions.xml").write_text(
+            '<odoo><record model="ir.actions.act_window" id="act"><field name="name">A</field></record></odoo>',
+            encoding="utf-8",
+        )
+        # Action referencer
+        (module_dir / "views" / "menus.xml").write_text(
+            '<odoo><menuitem id="m" action="act"/></odoo>',
+            encoding="utf-8",
+        )
+        # Neither (security data)
+        (module_dir / "security" / "rules.xml").write_text(
+            '<odoo><record model="ir.rule" id="r"><field name="name">R</field></record></odoo>',
+            encoding="utf-8",
+        )
+
+        # Wrong order: menus before actions, with security file mixed in
+        (module_dir / "__manifest__.py").write_text(
+            '{\n    "name": "T",\n    "data": ["views/menus.xml", "security/rules.xml", "views/actions.xml"],\n}\n',
+            encoding="utf-8",
+        )
+        result = fix_manifest_load_order(module_dir, "act_window does not exist")
+        assert result is True
+
+        manifest = (module_dir / "__manifest__.py").read_text(encoding="utf-8")
+        actions_pos = manifest.index("actions.xml")
+        menus_pos = manifest.index("menus.xml")
+        assert actions_pos < menus_pos
+
+
+class TestMissingImportPatternDispatch:
+    """missing_import is identified but has no fix function — dispatch returns False."""
+
+    def test_missing_import_identified_but_not_fixable(self, tmp_path: Path):
+        """Dispatch loop identifies missing_import but returns no-fix since there's
+        no fix function registered for it."""
+        from odoo_gen_utils.auto_fix import run_docker_fix_loop
+
+        module_dir = tmp_path / "test_module"
+        module_dir.mkdir()
+
+        error_text = "ImportError: No module named 'some_missing_addon'"
+        result = run_docker_fix_loop(module_dir, error_text)
+        assert result.success
+        any_fixed, remaining = result.data
+        assert any_fixed is False
+
+    def test_missing_import_identify_docker_fix(self):
+        """identify_docker_fix returns 'missing_import' for ModuleNotFoundError."""
+        diagnosis = "ModuleNotFoundError: No module named 'nonexistent'"
+        result = identify_docker_fix(diagnosis)
+        assert result == "missing_import"
+
+
+class TestFixMissingMailThreadEdgeCases:
+    """Edge cases for fix_missing_mail_thread."""
+
+    def test_no_chatter_returns_false(self, tmp_path: Path):
+        """Returns False when views/ has no chatter indicators."""
+        module_dir = tmp_path / "test_module"
+        (module_dir / "views").mkdir(parents=True)
+        (module_dir / "models").mkdir(parents=True)
+        (module_dir / "views" / "form.xml").write_text(
+            "<odoo><form><field name='name'/></form></odoo>", encoding="utf-8"
+        )
+        (module_dir / "models" / "m.py").write_text(
+            'from odoo import models\nclass M(models.Model):\n'
+            '    _name = "test.m"\n    _description = "T"\n',
+            encoding="utf-8",
+        )
+        result = fix_missing_mail_thread(module_dir)
+        assert result is False
+
+    def test_already_has_mail_thread_returns_false(self, tmp_path: Path):
+        """Returns False when model already inherits mail.thread."""
+        module_dir = tmp_path / "test_module"
+        (module_dir / "views").mkdir(parents=True)
+        (module_dir / "models").mkdir(parents=True)
+        (module_dir / "views" / "form.xml").write_text(
+            '<odoo><div class="oe_chatter"/></odoo>', encoding="utf-8"
+        )
+        (module_dir / "models" / "m.py").write_text(
+            'from odoo import models\nclass M(models.Model):\n'
+            '    _name = "test.m"\n    _description = "T"\n'
+            "    _inherit = ['mail.thread']\n",
+            encoding="utf-8",
+        )
+        result = fix_missing_mail_thread(module_dir)
+        assert result is False
