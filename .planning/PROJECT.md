@@ -8,29 +8,16 @@ A domain-specific extension of the GSD (Get Shit Done) framework that automates 
 
 ## Current State
 
-**Shipped:** v3.3 (2026-03-08) — Test Fixes, Domain Patterns & Architecture
-- 54 phases total across 9 milestones, 76 plans, 403+ commits over 8 days
-- Preprocessor package with decorator-based registry (14 domain preprocessors)
-- Pydantic v2 spec validation with JSON Schema export
-- Cross-module model registry with comodel validation and cycle detection
-- Pakistan/HEC localization (CNIC, phone, PKR, NTN/STRN, HEC fields)
-- Academic calendar (academic.year, academic.term, academic.batch with overlap prevention)
-- Document management (type classification, Binary storage, verification workflow, version gates)
-- Semantic validation (AST + XML cross-check catching 60-70% of bugs in <1s)
-- Mermaid dependency DAG and ER diagram generation
-- Generation manifest, RenderHook Protocol, resume from interruption
-- 1,730 tests passing, ~35,500+ LOC Python
+**Shipped:** v4.0 (2026-03-09) — LLM Logic Writer & Generation Capabilities
+- 63 phases total across 10 milestones, 101 plans, ~710 commits over 9 days
+- System transitioned from "scaffolder" to "generator" — LLM writes real method bodies
+- 18 preprocessors in decorator-based registry (4 new: extensions@12, chains@22, bulk@85, portal@95)
+- 14-stage render pipeline (3 new: extensions, portal, bulk)
+- 25 semantic validation checks (14 new: E7-E25, W5-W8)
+- 7 new Pydantic spec models (ExtensionSpec, PortalSpec, BulkOperationSpec, ChainSpec, etc.)
+- Iterative refinement with stub-zone-aware merge preserving LLM-written code
+- 2,302 tests passing, ~21,500 LOC source, ~41,500 LOC tests, ~3,600 LOC templates
 - See: `.planning/MILESTONES.md` for full history
-
-**Building:** v4.0 — LLM Logic Writer & Generation Capabilities
-- The system transitions from "scaffolder" to "generator"
-- Jinja templates still produce structural code (models, views, security, manifest)
-- NEW: LLM Logic Writer generates real method bodies instead of TODO stubs
-- Module extension pattern (_inherit + xpath views)
-- Iterative refinement (add field/model without full regeneration)
-- Computed chain generator for cross-model dependencies
-- Portal controller generation
-- Bulk operation patterns
 
 ## Core Value
 
@@ -141,23 +128,19 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 - Docker compose path via importlib.resources — v3.0
 - All test files correctly unwrap Result[T] — v3.0
 
+**v4.0 (shipped 2026-03-09):**
+- ✓ LLM Logic Writer — StubDetector + ContextBuilder + ComplexityClassifier + StubReport
+- ✓ Computed field + constraint templates for Logic Writer (E7-E12 validators)
+- ✓ Override + action + cron templates (E13/E15/E16 validators)
+- ✓ Module extension pattern (_inherit + xpath views, E17/W6)
+- ✓ Iterative refinement (spec diff, affected stages, stub-zone merge)
+- ✓ Computed chain generator (ChainSpec, E18-E22, chain_context)
+- ✓ Portal controllers (PortalSpec, 4 page types, E23, 6 templates)
+- ✓ Bulk operations (BulkOperationSpec, 4-state wizard, bus.bus, 4 templates)
+
 ### Active
 
-## Current Milestone: v4.0 LLM Logic Writer & Generation Capabilities
-
-**Goal:** Transform the system from a structural scaffolder (Jinja templates producing TODO stubs) into an AI code generator (LLM writes real method bodies). Then add module extension, iterative refinement, computed chains, portal controllers, and bulk operations.
-
-**Target features:**
-- Fix docker_install_module() exec race condition (BUG-H2)
-- Delete deprecated artifact_state.py (DEBT-04)
-- LLM Logic Writer pass — generates real method bodies for _compute_*, _check_*, create/write overrides, action_*, _cron_*
-- Odoo native module extension pattern (_inherit + xpath views)
-- Iterative refinement — add field/model without full regeneration
-- Cross-model computed chain generator (CGPA, fee penalties)
-- Portal controller generation (student/parent/alumni)
-- Bulk operation patterns (mass create, batch processing, progress tracking)
-
-**Build order:** BUG-H2 + DEBT-04 → Logic Writer → Module Extension → Iterative Refinement → Computed Chains → Portals → Bulk Ops
+(Next milestone not yet defined — run `/gsd:new-milestone` to plan)
 
 ### Out of Scope
 
@@ -225,8 +208,8 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 | Renderer decomposition (7 stages) | Each stage independently testable, under 80 lines | Good — render_module maintainable |
 | Lazy CLI imports | Fast startup, heavy deps only when needed | Good — no import-time penalties |
 | Docker run --rm (not exec) | Eliminates serialization race with entrypoint server | Good — reliable validation |
-| Jinja structure + LLM method bodies | Templates for deterministic structure, LLM for business logic creativity | Pending — v4.0 |
-| Logic Writer Pass 2 only (not full 7-pass pipeline) | Start minimal, add passes when needed | Pending — v4.0 |
+| Jinja structure + LLM method bodies | Templates for deterministic structure, LLM for business logic creativity | Good — v4.0 shipped |
+| Logic Writer Pass 2 only (not full 7-pass pipeline) | Start minimal, add passes when needed | Good — v4.0 shipped |
 | No odoo-gsd fork yet | Use manual orchestration until pain demands it; belt infra already supports external orchestrator | Pending |
 | Pattern retriever deferred | Logic Writer uses KB/Context7 directly; build full ChromaDB retriever when output quality plateaus | Pending |
 
@@ -247,4 +230,4 @@ Layer 4: AI Coding Assistant (USER'S ENVIRONMENT)
 | **Context7** | INTEGRATE | Live documentation MCP for real-time Odoo API reference |
 
 ---
-*Last updated: 2026-03-08 after v4.0 milestone start*
+*Last updated: 2026-03-09 after v4.0 milestone shipped*

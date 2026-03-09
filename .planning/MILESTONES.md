@@ -1,5 +1,22 @@
 # Milestones
 
+## v4.0 LLM Logic Writer & Generation Capabilities (Shipped: 2026-03-09)
+
+**Phases completed:** 9 phases (55-63), 17 plans | ~80 commits | +7,000 net LOC Python
+**Timeline:** 2026-03-08 to 2026-03-09 (2 days)
+**Tests:** 2,302 passing (up from ~1,500)
+
+**Key accomplishments:**
+1. LLM Logic Writer pipeline — AST-based StubDetector identifies TODO stubs, ContextBuilder assembles per-method context from spec + model registry, ComplexityClassifier routes to quality/budget models, JSON stub report drives Claude Code implementation
+2. Semantic validation expanded to 25 checks (E1-E25, W1-W8) — ORM pattern checks (E7-E12), override validators (E13/E15/E16), extension xpath validation (E17), portal ownership paths (E23), bulk model existence (E24/E25)
+3. Module extension pattern — ExtensionSpec Pydantic model, preprocessor at order=12, _inherit model + xpath view templates, 3-tier model validation (known/registry/unknown)
+4. Iterative refinement — spec-diff detection, affected-stage filtering, three-way conflict detection, stub-zone-aware merge preserving LLM-written method bodies across re-renders
+5. Computed chain generator — ChainSpec with auto-field-injection, cross-model @api.depends with related notation, E18-E22 chain validators, chain_context hints for Logic Writer
+6. Portal controller generation — PortalSpec with 4 page types (dashboard/list/detail/editable), CustomerPortal inheritance, QWeb templates, record rules with ownership path validation
+7. Bulk operation generation — BulkOperationSpec with state_transition/create_related types, 4-state wizard TransientModels, chunked batch processing with bus.bus progress, render_bulk() as 14th pipeline stage
+
+---
+
 ## v3.2 Security, Business Logic & Context7 (Shipped: 2026-03-07)
 
 **Phases completed:** 9 phases, 15 plans, 2 tasks
