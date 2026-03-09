@@ -136,6 +136,7 @@ def save_manifest(manifest: GenerationManifest, module_path: Path) -> Path:
     manifest_file = module_path / MANIFEST_FILENAME
     data = manifest.model_dump(exclude_none=True)
     manifest_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    logger.info("Saved manifest for module '%s' to %s", manifest.module, manifest_file)
     return manifest_file
 
 
@@ -162,7 +163,9 @@ def load_manifest(module_path: Path) -> GenerationManifest | None:
         return None
 
     try:
-        return GenerationManifest.model_validate(data)
+        manifest = GenerationManifest.model_validate(data)
+        logger.info("Loaded manifest for module '%s' (generated %s)", manifest.module, manifest.generated_at)
+        return manifest
     except Exception as exc:
         logger.warning("Invalid manifest structure in %s: %s", manifest_file, exc)
         return None
@@ -191,6 +194,7 @@ class GenerationSession:
     def record_stage(self, name: str, result: StageResult) -> None:
         """Store a stage result (overwrites any previous result for the same stage)."""
         self._stages[name] = result
+        logger.debug("Recorded stage '%s' with status '%s' for module '%s'", name, result.status, self.module_name)
 
     def is_stage_complete(self, name: str) -> bool:
         """Return True only if the named stage has status 'complete'."""
@@ -209,6 +213,7 @@ class GenerationSession:
             "generated_at",
             datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z"),
         )
+        logger.info("Building manifest for module '%s' with %d stage(s)", self.module_name, len(self._stages))
         return GenerationManifest(
             module=self.module_name,
             spec_sha256=self.spec_sha256,

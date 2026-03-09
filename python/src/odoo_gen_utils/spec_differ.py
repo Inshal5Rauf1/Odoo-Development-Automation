@@ -702,6 +702,12 @@ def diff_specs(old_spec: dict, new_spec: dict) -> SpecDiff:
         changes["reports"] = report_changes
 
     migration_required = destructive_count > 0
+    logger.info(
+        "Diff complete for module '%s': %d destructive change(s), migration %s",
+        old_spec.get("module_name", "unknown"),
+        destructive_count,
+        "required" if migration_required else "not required",
+    )
 
     return {
         "module": old_spec.get("module_name", "unknown"),
