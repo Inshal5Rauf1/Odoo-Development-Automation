@@ -1023,3 +1023,78 @@ class TestStubZoneInReport:
         stub = data["stubs"][0]
         assert "stub_zone" not in stub
         assert "exclusion_zones" not in stub
+
+
+# ---------------------------------------------------------------------------
+# Chain context in stub report (Phase 61 Plan 02)
+# ---------------------------------------------------------------------------
+
+from odoo_gen_utils.logic_writer.context_builder import StubContext
+from odoo_gen_utils.logic_writer.report import _stub_to_dict
+from odoo_gen_utils.logic_writer.stub_detector import StubInfo
+
+
+class TestChainContextInReport:
+    """chain_context appears in report for chain compute stubs."""
+
+    def test_chain_context_present_in_report_entry(self):
+        """_stub_to_dict includes chain_context when StubContext has it."""
+        stub = StubInfo(
+            file="models/student.py",
+            line=10,
+            class_name="UniStudent",
+            model_name="uni.student",
+            method_name="_compute_cgpa",
+            decorator='@api.depends("enrollment_ids.weighted_grade_points")',
+            target_fields=["cgpa"],
+        )
+        chain_ctx: dict[str, Any] = {
+            "chain_id": "cgpa_chain",
+            "chain_description": "Grade -> Grade Points -> CGPA",
+            "position_in_chain": 3,
+            "total_steps": 4,
+            "this_step": {"source": "aggregation", "aggregation": "weighted_average"},
+            "upstream_steps": [
+                {"model": "exam.result", "field": "grade", "source": "direct_input", "type": "Selection"},
+            ],
+            "downstream_steps": [],
+            "computation_pattern": "sum(r.X * r.Y) / sum(r.Y)",
+        }
+        ctx = StubContext(
+            model_fields={"cgpa": {"type": "Float"}},
+            related_fields={},
+            business_rules=[],
+            registry_source=None,
+            method_type="compute",
+            chain_context=chain_ctx,
+        )
+        result = _stub_to_dict(stub, ctx, "quality")
+        assert "chain_context" in result
+        assert result["chain_context"]["chain_id"] == "cgpa_chain"
+        assert result["chain_context"]["total_steps"] == 4
+
+        # Verify JSON-serializable
+        serialized = json.dumps(result, indent=2)
+        parsed = json.loads(serialized)
+        assert parsed["chain_context"]["chain_id"] == "cgpa_chain"
+
+    def test_chain_context_absent_when_none(self):
+        """_stub_to_dict omits chain_context when StubContext has None."""
+        stub = StubInfo(
+            file="models/order.py",
+            line=5,
+            class_name="SaleOrder",
+            model_name="sale.order",
+            method_name="_compute_total",
+            decorator='@api.depends("amount")',
+            target_fields=["total"],
+        )
+        ctx = StubContext(
+            model_fields={"total": {"type": "Float"}},
+            related_fields={},
+            business_rules=[],
+            registry_source=None,
+            method_type="compute",
+        )
+        result = _stub_to_dict(stub, ctx, "budget")
+        assert "chain_context" not in result
