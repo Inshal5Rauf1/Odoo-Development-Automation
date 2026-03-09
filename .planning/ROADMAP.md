@@ -114,7 +114,7 @@
 - [x] **Phase 58: Logic Writer Overrides & Actions** - LLM generates create/write overrides, action_*, and _cron_* methods (completed 2026-03-08)
 - [x] **Phase 59: Module Extension Pattern** - Generate _inherit models, xpath view inheritance, and dependency validation (completed 2026-03-08)
 - [x] **Phase 60: Iterative Refinement** - Add field/model to existing modules without full regeneration (completed 2026-03-09)
-- [ ] **Phase 61: Computed Chain Generator** - Cross-model computed field chains with dependency ordering and cycle detection
+- [x] **Phase 61: Computed Chain Generator** - Cross-model computed field chains with dependency ordering and cycle detection (completed 2026-03-09)
 - [ ] **Phase 62: Portal Controllers** - Generate portal.CustomerPortal controllers, QWeb templates, and portal record rules
 - [ ] **Phase 63: Bulk Operations** - Generate model_create_multi, batch wizards, and chunked processing helpers
 
@@ -206,7 +206,7 @@ Plans:
   1. Spec defines chain steps across models, and Logic Writer generates compute method implementations in each model that correctly read from source fields and write to target fields
   2. Generated @api.depends decorators use related field dot notation for cross-model triggers (e.g., @api.depends('enrollment_ids.grade_points')) and store=True is set for fields needing recomputation
   3. Chain validator detects dependency cycles, verifies all intermediate fields exist in the model registry, and confirms correct computation order before generation
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 61-01-PLAN.md — Pydantic chain schema + preprocessor rewrite (order=22) + E18-E22 chain validation
 - [ ] 61-02-PLAN.md — Chain context in StubContext + stub report serialization + end-to-end integration
@@ -243,7 +243,7 @@ Plans:
 | 58. Logic Writer Overrides & Actions | 2/2 | Complete    | 2026-03-08 |
 | 59. Module Extension Pattern | 2/2 | Complete    | 2026-03-08 |
 | 60. Iterative Refinement | 2/2 | Complete    | 2026-03-09 |
-| 61. Computed Chain Generator | 1/2 | In Progress|  |
+| 61. Computed Chain Generator | 2/2 | Complete   | 2026-03-09 |
 | 62. Portal Controllers | 0/? | Not started | - |
 | 63. Bulk Operations | 0/? | Not started | - |
 

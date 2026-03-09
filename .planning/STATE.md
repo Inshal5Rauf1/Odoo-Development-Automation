@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: LLM Logic Writer & Generation Capabilities
 status: completed
-stopped_at: Phase 61 Plan 01 completed
-last_updated: "2026-03-09T01:35:01Z"
-last_activity: 2026-03-09 — Phase 61 Plan 01 completed
+stopped_at: Phase 61 Plan 02 completed
+last_updated: "2026-03-09T01:45:20Z"
+last_activity: 2026-03-09 — Phase 61 Plan 02 completed
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 11
-  completed_plans: 11
+  completed_plans: 12
   percent: 100
 ---
 
@@ -27,16 +27,16 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 ## Current Position
 
 Phase: 61 (Computed Chain Generator)
-Plan: 01 of 01 (DONE)
-Status: Phase 61 Plan 01 complete
-Last activity: 2026-03-09 — Phase 61 Plan 01 completed
+Plan: 02 of 02 (DONE)
+Status: Phase 61 Plan 02 complete
+Last activity: 2026-03-09 — Phase 61 Plan 02 completed
 
 Progress: [██████████] 100% (v4.0)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 80 (across all milestones)
+- Total plans completed: 81 (across all milestones)
 - Average duration: ~24 min
 - Total execution time: ~25.4 hours
 
@@ -54,6 +54,7 @@ Progress: [██████████] 100% (v4.0)
 | 60-iterative-refinement | 01 | 12min | 2 | 12 |
 | 60-iterative-refinement | 02 | 13min | 2 | 7 |
 | 61-computed-chain-generator | 01 | 16min | 2 | 7 |
+| 61-computed-chain-generator | 02 | 7min | 2 | 4 |
 
 ## Accumulated Context
 
@@ -102,6 +103,8 @@ Progress: [██████████] 100% (v4.0)
 - [Phase 61]: Old per-field chain format preserved via _process_old_format fallback
 - [Phase 61]: Chain validators co-located in computation_chains.py (not validation.py)
 - [Phase 61]: E20 store propagation uses stored_overrides parameter for testability
+- [Phase 61]: Computation pattern uses actual field names from depends args (not placeholders)
+- [Phase 61]: _chain_meta added to _build_model_fields extraction keys for context builder flow
 
 ### Pending Todos
 
@@ -127,7 +130,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T01:35:01Z
-Stopped at: Phase 61 Plan 01 completed
-Resume file: .planning/phases/61-computed-chain-generator/61-01-SUMMARY.md
+Last session: 2026-03-09T01:45:20Z
+Stopped at: Phase 61 Plan 02 completed
+Resume file: .planning/phases/61-computed-chain-generator/61-02-SUMMARY.md
 Next step: Phase 61 complete. Next milestone phase or v4.0 release.
