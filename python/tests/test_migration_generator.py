@@ -861,3 +861,328 @@ class TestFileOutput:
 
         # No output_dir means no files written (just code returned)
         assert "pre_migrate_code" in result
+
+
+# ---------------------------------------------------------------------------
+# TestOdooVersion
+# ---------------------------------------------------------------------------
+class TestOdooVersion:
+    """Tests Odoo version parsing, validation, and bumping."""
+
+    def test_parse_valid_version(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        v = OdooVersion.parse("17.0.1.0.0")
+        assert v.odoo_major == 17
+        assert v.odoo_minor == 0
+        assert v.major == 1
+        assert v.minor == 0
+        assert v.patch == 0
+
+    def test_parse_nonzero_segments(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        v = OdooVersion.parse("17.0.2.3.1")
+        assert v.major == 2
+        assert v.minor == 3
+        assert v.patch == 1
+
+    def test_parse_invalid_format_raises(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        with pytest.raises(ValueError, match="Invalid Odoo version"):
+            OdooVersion.parse("1.0.0")
+
+    def test_parse_non_numeric_raises(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        with pytest.raises(ValueError, match="Invalid Odoo version"):
+            OdooVersion.parse("17.0.x.0.0")
+
+    def test_str_roundtrip(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        original = "17.0.1.2.3"
+        v = OdooVersion.parse(original)
+        assert str(v) == original
+
+    def test_bump_patch(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        v = OdooVersion.parse("17.0.1.0.0")
+        bumped = v.bump("patch")
+        assert str(bumped) == "17.0.1.0.1"
+
+    def test_bump_minor(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        v = OdooVersion.parse("17.0.1.0.3")
+        bumped = v.bump("minor")
+        assert str(bumped) == "17.0.1.1.0"
+
+    def test_bump_major(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        v = OdooVersion.parse("17.0.1.2.3")
+        bumped = v.bump("major")
+        assert str(bumped) == "17.0.2.0.0"
+
+    def test_bump_minor_resets_patch(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        v = OdooVersion.parse("17.0.1.0.5")
+        bumped = v.bump("minor")
+        assert bumped.patch == 0
+
+    def test_bump_major_resets_minor_and_patch(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        v = OdooVersion.parse("17.0.1.3.5")
+        bumped = v.bump("major")
+        assert bumped.minor == 0
+        assert bumped.patch == 0
+
+    def test_bump_invalid_type_raises(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        v = OdooVersion.parse("17.0.1.0.0")
+        with pytest.raises(ValueError, match="bump_type"):
+            v.bump("invalid")
+
+    def test_comparison_ordering(self) -> None:
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        v1 = OdooVersion.parse("17.0.1.0.0")
+        v2 = OdooVersion.parse("17.0.1.1.0")
+        v3 = OdooVersion.parse("17.0.2.0.0")
+        assert v1 < v2 < v3
+
+    def test_odoo_series_preserved(self) -> None:
+        """Bumping never changes the Odoo series (17.0)."""
+        from odoo_gen_utils.migration_generator import OdooVersion
+
+        v = OdooVersion.parse("17.0.1.0.0")
+        for bump_type in ("patch", "minor", "major"):
+            bumped = v.bump(bump_type)
+            assert bumped.odoo_major == 17
+            assert bumped.odoo_minor == 0
+
+
+# ---------------------------------------------------------------------------
+# TestComputeMigrationVersion
+# ---------------------------------------------------------------------------
+class TestComputeMigrationVersion:
+    """Tests auto-computing version from diff severity."""
+
+    def test_destructive_bumps_minor(self) -> None:
+        from odoo_gen_utils.migration_generator import compute_migration_version
+
+        diff = _diff_field_removed("fee.invoice", "old_ref", "Char")
+        # Force same versions so auto-bump kicks in
+        diff["old_version"] = "17.0.1.0.0"
+        diff["new_version"] = "17.0.1.0.0"
+        version = compute_migration_version(diff)
+        # Destructive field removal → minor bump → "17.0.1.1.0"
+        assert version == "17.0.1.1.0"
+
+    def test_model_removal_bumps_major(self) -> None:
+        from odoo_gen_utils.migration_generator import compute_migration_version
+
+        diff = _diff_model_removed("fee.old_model")
+        diff["old_version"] = "17.0.1.0.0"
+        diff["new_version"] = "17.0.1.0.0"
+        version = compute_migration_version(diff)
+        # Model removal → major bump → "17.0.2.0.0"
+        assert version == "17.0.2.0.0"
+
+    def test_non_destructive_bumps_patch(self) -> None:
+        from odoo_gen_utils.migration_generator import compute_migration_version
+
+        diff = _diff_field_added("fee.invoice", "new_field", "Char")
+        diff["old_version"] = "17.0.1.0.0"
+        diff["new_version"] = "17.0.1.0.0"
+        version = compute_migration_version(diff)
+        # Non-destructive → patch bump → "17.0.1.0.1"
+        assert version == "17.0.1.0.1"
+
+    def test_uses_new_version_when_present(self) -> None:
+        """When diff has distinct new_version, use it directly."""
+        from odoo_gen_utils.migration_generator import compute_migration_version
+
+        diff = _make_diff(migration_required=True)
+        diff["new_version"] = "17.0.3.0.0"
+        diff["old_version"] = "17.0.2.0.0"
+        version = compute_migration_version(diff)
+        assert version == "17.0.3.0.0"
+
+    def test_falls_back_to_old_version_bump_when_new_equals_old(self) -> None:
+        from odoo_gen_utils.migration_generator import compute_migration_version
+
+        diff = _diff_field_removed("fee.invoice", "old_ref", "Char")
+        diff["old_version"] = "17.0.1.0.0"
+        diff["new_version"] = "17.0.1.0.0"
+        version = compute_migration_version(diff)
+        # Should auto-bump from old_version
+        assert version == "17.0.1.1.0"
+
+    def test_unknown_version_returns_fallback(self) -> None:
+        from odoo_gen_utils.migration_generator import compute_migration_version
+
+        diff = _make_diff()
+        diff["old_version"] = "unknown"
+        diff["new_version"] = "unknown"
+        version = compute_migration_version(diff)
+        assert version == "17.0.1.0.1"  # default fallback
+
+
+# ---------------------------------------------------------------------------
+# TestDiscoverMigrations
+# ---------------------------------------------------------------------------
+class TestDiscoverMigrations:
+    """Tests scanning existing migration directories."""
+
+    def test_empty_module_dir(self, tmp_path: Path) -> None:
+        from odoo_gen_utils.migration_generator import discover_migrations
+
+        result = discover_migrations(tmp_path)
+        assert result == []
+
+    def test_no_migrations_dir(self, tmp_path: Path) -> None:
+        from odoo_gen_utils.migration_generator import discover_migrations
+
+        (tmp_path / "__manifest__.py").touch()
+        result = discover_migrations(tmp_path)
+        assert result == []
+
+    def test_discovers_version_directories(self, tmp_path: Path) -> None:
+        from odoo_gen_utils.migration_generator import discover_migrations
+
+        mig_dir = tmp_path / "migrations"
+        (mig_dir / "17.0.1.0.0").mkdir(parents=True)
+        (mig_dir / "17.0.1.1.0").mkdir(parents=True)
+        (mig_dir / "17.0.2.0.0").mkdir(parents=True)
+        result = discover_migrations(tmp_path)
+        assert result == ["17.0.1.0.0", "17.0.1.1.0", "17.0.2.0.0"]
+
+    def test_sorted_by_version_not_string(self, tmp_path: Path) -> None:
+        from odoo_gen_utils.migration_generator import discover_migrations
+
+        mig_dir = tmp_path / "migrations"
+        (mig_dir / "17.0.1.0.0").mkdir(parents=True)
+        (mig_dir / "17.0.1.10.0").mkdir(parents=True)
+        (mig_dir / "17.0.1.2.0").mkdir(parents=True)
+        result = discover_migrations(tmp_path)
+        # Numeric sort: 1.0.0 < 1.2.0 < 1.10.0
+        assert result == ["17.0.1.0.0", "17.0.1.2.0", "17.0.1.10.0"]
+
+    def test_ignores_non_version_directories(self, tmp_path: Path) -> None:
+        from odoo_gen_utils.migration_generator import discover_migrations
+
+        mig_dir = tmp_path / "migrations"
+        (mig_dir / "17.0.1.0.0").mkdir(parents=True)
+        (mig_dir / "__pycache__").mkdir(parents=True)
+        (mig_dir / "README.md").touch()
+        result = discover_migrations(tmp_path)
+        assert result == ["17.0.1.0.0"]
+
+    def test_nonexistent_dir_returns_empty(self) -> None:
+        from odoo_gen_utils.migration_generator import discover_migrations
+
+        result = discover_migrations(Path("/nonexistent/path"))
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# TestGenerateVersionedMigration
+# ---------------------------------------------------------------------------
+class TestGenerateVersionedMigration:
+    """Tests the full versioned migration pipeline."""
+
+    def test_creates_versioned_directory(self, tmp_path: Path) -> None:
+        from odoo_gen_utils.migration_generator import generate_versioned_migration
+
+        diff = _diff_field_removed("fee.invoice", "old_ref", "Char")
+        result = generate_versioned_migration(diff, module_dir=tmp_path)
+
+        version = result["version"]
+        pre_path = tmp_path / "migrations" / version / "pre-migrate.py"
+        post_path = tmp_path / "migrations" / version / "post-migrate.py"
+        assert pre_path.exists()
+        assert post_path.exists()
+
+    def test_auto_computes_version(self, tmp_path: Path) -> None:
+        from odoo_gen_utils.migration_generator import generate_versioned_migration
+
+        diff = _diff_field_removed("fee.invoice", "old_ref", "Char")
+        diff["old_version"] = "17.0.1.0.0"
+        diff["new_version"] = "17.0.1.0.0"
+        result = generate_versioned_migration(diff, module_dir=tmp_path)
+        # Destructive field removal: minor bump from 17.0.1.0.0
+        assert result["version"] == "17.0.1.1.0"
+
+    def test_avoids_version_collision(self, tmp_path: Path) -> None:
+        """If computed version already exists, bump further."""
+        from odoo_gen_utils.migration_generator import generate_versioned_migration
+
+        # Pre-create the version that would be computed
+        mig_dir = tmp_path / "migrations" / "17.0.1.1.0"
+        mig_dir.mkdir(parents=True)
+        (mig_dir / "pre-migrate.py").touch()
+
+        diff = _diff_field_removed("fee.invoice", "old_ref", "Char")
+        diff["old_version"] = "17.0.1.0.0"
+        diff["new_version"] = "17.0.1.0.0"
+        result = generate_versioned_migration(diff, module_dir=tmp_path)
+
+        # Should bump past existing 17.0.1.1.0
+        assert result["version"] != "17.0.1.1.0"
+        assert result["version"] == "17.0.1.2.0"
+
+    def test_respects_explicit_version(self, tmp_path: Path) -> None:
+        """When version override is given, use it."""
+        from odoo_gen_utils.migration_generator import generate_versioned_migration
+
+        diff = _diff_field_removed("fee.invoice", "old_ref", "Char")
+        result = generate_versioned_migration(
+            diff, module_dir=tmp_path, version_override="17.0.5.0.0"
+        )
+        assert result["version"] == "17.0.5.0.0"
+
+    def test_result_has_all_keys(self, tmp_path: Path) -> None:
+        from odoo_gen_utils.migration_generator import generate_versioned_migration
+
+        diff = _diff_field_removed("fee.invoice", "old_ref", "Char")
+        result = generate_versioned_migration(diff, module_dir=tmp_path)
+
+        assert "pre_migrate_code" in result
+        assert "post_migrate_code" in result
+        assert "migration_required" in result
+        assert "version" in result
+        assert "computed_version" in result
+
+    def test_generated_scripts_valid_python(self, tmp_path: Path) -> None:
+        from odoo_gen_utils.migration_generator import generate_versioned_migration
+
+        diff = _diff_field_removed("fee.invoice", "old_ref", "Char")
+        result = generate_versioned_migration(diff, module_dir=tmp_path)
+        compile(result["pre_migrate_code"], "pre-migrate.py", "exec")
+        compile(result["post_migrate_code"], "post-migrate.py", "exec")
+
+    def test_non_destructive_still_bumps_patch(self, tmp_path: Path) -> None:
+        from odoo_gen_utils.migration_generator import generate_versioned_migration
+
+        diff = _diff_field_added("fee.invoice", "new_field", "Char")
+        diff["old_version"] = "17.0.1.0.0"
+        diff["new_version"] = "17.0.1.0.0"
+        result = generate_versioned_migration(diff, module_dir=tmp_path)
+        assert result["version"] == "17.0.1.0.1"
+
+    def test_without_module_dir_no_files(self) -> None:
+        from odoo_gen_utils.migration_generator import generate_versioned_migration
+
+        diff = _diff_field_removed("fee.invoice", "old_ref", "Char")
+        diff["old_version"] = "17.0.1.0.0"
+        diff["new_version"] = "17.0.1.0.0"
+        result = generate_versioned_migration(diff)
+        assert result["version"] == "17.0.1.1.0"
+        assert "pre_migrate_code" in result

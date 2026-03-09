@@ -5,16 +5,25 @@ functions using parameterized SQL (psycopg2.sql) following Odoo migration conven
 
 Provides:
 - generate_migration(): Main entry point returning MigrationResult dict
-- MigrationResult: TypedDict for the result structure
+- generate_versioned_migration(): Auto-versioned pipeline with collision avoidance
+- OdooVersion: Parse/validate/bump Odoo 5-segment version strings
+- compute_migration_version(): Determine next version from diff severity
+- discover_migrations(): Scan existing migration directories
+- MigrationResult / VersionedMigrationResult: TypedDict result structures
 - _model_to_table(): Convert dot-separated model name to Odoo table name
 """
 
 from __future__ import annotations
 
+import logging
 import re
 import textwrap
+from dataclasses import dataclass
+from functools import total_ordering
 from pathlib import Path
 from typing import Any, TypedDict
+
+logger = logging.getLogger("odoo-gen.migration")
 
 
 # ---------------------------------------------------------------------------
@@ -26,6 +35,108 @@ class MigrationResult(TypedDict):
     post_migrate_code: str
     migration_required: bool
     version: str
+
+
+class VersionedMigrationResult(TypedDict):
+    pre_migrate_code: str
+    post_migrate_code: str
+    migration_required: bool
+    version: str
+    computed_version: bool
+
+
+# ---------------------------------------------------------------------------
+# Odoo Version Parsing & Bumping
+# ---------------------------------------------------------------------------
+
+_ODOO_VERSION_RE = re.compile(r'^(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)$')
+
+
+@total_ordering
+@dataclass(frozen=True)
+class OdooVersion:
+    """Immutable Odoo 5-segment version: {odoo_major}.{odoo_minor}.{major}.{minor}.{patch}.
+
+    The first two segments (e.g. 17.0) identify the Odoo series and are never
+    modified by bump(). The last three segments follow module-level semver.
+    """
+
+    odoo_major: int
+    odoo_minor: int
+    major: int
+    minor: int
+    patch: int
+
+    @classmethod
+    def parse(cls, version_str: str) -> OdooVersion:
+        """Parse a dotted version string into an OdooVersion.
+
+        Args:
+            version_str: Version string like "17.0.1.0.0".
+
+        Raises:
+            ValueError: If the string doesn't match the 5-segment format.
+        """
+        match = _ODOO_VERSION_RE.match(version_str.strip())
+        if not match:
+            raise ValueError(
+                f"Invalid Odoo version: {version_str!r}. "
+                f"Expected format: X.Y.A.B.C (e.g. 17.0.1.0.0)"
+            )
+        return cls(
+            odoo_major=int(match.group(1)),
+            odoo_minor=int(match.group(2)),
+            major=int(match.group(3)),
+            minor=int(match.group(4)),
+            patch=int(match.group(5)),
+        )
+
+    def bump(self, bump_type: str) -> OdooVersion:
+        """Return a new OdooVersion with the specified segment bumped.
+
+        - "patch": increments patch, preserves minor/major
+        - "minor": increments minor, resets patch to 0
+        - "major": increments major, resets minor and patch to 0
+
+        The Odoo series (odoo_major.odoo_minor) is never changed.
+
+        Args:
+            bump_type: One of "patch", "minor", "major".
+
+        Raises:
+            ValueError: If bump_type is not recognized.
+        """
+        if bump_type == "patch":
+            return OdooVersion(self.odoo_major, self.odoo_minor,
+                               self.major, self.minor, self.patch + 1)
+        if bump_type == "minor":
+            return OdooVersion(self.odoo_major, self.odoo_minor,
+                               self.major, self.minor + 1, 0)
+        if bump_type == "major":
+            return OdooVersion(self.odoo_major, self.odoo_minor,
+                               self.major + 1, 0, 0)
+        raise ValueError(
+            f"Invalid bump_type: {bump_type!r}. Must be 'patch', 'minor', or 'major'."
+        )
+
+    def __str__(self) -> str:
+        return f"{self.odoo_major}.{self.odoo_minor}.{self.major}.{self.minor}.{self.patch}"
+
+    def _sort_key(self) -> tuple[int, int, int, int, int]:
+        return (self.odoo_major, self.odoo_minor, self.major, self.minor, self.patch)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, OdooVersion):
+            return NotImplemented
+        return self._sort_key() == other._sort_key()
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, OdooVersion):
+            return NotImplemented
+        return self._sort_key() < other._sort_key()
+
+    def __hash__(self) -> int:
+        return hash(self._sort_key())
 
 
 # ---------------------------------------------------------------------------
@@ -496,4 +607,187 @@ def generate_migration(
         "post_migrate_code": post_code,
         "migration_required": migration_required,
         "version": version,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Version Discovery & Computation
+# ---------------------------------------------------------------------------
+
+_DEFAULT_BASE_VERSION = "17.0.1.0.0"
+
+
+def discover_migrations(module_dir: str | Path) -> list[str]:
+    """Scan a module's migrations/ directory for existing version directories.
+
+    Returns version strings sorted in ascending numeric order (not lexicographic).
+    Non-version directories (e.g. __pycache__) are silently skipped.
+
+    Args:
+        module_dir: Path to the Odoo module root directory.
+
+    Returns:
+        Sorted list of version strings found in migrations/.
+    """
+    mig_path = Path(module_dir) / "migrations"
+    if not mig_path.is_dir():
+        return []
+
+    versions: list[OdooVersion] = []
+    for entry in mig_path.iterdir():
+        if not entry.is_dir():
+            continue
+        try:
+            versions.append(OdooVersion.parse(entry.name))
+        except ValueError:
+            continue
+
+    return [str(v) for v in sorted(versions)]
+
+
+def _classify_bump_type(diff_result: dict) -> str:
+    """Determine the appropriate version bump type from diff severity.
+
+    - Model removed → "major"
+    - Field removed / type change / destructive modification → "minor"
+    - Non-destructive (field added, attribute change) → "patch"
+
+    Args:
+        diff_result: Output from spec_differ.diff_specs().
+
+    Returns:
+        One of "major", "minor", "patch".
+    """
+    changes = diff_result.get("changes", {})
+    models = changes.get("models", {})
+
+    # Model removal is the most disruptive → major
+    if models.get("removed"):
+        return "major"
+
+    # Any destructive field-level change → minor
+    for _model_name, model_data in models.get("modified", {}).items():
+        fields_data = model_data.get("fields", {})
+        if fields_data.get("removed"):
+            return "minor"
+        for field in fields_data.get("modified", []):
+            severity = field.get("severity", "non_destructive")
+            if severity != "non_destructive":
+                return "minor"
+
+    return "patch"
+
+
+def compute_migration_version(diff_result: dict) -> str:
+    """Auto-compute the migration version from diff contents.
+
+    Strategy:
+    1. If diff has distinct old_version and new_version, use new_version.
+    2. Otherwise, parse old_version and bump based on change severity.
+    3. Falls back to bumping a default base version if versions are unparseable.
+
+    Args:
+        diff_result: Output from spec_differ.diff_specs().
+
+    Returns:
+        Computed version string (e.g. "17.0.1.1.0").
+    """
+    old_ver_str = diff_result.get("old_version", "unknown")
+    new_ver_str = diff_result.get("new_version", "unknown")
+
+    # If new_version is explicitly different from old_version and parseable, use it
+    if new_ver_str != old_ver_str and new_ver_str != "unknown":
+        try:
+            OdooVersion.parse(new_ver_str)
+            return new_ver_str
+        except ValueError:
+            pass
+
+    # Parse old_version as the base for bumping
+    bump_type = _classify_bump_type(diff_result)
+    try:
+        base = OdooVersion.parse(old_ver_str)
+    except ValueError:
+        logger.warning(
+            "Cannot parse old_version %r, using default base %s",
+            old_ver_str, _DEFAULT_BASE_VERSION,
+        )
+        base = OdooVersion.parse(_DEFAULT_BASE_VERSION)
+
+    return str(base.bump(bump_type))
+
+
+# ---------------------------------------------------------------------------
+# Versioned Migration Pipeline
+# ---------------------------------------------------------------------------
+
+def generate_versioned_migration(
+    diff_result: dict,
+    module_dir: str | Path | None = None,
+    *,
+    version_override: str | None = None,
+) -> VersionedMigrationResult:
+    """Generate versioned Odoo migration scripts with auto-version computation.
+
+    Full pipeline:
+    1. Compute version from diff severity (or use version_override).
+    2. Check for version collisions against existing migrations.
+    3. Generate pre-migrate.py and post-migrate.py.
+    4. Write files to module_dir/migrations/{version}/ if module_dir given.
+
+    Args:
+        diff_result: Output from spec_differ.diff_specs().
+        module_dir: Optional module root directory for file output and
+            version collision detection.
+        version_override: Explicit version to use (skips auto-computation).
+
+    Returns:
+        VersionedMigrationResult with all MigrationResult keys plus
+        computed_version (True if version was auto-computed).
+    """
+    computed = version_override is None
+
+    if version_override is not None:
+        version = version_override
+    else:
+        version = compute_migration_version(diff_result)
+
+    # Collision avoidance: if version directory already exists, bump further
+    if module_dir is not None and computed:
+        existing = set(discover_migrations(module_dir))
+        bump_type = _classify_bump_type(diff_result)
+        try:
+            v = OdooVersion.parse(version)
+            max_bumps = 100  # safety limit
+            while str(v) in existing and max_bumps > 0:
+                v = v.bump(bump_type)
+                max_bumps -= 1
+            version = str(v)
+        except ValueError:
+            pass  # unparseable version, skip collision avoidance
+
+    migration_required = diff_result.get("migration_required", False)
+
+    # Generate helpers
+    pre_helpers = _generate_pre_helpers(diff_result)
+    post_helpers = _generate_post_helpers(diff_result)
+
+    # Render scripts
+    pre_code = _render_script("pre", pre_helpers, version)
+    post_code = _render_script("post", post_helpers, version)
+
+    # Write files if module_dir specified
+    if module_dir is not None:
+        out_path = Path(module_dir) / "migrations" / version
+        out_path.mkdir(parents=True, exist_ok=True)
+        (out_path / "pre-migrate.py").write_text(pre_code, encoding="utf-8")
+        (out_path / "post-migrate.py").write_text(post_code, encoding="utf-8")
+        logger.info("Wrote migration scripts to %s", out_path)
+
+    return {
+        "pre_migrate_code": pre_code,
+        "post_migrate_code": post_code,
+        "migration_required": migration_required,
+        "version": version,
+        "computed_version": computed,
     }
