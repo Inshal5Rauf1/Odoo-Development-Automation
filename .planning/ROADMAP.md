@@ -100,17 +100,54 @@
 - [x] Phase 53: Mermaid Graphs (2/2 plans) — completed 2026-03-08
 - [x] Phase 54: Pipeline Quality of Life (2/2 plans) — completed 2026-03-08
 
-**Total:** 10 phases, 20 plans, 14 requirements | 62 commits | 2/2 | Complete    | 2026-03-09 | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 55. Cleanup | 1/1 | Complete    | 2026-03-08 |
-| 56. Logic Writer Core | 2/2 | Complete    | 2026-03-08 |
-| 57. Logic Writer Computed & Constraints | 2/2 | Complete    | 2026-03-08 |
-| 58. Logic Writer Overrides & Actions | 2/2 | Complete    | 2026-03-08 |
-| 59. Module Extension Pattern | 2/2 | Complete    | 2026-03-08 |
-| 60. Iterative Refinement | 2/2 | Complete    | 2026-03-09 |
-| 61. Computed Chain Generator | 2/2 | Complete    | 2026-03-09 |
-| 62. Portal Controllers | 0/2 | In progress | - |
-| 63. Bulk Operations | 0/? | Not started | - |
+**Total:** 10 phases, 20 plans, 14 requirements | 62 commits
+
+</details>
+
+<details>
+<summary>v4.0 LLM Logic Writer & Generation Capabilities (Phases 55-63) — IN PROGRESS</summary>
+
+| Phase | Plans | Status | Completed |
+|-------|-------|--------|-----------|
+| 55. Cleanup | 1/1 | Complete | 2026-03-08 |
+| 56. Logic Writer Core | 2/2 | Complete | 2026-03-08 |
+| 57. Logic Writer Computed & Constraints | 2/2 | Complete | 2026-03-08 |
+| 58. Logic Writer Overrides & Actions | 2/2 | Complete | 2026-03-08 |
+| 59. Module Extension Pattern | 2/2 | Complete | 2026-03-08 |
+| 60. Iterative Refinement | 2/2 | Complete | 2026-03-09 |
+| 61. Computed Chain Generator | 2/2 | Complete | 2026-03-09 |
+| 62. Portal Controllers | 2/2 | Complete | 2026-03-09 |
+| 63. Bulk Operations | -/- | Not started | - |
+
+**Total (so far):** 8/9 phases, 15 plans | 71 commits
+
+### Phase 63: Bulk Operations
+**Goal**: Users can generate performant bulk processing code — batched create_multi, bulk action wizards with preview/confirm, and chunked batch processors with progress notifications
+**Depends on**: Phase 56, Phase 58
+**Requirements**: BULK-01, BULK-02, BULK-03
+**Success Criteria** (what must be TRUE):
+  1. Generated @api.model_create_multi methods batch post-processing (notifications, sequences) instead of per-record execution
+  2. Generated bulk wizard TransientModels include domain-based record selection, preview step, confirmation dialog, and error collection with partial success reporting
+  3. Generated _process_batch() helpers use configurable batch_size, chunked iteration, and bus.bus progress notifications for long-running operations
+**Plans**: TBD
+
+</details>
+
+### Cumulative Stats
+
+| Metric | Value |
+|--------|-------|
+| Phases completed | 62 |
+| Plans completed | 84 |
+| Commits | 632 |
+| Tests | 2,200 |
+| Source LOC | ~21,000 |
+| Total LOC (with tests) | ~61,000 |
+| Jinja2 templates | 41 |
+| AI agents | 9 |
+| GSD commands | 13 |
+| Preprocessors | 19 |
+| Semantic checks | 23 errors + 7 warnings |
 
 ---
 *Roadmap created: 2026-03-01*
@@ -124,3 +161,4 @@
 *v3.2 shipped: 2026-03-07*
 *v3.3 shipped: 2026-03-08*
 *v4.0 roadmap created: 2026-03-08*
+*v4.0 updated: 2026-03-09 — Phase 62 complete*
