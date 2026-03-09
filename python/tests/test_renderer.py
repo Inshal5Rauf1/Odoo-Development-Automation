@@ -67,17 +67,22 @@ class TestBuildModelContextComputedFields:
         assert len(ctx["computed_fields"]) == 1
         assert ctx["computed_fields"][0]["name"] == "total"
 
-    def test_computed_fields_empty_when_no_compute(self):
+    def test_computed_fields_excludes_falsy_compute_values(self):
+        """Fields with falsy compute values (empty string, None) must NOT
+        appear in computed_fields — regression guard for truthiness filter."""
         model = {
             "name": "test.model",
             "fields": [
                 {"name": "name", "type": "Char"},
-                {"name": "qty", "type": "Integer"},
+                {"name": "qty", "type": "Integer", "compute": ""},
+                {"name": "total", "type": "Float", "compute": None},
+                {"name": "amount", "type": "Float", "depends": ["qty"]},
             ],
         }
         spec = _make_spec(models=[model])
         ctx = _build_model_context(spec, model)
         assert ctx["computed_fields"] == []
+        assert ctx["has_computed"] is False
 
     def test_has_computed_true_when_computed_fields_present(self):
         model = {
@@ -117,10 +122,14 @@ class TestBuildModelContextOnchangeFields:
         assert len(ctx["onchange_fields"]) == 1
         assert ctx["onchange_fields"][0]["name"] == "partner_id"
 
-    def test_onchange_fields_empty_when_none(self):
+    def test_onchange_fields_excludes_explicit_false(self):
+        """Fields with onchange=False must NOT appear in onchange_fields."""
         model = {
             "name": "test.model",
-            "fields": [{"name": "name", "type": "Char"}],
+            "fields": [
+                {"name": "name", "type": "Char"},
+                {"name": "partner_id", "type": "Many2one", "comodel_name": "res.partner", "onchange": False},
+            ],
         }
         spec = _make_spec(models=[model])
         ctx = _build_model_context(spec, model)
@@ -142,10 +151,14 @@ class TestBuildModelContextConstrainedFields:
         assert len(ctx["constrained_fields"]) == 1
         assert ctx["constrained_fields"][0]["name"] == "date_start"
 
-    def test_constrained_fields_empty_when_none(self):
+    def test_constrained_fields_excludes_empty_constrains_list(self):
+        """Fields with constrains=[] (empty list, falsy) must NOT appear."""
         model = {
             "name": "test.model",
-            "fields": [{"name": "name", "type": "Char"}],
+            "fields": [
+                {"name": "date_start", "type": "Date", "constrains": []},
+                {"name": "date_end", "type": "Date"},
+            ],
         }
         spec = _make_spec(models=[model])
         ctx = _build_model_context(spec, model)
