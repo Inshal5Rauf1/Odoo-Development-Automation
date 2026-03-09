@@ -5,9 +5,9 @@ manifest dependency gaps, and ORM pattern violations in rendered output
 files -- eliminating the Docker round-trip for the majority of
 generation bugs.
 
-21 checks total:
-  ERRORS (E1-E13, E15-E17) -- generation is broken, will fail at install
-  WARNINGS (W1-W6) -- might be wrong, might be intentional
+22 checks total:
+  ERRORS (E1-E13, E15-E17, E23) -- generation is broken, will fail at install
+  WARNINGS (W1-W7) -- might be wrong, might be intentional
 
 All stdlib: ast, xml.etree, csv, difflib, dataclasses, time, pathlib.
 """
@@ -1733,6 +1733,171 @@ def _check_e17(
 
 
 # ---------------------------------------------------------------------------
+# E23: Portal ownership path validation
+# ---------------------------------------------------------------------------
+
+
+def _resolve_model_fields(
+    model_name: str,
+    spec: dict[str, Any] | None,
+    registry: "ModelRegistry | None",
+) -> dict[str, dict[str, Any]] | None:
+    """Resolve a model's fields from spec models or registry.
+
+    Returns dict of field_name -> field_info, or None if model not found.
+    """
+    if spec is not None:
+        for model in spec.get("models", []):
+            if model.get("name") == model_name:
+                return {f["name"]: f for f in model.get("fields", [])}
+    if registry is not None:
+        entry = registry.show_model(model_name)
+        if entry is not None:
+            return entry.fields
+    return None
+
+
+def _check_e23(
+    module_dir: Path,
+    spec: dict[str, Any] | None = None,
+    registry: "ModelRegistry | None" = None,
+) -> list[ValidationIssue]:
+    """E23: Portal ownership path validation.
+
+    For each portal page, validates that the ownership field path
+    traverses through models and terminates at res.users.
+
+    Returns a list of ValidationIssue (errors for bad paths, warnings
+    for unresolvable models).
+    """
+    issues: list[ValidationIssue] = []
+
+    if spec is None:
+        return issues
+
+    portal = spec.get("portal")
+    if not portal:
+        return issues
+
+    # Handle both Pydantic model and dict
+    if hasattr(portal, "model_dump"):
+        portal_dict = portal.model_dump()
+    elif isinstance(portal, dict):
+        portal_dict = portal
+    else:
+        return issues
+
+    pages = portal_dict.get("pages", [])
+
+    for page in pages:
+        page_id = page.get("id", "unknown")
+        page_model = page.get("model", "")
+        ownership = page.get("ownership", "")
+        if not ownership or not page_model:
+            continue
+
+        hops = ownership.split(".")
+        current_model = page_model
+
+        # Try to resolve the starting model
+        fields = _resolve_model_fields(current_model, spec, registry)
+        if fields is None:
+            issues.append(ValidationIssue(
+                code="W7",
+                severity="warning",
+                file="portal",
+                line=None,
+                message=(
+                    f"Cannot validate ownership path '{ownership}' on page "
+                    f"'{page_id}' -- model '{current_model}' not in spec or registry"
+                ),
+            ))
+            continue
+
+        path_valid = True
+        terminal_model = current_model
+
+        for i, hop in enumerate(hops):
+            if fields is None:
+                # Intermediate model not resolvable
+                issues.append(ValidationIssue(
+                    code="W7",
+                    severity="warning",
+                    file="portal",
+                    line=None,
+                    message=(
+                        f"Cannot validate ownership path '{ownership}' on page "
+                        f"'{page_id}' -- model '{current_model}' not in spec or registry"
+                    ),
+                ))
+                path_valid = False
+                break
+
+            field_info = fields.get(hop)
+            if field_info is None:
+                issues.append(ValidationIssue(
+                    code="E23",
+                    severity="error",
+                    file="portal",
+                    line=None,
+                    message=(
+                        f"Ownership path '{ownership}' on page '{page_id}': "
+                        f"field '{hop}' not found on model '{current_model}'"
+                    ),
+                ))
+                path_valid = False
+                break
+
+            # Check if field is relational
+            field_type = field_info.get("type", "")
+            comodel = field_info.get("comodel_name", "")
+
+            if field_type in ("Many2one", "One2many", "Many2many") and comodel:
+                terminal_model = comodel
+                if i < len(hops) - 1:
+                    # More hops remain -- resolve the next model
+                    current_model = comodel
+                    fields = _resolve_model_fields(current_model, spec, registry)
+            else:
+                # Non-relational field at intermediate position
+                if i < len(hops) - 1:
+                    issues.append(ValidationIssue(
+                        code="E23",
+                        severity="error",
+                        file="portal",
+                        line=None,
+                        message=(
+                            f"Ownership path '{ownership}' on page '{page_id}': "
+                            f"field '{hop}' on model '{current_model}' is not "
+                            f"relational (type: {field_type})"
+                        ),
+                    ))
+                    path_valid = False
+                    break
+                else:
+                    # Terminal non-relational field -- path doesn't point to res.users
+                    terminal_model = current_model
+
+        if not path_valid:
+            continue
+
+        # Check that path terminates at res.users
+        if terminal_model != "res.users":
+            issues.append(ValidationIssue(
+                code="E23",
+                severity="error",
+                file="portal",
+                line=None,
+                message=(
+                    f"Ownership path '{ownership}' on page '{page_id}' does not "
+                    f"terminate at res.users (terminates at '{terminal_model}')"
+                ),
+            ))
+
+    return issues
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -1740,8 +1905,9 @@ def _check_e17(
 def semantic_validate(
     output_dir: Path,
     registry: ModelRegistry | None = None,
+    spec: dict[str, Any] | None = None,
 ) -> SemanticValidationResult:
-    """Run all 21 semantic checks on a generated module directory.
+    """Run all semantic checks on a generated module directory.
 
     Parameters
     ----------
@@ -1749,6 +1915,8 @@ def semantic_validate(
         Path to the module root (contains ``__manifest__.py``).
     registry:
         Optional :class:`ModelRegistry` for comodel lookups.
+    spec:
+        Optional module spec dict for portal ownership validation (E23).
 
     Returns
     -------
@@ -1851,6 +2019,15 @@ def semantic_validate(
     e17_errors, w6_warnings = _check_e17(output_dir, known_models, registry)
     result.errors.extend(e17_errors)
     result.warnings.extend(w6_warnings)
+
+    # E23: Portal ownership path validation
+    if spec is not None:
+        e23_issues = _check_e23(output_dir, spec, registry)
+        for issue in e23_issues:
+            if issue.severity == "error":
+                result.errors.append(issue)
+            else:
+                result.warnings.append(issue)
 
     elapsed = time.perf_counter() - start
     result.duration_ms = int(elapsed * 1000)
