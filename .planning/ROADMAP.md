@@ -206,7 +206,10 @@ Plans:
   1. Spec defines chain steps across models, and Logic Writer generates compute method implementations in each model that correctly read from source fields and write to target fields
   2. Generated @api.depends decorators use related field dot notation for cross-model triggers (e.g., @api.depends('enrollment_ids.grade_points')) and store=True is set for fields needing recomputation
   3. Chain validator detects dependency cycles, verifies all intermediate fields exist in the model registry, and confirms correct computation order before generation
-**Plans**: TBD
+**Plans:** 1/2 plans executed
+Plans:
+- [ ] 61-01-PLAN.md — Pydantic chain schema + preprocessor rewrite (order=22) + E18-E22 chain validation
+- [ ] 61-02-PLAN.md — Chain context in StubContext + stub report serialization + end-to-end integration
 
 ### Phase 62: Portal Controllers
 **Goal**: Users can generate portal-facing features with controllers, QWeb templates, and security rules that restrict data to the portal user's linked records
@@ -239,8 +242,8 @@ Plans:
 | 57. Logic Writer Computed & Constraints | 2/2 | Complete    | 2026-03-08 |
 | 58. Logic Writer Overrides & Actions | 2/2 | Complete    | 2026-03-08 |
 | 59. Module Extension Pattern | 2/2 | Complete    | 2026-03-08 |
-| 60. Iterative Refinement | 2/2 | Complete   | 2026-03-09 |
-| 61. Computed Chain Generator | 0/? | Not started | - |
+| 60. Iterative Refinement | 2/2 | Complete    | 2026-03-09 |
+| 61. Computed Chain Generator | 1/2 | In Progress|  |
 | 62. Portal Controllers | 0/? | Not started | - |
 | 63. Bulk Operations | 0/? | Not started | - |
 

@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: LLM Logic Writer & Generation Capabilities
 status: completed
-stopped_at: Completed 60-02-PLAN.md
-last_updated: "2026-03-09T00:14:57.799Z"
-last_activity: 2026-03-09 — Phase 60 Plan 02 completed
+stopped_at: Phase 61 Plan 01 completed
+last_updated: "2026-03-09T01:35:01Z"
+last_activity: 2026-03-09 — Phase 61 Plan 01 completed
 progress:
   total_phases: 9
   completed_phases: 6
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-03-08)
 
 ## Current Position
 
-Phase: 60 (Iterative Refinement)
-Plan: 02 of 02 (DONE)
-Status: Phase 60 Plan 02 complete
-Last activity: 2026-03-09 — Phase 60 Plan 02 completed
+Phase: 61 (Computed Chain Generator)
+Plan: 01 of 01 (DONE)
+Status: Phase 61 Plan 01 complete
+Last activity: 2026-03-09 — Phase 61 Plan 01 completed
 
 Progress: [██████████] 100% (v4.0)
 
@@ -53,6 +53,7 @@ Progress: [██████████] 100% (v4.0)
 | Phase 59 P02 | 11min | 1 tasks | 4 files |
 | 60-iterative-refinement | 01 | 12min | 2 | 12 |
 | 60-iterative-refinement | 02 | 13min | 2 | 7 |
+| 61-computed-chain-generator | 01 | 16min | 2 | 7 |
 
 ## Accumulated Context
 
@@ -97,6 +98,10 @@ Progress: [██████████] 100% (v4.0)
 - [Phase 60-02]: Spec stash saved after all stages complete (ensures successful generation only)
 - [Phase 60-02]: resolve_accept_new with "removed/" prefix confirms deletion
 - [Phase 60-02]: render_module line limit 200->300 for iterative mode additions
+- [Phase 61]: Validators use augmented spec (chain-declared fields pre-injected) to avoid false positives
+- [Phase 61]: Old per-field chain format preserved via _process_old_format fallback
+- [Phase 61]: Chain validators co-located in computation_chains.py (not validation.py)
+- [Phase 61]: E20 store propagation uses stored_overrides parameter for testability
 
 ### Pending Todos
 
@@ -122,7 +127,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T00:14:57.797Z
-Stopped at: Completed 60-02-PLAN.md
-Resume file: None
-Next step: Phase 60 complete. Next milestone phase or v4.0 release.
+Last session: 2026-03-09T01:35:01Z
+Stopped at: Phase 61 Plan 01 completed
+Resume file: .planning/phases/61-computed-chain-generator/61-01-SUMMARY.md
+Next step: Phase 61 complete. Next milestone phase or v4.0 release.

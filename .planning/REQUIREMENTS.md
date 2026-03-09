@@ -36,9 +36,9 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 
 ### Computed Chains
 
-- [ ] **CCHN-01**: Cross-model computed field chains — spec defines chain steps (e.g., exam.result.grade → enrollment.grade_points → student.cgpa), Logic Writer generates implementations across models
-- [ ] **CCHN-02**: Correct @api.depends with related field notation for cross-model triggers and store=True strategy for fields that need recomputation when source changes
-- [ ] **CCHN-03**: Chain validation — verify dependency order, detect cycles, ensure all intermediate fields exist in model registry
+- [x] **CCHN-01**: Cross-model computed field chains — spec defines chain steps (e.g., exam.result.grade → enrollment.grade_points → student.cgpa), Logic Writer generates implementations across models
+- [x] **CCHN-02**: Correct @api.depends with related field notation for cross-model triggers and store=True strategy for fields that need recomputation when source changes
+- [x] **CCHN-03**: Chain validation — verify dependency order, detect cycles, ensure all intermediate fields exist in model registry
 
 ### Portal
 
@@ -96,9 +96,9 @@ Requirements for v4.0 LLM Logic Writer & Generation Capabilities. Each maps to r
 | ITER-01 | Phase 60 | Complete |
 | ITER-02 | Phase 60 | Complete |
 | ITER-03 | Phase 60 | Complete |
-| CCHN-01 | Phase 61 | Pending |
-| CCHN-02 | Phase 61 | Pending |
-| CCHN-03 | Phase 61 | Pending |
+| CCHN-01 | Phase 61 | Complete |
+| CCHN-02 | Phase 61 | Complete |
+| CCHN-03 | Phase 61 | Complete |
 | PRTL-01 | Phase 62 | Pending |
 | PRTL-02 | Phase 62 | Pending |
 | PRTL-03 | Phase 62 | Pending |
