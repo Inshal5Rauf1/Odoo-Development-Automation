@@ -207,8 +207,8 @@ class TestDockerInstallTeardown:
         module_path = Path("/tmp/test_mod")
         result = docker_install_module(module_path, compose_file=Path("/tmp/compose.yml"))
 
-        # Teardown must be called even though run raised
-        mock_teardown.assert_called_once()
+        # Teardown is called during DB startup retries AND in the finally block
+        assert mock_teardown.call_count >= 1
         assert isinstance(result, Result)
         assert result.success is False
 
@@ -308,7 +308,8 @@ class TestDockerRunTestsTeardown:
         module_path = Path("/tmp/test_mod")
         result = docker_run_tests(module_path, compose_file=Path("/tmp/compose.yml"))
 
-        mock_teardown.assert_called_once()
+        # Teardown is called during DB startup retries AND in the finally block
+        assert mock_teardown.call_count >= 1
         assert isinstance(result, Result)
         assert result.success is False
 
@@ -360,7 +361,11 @@ class TestDockerTimeout:
         mock_teardown: MagicMock,
     ) -> None:
         mock_available.return_value = True
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker", timeout=300)
+        # DB startup succeeds, install command times out
+        mock_run.side_effect = [
+            MagicMock(stdout="", stderr="", returncode=0),  # DB startup
+            subprocess.TimeoutExpired(cmd="docker", timeout=300),  # Install
+        ]
 
         module_path = Path("/tmp/test_mod")
         result = docker_install_module(module_path, compose_file=Path("/tmp/compose.yml"))

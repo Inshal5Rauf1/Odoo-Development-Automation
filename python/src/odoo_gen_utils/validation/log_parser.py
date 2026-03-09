@@ -33,8 +33,16 @@ _MODULES_LOADED = re.compile(
 )
 
 # Odoo 17 test start pattern: "Starting ClassName.test_method ..."
+# Also handles nested classes and varied module path formats.
 _TEST_START = re.compile(
-    r"(\S+\.tests\.\S+):\s+Starting\s+\S+\.(test_\S+)\s+\.\.\.",
+    r"(\S+\.tests\S*)[\s:]+Starting\s+\S+?\.(test_\S+)\s+\.\.\.",
+    re.MULTILINE,
+)
+
+# Alternate Odoo 17 format without "Starting" prefix:
+# "module.tests.test_file: ClassName.test_method ..."
+_TEST_START_ALT = re.compile(
+    r"(\S+\.tests\S*)[\s:]+\S+?\.(test_\S+)\s+\.\.\.",
     re.MULTILINE,
 )
 
@@ -46,13 +54,13 @@ _TEST_PASS = re.compile(
 
 # Test failure pattern: FAIL or ERROR followed by test info
 _TEST_FAIL = re.compile(
-    r"^\d{4}-\d{2}-\d{2}\s[\d:,]+\s+\d+\s+(FAIL|ERROR)\s+\S+\s+\S+\.tests\.\S+",
+    r"^\d{4}-\d{2}-\d{2}\s[\d:,]+\s+\d+\s+(FAIL|ERROR)\s+\S+\s+\S+\.tests\S*",
     re.MULTILINE,
 )
 
 # Test failure with test name on same line
 _TEST_FAIL_NAMED = re.compile(
-    r"^\d{4}-\d{2}-\d{2}\s[\d:,]+\s+\d+\s+(FAIL|ERROR)\s+\S+\s+\S+\.tests\.\S+:\s+(test_\S+)",
+    r"^\d{4}-\d{2}-\d{2}\s[\d:,]+\s+\d+\s+(FAIL|ERROR)\s+\S+\s+\S+\.tests\S*[\s:]+(test_\S+)",
     re.MULTILINE,
 )
 
@@ -147,20 +155,22 @@ def parse_test_log(log_text: str) -> tuple[TestResult, ...]:
             failed_tests[test_name] = error_msg or f"{failure_type}: {test_name}"
 
     # Odoo 17 format: "Starting ClassName.test_method ..."
-    for match in _TEST_START.finditer(log_text):
-        test_name = match.group(2)
-        if test_name not in seen_tests:
-            seen_tests.add(test_name)
-            if test_name in failed_tests:
-                results.append(
-                    TestResult(
-                        test_name=test_name,
-                        passed=False,
-                        error_message=failed_tests[test_name],
+    # Try primary pattern first, then alternate for broader coverage
+    for pattern in (_TEST_START, _TEST_START_ALT):
+        for match in pattern.finditer(log_text):
+            test_name = match.group(2)
+            if test_name not in seen_tests:
+                seen_tests.add(test_name)
+                if test_name in failed_tests:
+                    results.append(
+                        TestResult(
+                            test_name=test_name,
+                            passed=False,
+                            error_message=failed_tests[test_name],
+                        )
                     )
-                )
-            else:
-                results.append(TestResult(test_name=test_name, passed=True))
+                else:
+                    results.append(TestResult(test_name=test_name, passed=True))
 
     # Legacy format (Odoo <17): "test_name ... ok"
     for match in _TEST_PASS.finditer(log_text):
@@ -210,15 +220,26 @@ def parse_test_log(log_text: str) -> tuple[TestResult, ...]:
 def _extract_failure_message(log_text: str, start_pos: int) -> str:
     """Extract error message following a FAIL/ERROR test line.
 
-    Looks for the next non-log-formatted line after the failure marker.
+    Collects contiguous non-log-formatted lines (up to 10) after the
+    failure marker, providing full traceback/assertion context.
     """
     remaining = log_text[start_pos:].strip()
     lines = remaining.splitlines()
-    for line in lines[:3]:  # Check next 3 lines max
+    collected: list[str] = []
+    for line in lines[:20]:  # Scan up to 20 lines to find up to 10 relevant
         stripped = line.strip()
-        if stripped and not re.match(r"^\d{4}-\d{2}-\d{2}", stripped):
-            return stripped
-    return ""
+        if not stripped:
+            if collected:
+                break  # Blank line after content = end of message
+            continue
+        if re.match(r"^\d{4}-\d{2}-\d{2}", stripped):
+            if collected:
+                break  # Hit the next log line = end of message
+            continue
+        collected.append(stripped)
+        if len(collected) >= 10:
+            break
+    return "\n".join(collected)
 
 
 def extract_traceback(log_text: str) -> str:

@@ -14,9 +14,12 @@ DFIX-01: 3 new Docker fix functions (xml_parse_error, missing_acl, manifest_load
 from __future__ import annotations
 
 import ast
+import logging
 import re
 from collections import defaultdict
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from odoo_gen_utils.validation.pylint_runner import run_pylint_odoo
 from odoo_gen_utils.validation.types import Result, Violation
@@ -894,6 +897,9 @@ def fix_xml_parse_error(module_path: Path, error_output: str) -> bool:
     )
     for fname in file_matches:
         candidate = module_path / fname
+        # Guard against path traversal (e.g., "../../etc/passwd.xml")
+        if not candidate.resolve().is_relative_to(module_path.resolve()):
+            continue
         if candidate.exists():
             xml_files.append(candidate)
 
@@ -942,8 +948,8 @@ def fix_xml_parse_error(module_path: Path, error_output: str) -> bool:
 
         # Fallback: try heuristic detection of common mismatched tags
         # Look for closing tags that don't have matching opening tags
-        opening_tags = re.findall(r"<(\w+)[\s>]", content)
-        closing_tags = re.findall(r"</(\w+)>", content)
+        opening_tags = re.findall(r"<([\w\-:\.]+)[\s>]", content)
+        closing_tags = re.findall(r"</([\w\-:\.]+)>", content)
 
         open_counts: dict[str, int] = {}
         for tag in opening_tags:
@@ -1003,18 +1009,20 @@ def _extract_model_names(module_path: Path) -> tuple[str, ...]:
     return tuple(model_names)
 
 
-def _build_acl_line(model_name: str) -> str:
-    """Build a single ACL CSV line for a model.
+def _build_acl_row(model_name: str) -> list[str]:
+    """Build a single ACL CSV row for a model.
 
+    Returns a list of field values suitable for csv.writer.
     Format: access_{underscored},access.{dotted},model_{underscored},base.group_user,1,1,1,0
     """
     model_underscore = model_name.replace(".", "_")
-    return (
-        f"access_{model_underscore},"
-        f"access.{model_name},"
-        f"model_{model_underscore},"
-        f"base.group_user,1,1,1,0"
-    )
+    return [
+        f"access_{model_underscore}",
+        f"access.{model_name}",
+        f"model_{model_underscore}",
+        "base.group_user",
+        "1", "1", "1", "0",
+    ]
 
 
 def fix_missing_acl(module_path: Path, error_output: str) -> bool:
@@ -1052,20 +1060,25 @@ def fix_missing_acl(module_path: Path, error_output: str) -> bool:
     if not missing_models:
         return False
 
-    # Build new CSV content (immutable: create new string, don't mutate)
+    import csv
+    import io
+
+    # Build new CSV content using csv.writer for proper escaping
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+
     if existing_content.strip():
-        # Append to existing CSV
+        # Preserve existing lines, append new rows
         lines = existing_content.rstrip("\n").split("\n")
-        new_lines = list(lines)
-        for model_name in missing_models:
-            new_lines.append(_build_acl_line(model_name))
-        new_csv_content = "\n".join(new_lines) + "\n"
+        for line in lines:
+            buf.write(line + "\n")
     else:
-        # Create new CSV
-        csv_lines = [header]
-        for model_name in missing_models:
-            csv_lines.append(_build_acl_line(model_name))
-        new_csv_content = "\n".join(csv_lines) + "\n"
+        writer.writerow(header.split(","))
+
+    for model_name in missing_models:
+        writer.writerow(_build_acl_row(model_name))
+
+    new_csv_content = buf.getvalue()
 
     # Create security/ directory if needed
     csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1102,6 +1115,11 @@ def fix_missing_acl(module_path: Path, error_output: str) -> bool:
                                     )
                                 if new_manifest != manifest_content:
                                     manifest_path.write_text(new_manifest, encoding="utf-8")
+                                else:
+                                    logger.warning(
+                                        "Found 'data' key in manifest but string replacement "
+                                        "failed — manifest formatting may be non-standard"
+                                    )
                                 break
             except SyntaxError:
                 pass  # Cannot parse manifest, skip update
