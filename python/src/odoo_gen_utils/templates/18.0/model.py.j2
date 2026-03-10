@@ -199,6 +199,20 @@ class {{ model_name | to_class }}(models.Model):
 {% endfor %}
     ]
 {% endif %}
+{% if composite_indexes is defined and composite_indexes %}
+
+    def init(self):
+        super().init()
+{% for idx in composite_indexes %}
+        self.env.cr.execute("""
+            CREATE INDEX IF NOT EXISTS {{ idx.name }}
+            ON %s ({{ idx.fields | join(', ') }})
+{% if idx.get('where') %}
+            WHERE {{ idx.where }}
+{% endif %}
+        """ % self._table)
+{% endfor %}
+{% endif %}
 {% for field in sequence_fields %}
 
     @api.model
