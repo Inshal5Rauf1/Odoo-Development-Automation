@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from odoo_gen_utils.preprocessors._registry import register_preprocessor
@@ -10,6 +11,8 @@ from odoo_gen_utils.renderer_utils import INDEXABLE_TYPES, NON_INDEXABLE_TYPES
 from odoo_gen_utils.utils.validate import validate_identifier
 
 logger = logging.getLogger(__name__)
+
+_SAFE_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 @register_preprocessor(order=40, name="performance")
@@ -161,10 +164,29 @@ def _enrich_model_performance(model: dict[str, Any]) -> dict[str, Any]:
                     missing,
                 )
                 continue
+            idx_name = hint.get("name", "idx_" + "_".join(hint_fields))
+            # Validate identifiers to prevent SQL injection in generated code
+            unsafe = [f for f in hint_fields if not _SAFE_IDENTIFIER.match(f)]
+            if not _SAFE_IDENTIFIER.match(idx_name):
+                unsafe.append(idx_name)
+            if unsafe:
+                logger.warning(
+                    "index_hint on model '%s' has unsafe identifiers %s — skipping.",
+                    model.get("name", "?"),
+                    unsafe,
+                )
+                continue
+            where_clause = hint.get("where")
+            if where_clause and not isinstance(where_clause, str):
+                logger.warning(
+                    "index_hint on model '%s' has non-string where clause — skipping.",
+                    model.get("name", "?"),
+                )
+                continue
             composite_indexes.append({
-                "name": hint.get("name", "idx_" + "_".join(hint_fields)),
+                "name": idx_name,
                 "fields": hint_fields,
-                "where": hint.get("where"),
+                "where": where_clause,
                 "unique": hint.get("unique", False),
             })
         if composite_indexes:
