@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Valid Odoo field types (16 total)
@@ -403,6 +403,38 @@ class ExtensionSpec(BaseModel):
     view_extensions: list[ViewExtensionSpec] = []
 
 
+class WorkflowTransitionSpec(BaseModel):
+    """A single state transition in a workflow."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=(), populate_by_name=True)
+
+    from_state: str = Field("", alias="from")
+    to_state: str = Field("", alias="to")
+    action: str = ""
+    conditions: str = ""
+
+
+class WorkflowSpec(BaseModel):
+    """State machine definition for a model."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    model: str = ""
+    states: list[str] = []
+    transitions: list[WorkflowTransitionSpec] = []
+
+
+class ViewHintSpec(BaseModel):
+    """Layout guidance for a model's views."""
+
+    model_config = ConfigDict(extra="allow", protected_namespaces=())
+
+    model: str = ""
+    view_type: str = "form"
+    key_fields: list[str] = []
+    notes: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Model-level spec
 # ---------------------------------------------------------------------------
@@ -499,6 +531,9 @@ class ModuleSpec(BaseModel):
     dashboards: list[dict] = []
     relationships: list[dict] = []
     computation_chains: list[dict] = []
+    workflow: list[WorkflowSpec] = []
+    business_rules: list[str] = []
+    view_hints: list[ViewHintSpec] = []
     constraints: list[dict] = []
     security: SecurityBlockSpec | None = None
 

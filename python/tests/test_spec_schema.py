@@ -414,3 +414,123 @@ class TestRendererIntegration:
         with tempfile.TemporaryDirectory() as d:
             files, warnings = render_module(valid_spec, get_template_dir(), Path(d), no_context7=True)
             assert len(files) > 0
+
+
+# ─── Integration schema tests (odoo-gsd alignment) ──────────────────────────
+
+
+class TestOdooGsdSchemaAlignment:
+    """Tests for fields added to support odoo-gsd spec output."""
+
+    def test_workflow_field_accepted(self):
+        """ModuleSpec accepts workflow list with transitions."""
+        spec = ModuleSpec(
+            module_name="test",
+            workflow=[
+                {
+                    "model": "test.model",
+                    "states": ["draft", "confirmed", "done"],
+                    "transitions": [
+                        {"from": "draft", "to": "confirmed", "action": "action_confirm", "conditions": ""},
+                    ],
+                }
+            ],
+        )
+        assert len(spec.workflow) == 1
+        assert spec.workflow[0].model == "test.model"
+        assert spec.workflow[0].states == ["draft", "confirmed", "done"]
+        assert len(spec.workflow[0].transitions) == 1
+        assert spec.workflow[0].transitions[0].from_state == "draft"
+        assert spec.workflow[0].transitions[0].to_state == "confirmed"
+
+    def test_workflow_empty_default(self):
+        """ModuleSpec defaults workflow to empty list."""
+        spec = ModuleSpec(module_name="test")
+        assert spec.workflow == []
+
+    def test_business_rules_field_accepted(self):
+        """ModuleSpec accepts business_rules as list of strings."""
+        spec = ModuleSpec(
+            module_name="test",
+            business_rules=[
+                "A fee structure must have at least one line",
+                "Late penalty applies after grace period",
+            ],
+        )
+        assert len(spec.business_rules) == 2
+        assert "fee structure" in spec.business_rules[0]
+
+    def test_business_rules_empty_default(self):
+        """ModuleSpec defaults business_rules to empty list."""
+        spec = ModuleSpec(module_name="test")
+        assert spec.business_rules == []
+
+    def test_view_hints_field_accepted(self):
+        """ModuleSpec accepts view_hints list."""
+        spec = ModuleSpec(
+            module_name="test",
+            view_hints=[
+                {
+                    "model": "test.model",
+                    "view_type": "form",
+                    "key_fields": ["name", "state"],
+                    "notes": "Use notebook for details",
+                }
+            ],
+        )
+        assert len(spec.view_hints) == 1
+        assert spec.view_hints[0].model == "test.model"
+        assert spec.view_hints[0].key_fields == ["name", "state"]
+
+    def test_view_hints_empty_default(self):
+        """ModuleSpec defaults view_hints to empty list."""
+        spec = ModuleSpec(module_name="test")
+        assert spec.view_hints == []
+
+    def test_full_gsd_spec_roundtrip(self):
+        """A spec matching odoo-gsd's full output is accepted and round-trips."""
+        gsd_output = {
+            "module_name": "uni_fee",
+            "module_title": "Uni Fee",
+            "odoo_version": "17.0",
+            "version": "17.0.1.0.0",
+            "summary": "University fee management",
+            "author": "Test",
+            "website": "",
+            "license": "LGPL-3",
+            "category": "Education",
+            "application": True,
+            "depends": ["base", "mail"],
+            "models": [],
+            "business_rules": ["Rule 1"],
+            "computation_chains": [],
+            "workflow": [
+                {
+                    "model": "uni.fee.invoice",
+                    "states": ["draft", "paid"],
+                    "transitions": [{"from": "draft", "to": "paid", "action": "action_pay", "conditions": ""}],
+                }
+            ],
+            "view_hints": [
+                {"model": "uni.fee.invoice", "view_type": "form", "key_fields": ["name"], "notes": ""}
+            ],
+            "reports": [],
+            "notifications": [],
+            "cron_jobs": [],
+            "security": {
+                "roles": ["manager", "user"],
+                "acl": {
+                    "manager": {"create": True, "read": True, "write": True, "unlink": True},
+                    "user": {"create": True, "read": True, "write": True, "unlink": False},
+                },
+                "defaults": {"manager": "full", "user": "standard"},
+            },
+            "portal": None,
+            "controllers": [],
+        }
+        spec = ModuleSpec(**gsd_output)
+        dumped = spec.model_dump(by_alias=True)
+        assert dumped["module_name"] == "uni_fee"
+        assert len(dumped["workflow"]) == 1
+        assert len(dumped["business_rules"]) == 1
+        assert len(dumped["view_hints"]) == 1
