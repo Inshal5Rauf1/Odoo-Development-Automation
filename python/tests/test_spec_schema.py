@@ -534,3 +534,54 @@ class TestOdooGsdSchemaAlignment:
         assert len(dumped["workflow"]) == 1
         assert len(dumped["business_rules"]) == 1
         assert len(dumped["view_hints"]) == 1
+
+    def test_workflow_transition_alias_serialization(self):
+        """model_dump(by_alias=True) produces 'from'/'to' keys, not 'from_state'/'to_state'."""
+        spec = ModuleSpec(
+            module_name="test",
+            workflow=[
+                {
+                    "model": "test.model",
+                    "states": ["draft", "done"],
+                    "transitions": [
+                        {"from": "draft", "to": "done", "action": "act", "conditions": ""},
+                    ],
+                }
+            ],
+        )
+        dumped = spec.model_dump(by_alias=True)
+        transition = dumped["workflow"][0]["transitions"][0]
+        assert "from" in transition, "by_alias=True should produce 'from' key"
+        assert "to" in transition, "by_alias=True should produce 'to' key"
+        assert transition["from"] == "draft"
+        assert transition["to"] == "done"
+        # Verify Python field names are NOT present when by_alias=True
+        assert "from_state" not in transition
+        assert "to_state" not in transition
+
+    def test_workflow_transition_python_name_construction(self):
+        """populate_by_name=True allows constructing via Python attribute names."""
+        from odoo_gen_utils.spec_schema import WorkflowTransitionSpec
+
+        t = WorkflowTransitionSpec(from_state="draft", to_state="confirmed", action="act")
+        assert t.from_state == "draft"
+        assert t.to_state == "confirmed"
+
+    def test_workflow_transition_default_serialization(self):
+        """model_dump() without by_alias uses Python field names."""
+        spec = ModuleSpec(
+            module_name="test",
+            workflow=[
+                {
+                    "model": "test.model",
+                    "states": ["draft", "done"],
+                    "transitions": [
+                        {"from": "draft", "to": "done", "action": "act", "conditions": ""},
+                    ],
+                }
+            ],
+        )
+        dumped = spec.model_dump()
+        transition = dumped["workflow"][0]["transitions"][0]
+        assert "from_state" in transition, "default dump should use Python field names"
+        assert "to_state" in transition
